@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅 — Diario de Viaje</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --surface: #ffffff;
+    --ink: #1a1a18;
+    --ink-muted: #8a8880;
+    --ink-faint: #d4d2cc;
+    --accent: #c8a96e;
+    --accent-light: #f0e8d8;
+    --red: #c0392b;
+    --radius: 4px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(247,245,240,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--ink-faint);
+    padding: 0 2rem;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .logo span {
+    font-size: 0.85rem;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    color: var(--ink-muted);
+    letter-spacing: 0.04em;
+  }
+
+  .header-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .btn-nav {
+    background: none;
+    border: 1px solid var(--ink-faint);
+    color: var(--ink);
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.15s;
+  }
+  .btn-nav:hover { border-color: var(--accent); color: var(--accent); }
+
+  .date-display {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--ink-faint);
+    border-radius: var(--radius);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .date-display:hover { border-color: var(--accent); }
+
+  #date-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    top: 60px;
+    right: 2rem;
+  }
+
+  /* ─── MAIN ─── */
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 6rem;
+  }
+
+  /* ─── DAY HEADER ─── */
+  .day-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .day-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 0.4rem;
+  }
+  .day-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  #day-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--ink);
+    width: 100%;
+    resize: none;
+    overflow: hidden;
+  }
+  #day-title::placeholder { color: var(--ink-faint); }
+
+  /* ─── DIARY TEXT ─── */
+  .section-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 0.5rem;
+  }
+  #day-notes {
+    width: 100%;
+    min-height: 100px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--ink-faint);
+    outline: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 300;
+    color: var(--ink);
+    line-height: 1.8;
+    resize: none;
+    padding-bottom: 0.5rem;
+    transition: border-color 0.2s;
+  }
+  #day-notes:focus { border-color: var(--accent); }
+  #day-notes::placeholder { color: var(--ink-faint); }
+
+  /* ─── UPLOAD ZONE ─── */
+  .upload-section { margin: 2rem 0; }
+  .drop-zone {
+    border: 1.5px dashed var(--ink-faint);
+    border-radius: 8px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.5; }
+  .drop-text { font-size: 0.875rem; color: var(--ink-muted); }
+  .drop-text strong { color: var(--ink); font-weight: 500; }
+  .drop-sub { font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.3rem; }
+  #file-input { display: none; }
+
+  /* ─── RECORDER ─── */
+  .recorder-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1.5px solid var(--ink-faint);
+    border-radius: 8px;
+    transition: border-color 0.2s;
+  }
+  .recorder-row.recording { border-color: var(--red); background: #fdf5f5; }
+
+  .btn-record {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    transition: all 0.2s;
+    background: var(--ink);
+    color: white;
+  }
+  .btn-record:hover { background: var(--accent); }
+  .btn-record.recording {
+    background: var(--red);
+    animation: pulse-rec 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-rec {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.4); }
+    50%       { box-shadow: 0 0 0 8px rgba(192,57,43,0); }
+  }
+
+  .recorder-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .recorder-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .recorder-sub {
+    font-size: 0.72rem;
+    color: var(--ink-muted);
+  }
+  .recorder-timer {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.1rem;
+    color: var(--red);
+    min-width: 48px;
+    text-align: right;
+    letter-spacing: 0.04em;
+  }
+
+  /* ─── MEDIA GRID ─── */
+  .media-section { margin-top: 2rem; }
+  .media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .media-card {
+    background: var(--surface);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s;
+    animation: fadeUp 0.3s ease both;
+  }
+  .media-card:hover { transform: translateY(-2px); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .media-thumb {
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    display: block;
+  }
+  .audio-thumb {
+    width: 100%;
+    background: var(--accent-light);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem 1rem;
+    gap: 0.5rem;
+  }
+  .audio-icon { font-size: 1.75rem; opacity: 0.6; }
+  .audio-filename {
+    font-size: 0.7rem;
+    color: var(--ink-muted);
+    text-align: center;
+    word-break: break-all;
+    max-width: 100%;
+  }
+  audio {
+    width: 100%;
+    height: 32px;
+    margin: 0;
+  }
+  audio::-webkit-media-controls-panel { background: var(--accent-light); }
+
+  .media-footer {
+    padding: 0.6rem 0.75rem 0.75rem;
+  }
+  .media-caption {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 300;
+    color: var(--ink);
+    line-height: 1.5;
+    resize: none;
+    min-height: 36px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+    overflow: hidden;
+  }
+  .media-caption:focus { border-color: var(--ink-faint); }
+  .media-caption::placeholder { color: var(--ink-faint); }
+
+  .media-delete {
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem 0;
+    margin-top: 0.3rem;
+    transition: color 0.15s;
+    display: block;
+  }
+  .media-delete:hover { color: var(--red); }
+
+  /* ─── SAVE BAR ─── */
+  .save-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(247,245,240,0.95);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--ink-faint);
+    padding: 0.75rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    z-index: 100;
+  }
+  .save-status {
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+    min-width: 160px;
+  }
+  .save-status.saved { color: #6a9f6a; }
+  .save-status.unsaved { color: var(--accent); }
+
+  .save-actions { display: flex; gap: 0.75rem; align-items: center; }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    padding: 0.55rem 1.4rem;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: all 0.15s;
+  }
+  .btn-primary:hover { background: var(--accent); }
+
+  .btn-secondary {
+    background: none;
+    color: var(--ink-muted);
+    border: 1px solid var(--ink-faint);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-secondary:hover { border-color: var(--ink-muted); color: var(--ink); }
+
+  /* ─── DAYS LIST MODAL ─── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26,26,24,0.4);
+    z-index: 200;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 80px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border-radius: 8px;
+    width: 360px;
+    max-height: 60vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .modal-header {
+    padding: 1.2rem 1.5rem 0.8rem;
+    border-bottom: 1px solid var(--ink-faint);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.1rem;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--ink-muted);
+    line-height: 1;
+  }
+  .day-list { padding: 0.5rem 0; }
+  .day-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    transition: background 0.15s;
+    gap: 0.75rem;
+  }
+  .day-list-item:hover { background: var(--accent-light); }
+  .day-list-item.active { background: var(--accent-light); }
+  .day-list-date { font-family: 'DM Serif Display', serif; font-size: 0.95rem; }
+  .day-list-title { font-size: 0.8rem; color: var(--ink-muted); flex: 1; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .day-list-count { font-size: 0.72rem; color: var(--ink-faint); white-space: nowrap; }
+
+  .empty-days {
+    padding: 2rem 1.5rem;
+    text-align: center;
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+  }
+
+  .modal-footer {
+    border-top: 1px solid var(--ink-faint);
+    padding: 0.5rem 0;
+  }
+  .modal-action-btn {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 0.75rem 1.5rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    font-weight: 300;
+    color: var(--ink-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .modal-action-btn:hover { background: var(--accent-light); color: var(--ink); }
+
+  /* ─── EMPTY STATE ─── */
+  .empty-media {
+    text-align: center;
+    padding: 1rem 0 0;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 500px) {
+    header { padding: 0 1rem; }
+    main { padding: 1.5rem 1rem 5rem; }
+    .save-bar { padding: 0.75rem 1rem; }
+    .media-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    #day-title { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">旅 <span>diario de viaje</span></div>
+  <div class="header-nav">
+    <button class="btn-nav" id="btn-prev" title="Día anterior">←</button>
+    <div class="date-display" id="date-display" title="Elegir fecha">—</div>
+    <button class="btn-nav" id="btn-next" title="Día siguiente">→</button>
+    <input type="date" id="date-input">
+    <button class="btn-nav" id="btn-days" title="Ver todos los días">☰</button>
+  </div>
+</header>
+
+<main>
+  <div class="day-header">
+    <div class="day-label" id="day-label">Hoy</div>
+    <div class="day-title-row">
+      <textarea id="day-title" rows="1" placeholder="¿Cómo llamarías a este día?"></textarea>
+    </div>
+  </div>
+
+  <div style="margin-bottom: 2rem;">
+    <div class="section-label">Notas del día</div>
+    <textarea id="day-notes" placeholder="¿Qué pasó hoy? ¿Qué sentiste? ¿Qué querés recordar..."></textarea>
+  </div>
+
+  <div class="upload-section">
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">📎</div>
+      <div class="drop-text"><strong>Subí fotos o audios</strong></div>
+      <div class="drop-sub">jpg, png, heic · mp3, m4a, wav, ogg · arrastrá o tocá acá</div>
+    </div>
+    <input type="file" id="file-input" accept="image/*,audio/*" multiple>
+
+    <div class="recorder-row" id="recorder-row">
+      <button class="btn-record" id="btn-record" title="Grabar audio">🎙️</button>
+      <div class="recorder-info">
+        <div class="recorder-label" id="recorder-label">Grabar audio</div>
+        <div class="recorder-sub" id="recorder-sub">Tocá para empezar a grabar</div>
+      </div>
+      <div class="recorder-timer" id="recorder-timer" style="display:none;">0:00</div>
+    </div>
+  </div>
+
+  <div class="media-section">
+    <div class="media-grid" id="media-grid"></div>
+    <div class="empty-media" id="empty-media" style="display:none;">Todavía no hay fotos ni audios para este día</div>
+  </div>
+</main>
+
+<div class="save-bar">
+  <div class="save-status" id="save-status">Sin cambios</div>
+  <div class="save-actions">
+    <button class="btn-secondary" id="btn-discard">Descartar</button>
+    <button class="btn-primary" id="btn-save">Guardar día</button>
+  </div>
+</div>
+<input type="file" id="import-input" accept=".json" style="display:none">
+
+<!-- MODAL: lista de días -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Días guardados</div>
+      <button class="modal-close" id="modal-close">×</button>
+    </div>
+    <div class="day-list" id="day-list"></div>
+    <div class="modal-footer">
+      <button class="modal-action-btn" id="btn-export">⬇ Exportar backup</button>
+      <button class="modal-action-btn" id="btn-import">⬆ Importar backup</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+const STORAGE_KEY = 'viaje_japon';
+let currentDate = todayStr();
+let currentDay = emptyDay();
+let dirty = false;
+
+// ─── UTILS ───────────────────────────────────────────────
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function emptyDay() {
+  return { title: '', notes: '', media: [] };
+}
+
+function getAllDays() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveAllDays(all) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+}
+
+function formatDate(str) {
+  const [y, m, d] = str.split('-');
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
+}
+
+function formatDateLong(str) {
+  const date = new Date(str + 'T12:00:00');
+  return date.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function isToday(str) { return str === todayStr(); }
+
+// ─── LOAD / SAVE DAY ─────────────────────────────────────
+function loadDay(dateStr) {
+  const all = getAllDays();
+  currentDate = dateStr;
+  currentDay = all[dateStr] ? JSON.parse(JSON.stringify(all[dateStr])) : emptyDay();
+  dirty = false;
+  render();
+}
+
+function saveCurrentDay() {
+  const all = getAllDays();
+  all[currentDate] = JSON.parse(JSON.stringify(currentDay));
+  saveAllDays(all);
+  dirty = false;
+  setStatus('saved', 'Guardado ✓');
+  setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
+}
+
+function discardChanges() {
+  loadDay(currentDate);
+  setStatus('', 'Cambios descartados');
+}
+
+// ─── RENDER ──────────────────────────────────────────────
+function render() {
+  // header date
+  document.getElementById('date-display').textContent = formatDate(currentDate);
+  document.getElementById('day-label').textContent = isToday(currentDate) ? 'Hoy · ' + formatDateLong(currentDate) : formatDateLong(currentDate);
+
+  // fields
+  const titleEl = document.getElementById('day-title');
+  const notesEl = document.getElementById('day-notes');
+  titleEl.value = currentDay.title;
+  notesEl.value = currentDay.notes;
+  autoResize(titleEl);
+  autoResize(notesEl);
+
+  // media
+  renderMedia();
+  setStatus('', 'Sin cambios');
+}
+
+function renderMedia() {
+  const grid = document.getElementById('media-grid');
+  const empty = document.getElementById('empty-media');
+  grid.innerHTML = '';
+  if (!currentDay.media.length) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  currentDay.media.forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'media-card';
+    card.style.animationDelay = `${idx * 0.04}s`;
+
+    if (item.type === 'image') {
+      card.innerHTML = `
+        <img class="media-thumb" src="${item.data}" alt="${item.name}" loading="lazy">
+        <div class="media-footer">
+          <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
+          <button class="media-delete" data-idx="${idx}">Eliminar</button>
+        </div>`;
+    } else {
+      card.innerHTML = `
+        <div class="audio-thumb">
+          <div class="audio-icon">🎙️</div>
+          <div class="audio-filename">${item.name}</div>
+          <audio controls src="${item.data}"></audio>
+        </div>
+        <div class="media-footer">
+          <textarea class="media-caption" placeholder="Comentario sobre este audio..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
+          <button class="media-delete" data-idx="${idx}">Eliminar</button>
+        </div>`;
+    }
+    grid.appendChild(card);
+  });
+
+  // caption & delete events
+  grid.querySelectorAll('.media-caption').forEach(ta => {
+    ta.addEventListener('input', e => {
+      const i = parseInt(e.target.dataset.idx);
+      currentDay.media[i].caption = e.target.value;
+      autoResize(e.target);
+      markDirty();
+    });
+    autoResize(ta);
+  });
+  grid.querySelectorAll('.media-delete').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const i = parseInt(e.target.dataset.idx);
+      currentDay.media.splice(i, 1);
+      markDirty();
+      renderMedia();
+    });
+  });
+}
+
+// ─── FILE HANDLING ───────────────────────────────────────
+const MAX_IMG_PX = 1200;
+const IMG_QUALITY = 0.8;
+
+function compressImage(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > MAX_IMG_PX || height > MAX_IMG_PX) {
+          if (width > height) { height = Math.round(height * MAX_IMG_PX / width); width = MAX_IMG_PX; }
+          else { width = Math.round(width * MAX_IMG_PX / height); height = MAX_IMG_PX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', IMG_QUALITY));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function processFiles(files) {
+  const allowed = ['image/', 'audio/'];
+  const valid = Array.from(files).filter(f => allowed.some(t => f.type.startsWith(t)));
+  if (!valid.length) return;
+
+  let loaded = 0;
+  const total = valid.length;
+
+  valid.forEach(file => {
+    const isImg = file.type.startsWith('image/');
+    if (isImg) {
+      compressImage(file).then(data => {
+        currentDay.media.push({ type: 'image', name: file.name, data, caption: '' });
+        loaded++;
+        if (loaded === total) { markDirty(); renderMedia(); }
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = e => {
+        currentDay.media.push({ type: 'audio', name: file.name, data: e.target.result, caption: '' });
+        loaded++;
+        if (loaded === total) { markDirty(); renderMedia(); }
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
+// ─── EXPORT / IMPORT ─────────────────────────────────────
+function exportBackup() {
+  const all = getAllDays();
+  const backup = { version: 1, exportedAt: new Date().toISOString(), days: all };
+  const json = JSON.stringify(backup, null, 2);
+
+  // Intentar descarga normal (desktop)
+  try {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url; a.download = `japan-diary-backup-${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) {}
+
+  // Fallback mobile: abrir en nueva pestaña
+  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  window.open(dataUri, '_blank');
+
+  document.getElementById('modal-overlay').classList.remove('open');
+  setStatus('saved', 'Backup exportado ✓');
+  setTimeout(() => setStatus('', 'Sin cambios'), 2500);
+}
+
+function importBackup(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const backup = JSON.parse(e.target.result);
+      // Soporte para formato directo (sin wrapper) y con wrapper version
+      const days = backup.days || backup;
+      if (typeof days !== 'object' || Array.isArray(days)) throw new Error('Formato inválido');
+      if (!confirm(`¿Importar backup de ${Object.keys(days).length} día(s)? Esto va a reemplazar los datos actuales.`)) return;
+      saveAllDays(days);
+      loadDay(currentDate);
+      setStatus('saved', 'Backup importado ✓');
+      setTimeout(() => setStatus('', 'Sin cambios'), 2500);
+    } catch(err) {
+      alert('No se pudo leer el archivo. Compartilo con Lea para que lo migre a la nueva versión.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ─── DAYS MODAL ──────────────────────────────────────────
+function openDaysModal() {
+  const list = document.getElementById('day-list');
+  const all = getAllDays();
+  const dates = Object.keys(all).sort().reverse();
+  list.innerHTML = '';
+  if (!dates.length) {
+    list.innerHTML = '<div class="empty-days">Todavía no hay días guardados</div>';
+  } else {
+    dates.forEach(d => {
+      const day = all[d];
+      const item = document.createElement('div');
+      item.className = 'day-list-item' + (d === currentDate ? ' active' : '');
+      const count = (day.media || []).length;
+      item.innerHTML = `
+        <div class="day-list-date">${formatDate(d)}</div>
+        <div class="day-list-title">${day.title || 'Sin título'}</div>
+        <div class="day-list-count">${count > 0 ? count + ' archivo' + (count > 1 ? 's' : '') : ''}</div>`;
+      item.addEventListener('click', () => {
+        if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
+        loadDay(d);
+        document.getElementById('modal-overlay').classList.remove('open');
+      });
+      list.appendChild(item);
+    });
+  }
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ─── HELPERS ─────────────────────────────────────────────
+function markDirty() {
+  dirty = true;
+  setStatus('unsaved', 'Cambios sin guardar');
+}
+
+function setStatus(cls, msg) {
+  const el = document.getElementById('save-status');
+  el.className = 'save-status' + (cls ? ' ' + cls : '');
+  el.textContent = msg;
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+function navigate(delta) {
+  if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
+  const date = new Date(currentDate + 'T12:00:00');
+  date.setDate(date.getDate() + delta);
+  loadDay(date.toISOString().slice(0, 10));
+}
+
+// ─── EVENTS ──────────────────────────────────────────────
+document.getElementById('day-title').addEventListener('input', e => {
+  currentDay.title = e.target.value;
+  autoResize(e.target);
+  markDirty();
+});
+
+document.getElementById('day-notes').addEventListener('input', e => {
+  currentDay.notes = e.target.value;
+  autoResize(e.target);
+  markDirty();
+});
+
+// drop zone
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  processFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => processFiles(e.target.files));
+
+// save/discard/export/import
+document.getElementById('btn-save').addEventListener('click', saveCurrentDay);
+document.getElementById('btn-discard').addEventListener('click', discardChanges);
+document.getElementById('btn-export').addEventListener('click', exportBackup);
+document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-input').click());
+document.getElementById('import-input').addEventListener('change', e => {
+  if (e.target.files[0]) importBackup(e.target.files[0]);
+  e.target.value = '';
+});
+
+// navigation
+document.getElementById('btn-prev').addEventListener('click', () => navigate(-1));
+document.getElementById('btn-next').addEventListener('click', () => navigate(1));
+
+document.getElementById('date-display').addEventListener('click', () => {
+  const input = document.getElementById('date-input');
+  input.value = currentDate;
+  input.style.pointerEvents = 'all';
+  input.click();
+  input.style.pointerEvents = 'none';
+});
+document.getElementById('date-input').addEventListener('change', e => {
+  if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
+  loadDay(e.target.value);
+});
+
+// modal
+document.getElementById('btn-days').addEventListener('click', openDaysModal);
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('open');
+});
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+// keyboard shortcut: Cmd/Ctrl+S
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveCurrentDay(); }
+});
+
+// ─── RECORDER ────────────────────────────────────────────
+let mediaRecorder = null;
+let recorderChunks = [];
+let recorderTimer = null;
+let recorderSeconds = 0;
+let recorderStream = null;
+
+const btnRecord   = document.getElementById('btn-record');
+const recRow      = document.getElementById('recorder-row');
+const recLabel    = document.getElementById('recorder-label');
+const recSub      = document.getElementById('recorder-sub');
+const recTimerEl  = document.getElementById('recorder-timer');
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+async function startRecording() {
+  try {
+    recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(e) {
+    recSub.textContent = 'No se pudo acceder al micrófono';
+    return;
+  }
+
+  recorderChunks = [];
+  mediaRecorder = new MediaRecorder(recorderStream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recorderChunks.push(e.data); };
+  mediaRecorder.onstop = finalizeRecording;
+  mediaRecorder.start();
+
+  // UI: recording state
+  recRow.classList.add('recording');
+  btnRecord.classList.add('recording');
+  btnRecord.textContent = '⏹';
+  btnRecord.title = 'Detener grabación';
+  recLabel.textContent = 'Grabando...';
+  recSub.textContent = 'Tocá para detener';
+  recTimerEl.style.display = 'block';
+  recorderSeconds = 0;
+  recTimerEl.textContent = '0:00';
+  recorderTimer = setInterval(() => {
+    recorderSeconds++;
+    recTimerEl.textContent = formatTime(recorderSeconds);
+  }, 1000);
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (recorderStream) { recorderStream.getTracks().forEach(t => t.stop()); recorderStream = null; }
+  clearInterval(recorderTimer);
+
+  // UI: idle state
+  recRow.classList.remove('recording');
+  btnRecord.classList.remove('recording');
+  btnRecord.textContent = '🎙️';
+  btnRecord.title = 'Grabar audio';
+  recLabel.textContent = 'Grabar audio';
+  recSub.textContent = 'Tocá para empezar a grabar';
+  recTimerEl.style.display = 'none';
+}
+
+function finalizeRecording() {
+  const mimeType = mediaRecorder.mimeType || 'audio/webm';
+  const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+  const blob = new Blob(recorderChunks, { type: mimeType });
+  const now = new Date();
+  const name = `grabacion-${now.getHours()}h${now.getMinutes().toString().padStart(2,'0')}.${ext}`;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    currentDay.media.push({ type: 'audio', name, data: e.target.result, caption: '' });
+    markDirty();
+    renderMedia();
+    recSub.textContent = `✓ "${name}" agregado`;
+    setTimeout(() => { recSub.textContent = 'Tocá para empezar a grabar'; }, 3000);
+  };
+  reader.readAsDataURL(blob);
+}
+
+btnRecord.addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
+
+// ─── INIT ────────────────────────────────────────────────
+loadDay(todayStr());
+</script>
+</body>
+</html>
