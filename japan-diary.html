@@ -593,7 +593,15 @@ function getAllDays() {
 }
 
 function saveAllDays(all) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch(e) {
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      alert('⚠️ El almacenamiento local está lleno. Exportá un backup desde el menú ☰ y luego borrá días anteriores para liberar espacio. Esto se resuelve cuando integremos Google Drive.');
+    } else {
+      throw e;
+    }
+  }
 }
 
 function formatDate(str) {
