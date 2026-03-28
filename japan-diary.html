@@ -6,6 +6,7 @@
 <title>旅 — Diario de Viaje</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" onload="initGoogleAuth()" async></script>
 <style>
   :root {
     --bg: #f7f5f0;
@@ -506,6 +507,7 @@
     <div class="date-display" id="date-display" title="Elegir fecha">—</div>
     <button class="btn-nav" id="btn-next" title="Día siguiente">→</button>
     <input type="date" id="date-input">
+    <button class="btn-nav" id="btn-drive" title="Conectar Google Drive">☁</button>
     <button class="btn-nav" id="btn-days" title="Ver todos los días">☰</button>
   </div>
 </header>
@@ -578,6 +580,15 @@ let currentDate = todayStr();
 let currentDay = emptyDay();
 let dirty = false;
 
+// ─── DRIVE CONFIG ─────────────────────────────────────────
+const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const APP_FOLDER_NAME = 'travel-diary';
+
+let driveToken = null;
+let appFolderId = null;
+let tokenClient = null;
+
 // ─── UTILS ───────────────────────────────────────────────
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -618,15 +629,57 @@ function formatDateLong(str) {
 function isToday(str) { return str === todayStr(); }
 
 // ─── LOAD / SAVE DAY ─────────────────────────────────────
-function loadDay(dateStr) {
-  const all = getAllDays();
+async function loadDay(dateStr) {
   currentDate = dateStr;
-  currentDay = all[dateStr] ? JSON.parse(JSON.stringify(all[dateStr])) : emptyDay();
   dirty = false;
+
+  if (driveToken && appFolderId) {
+    setStatus('', 'Cargando desde Drive...');
+    const driveDay = await loadDayFromDrive(dateStr);
+    if (driveDay) {
+      currentDay = driveDay;
+      // Cache structure locally (sin data base64)
+      const all = getAllDays();
+      all[dateStr] = {
+        title: driveDay.title, notes: driveDay.notes,
+        media: driveDay.media.map(m => ({ type: m.type, name: m.name, driveFileId: m.driveFileId, caption: m.caption }))
+      };
+      saveAllDays(all);
+      render();
+      return;
+    }
+  }
+
+  // Fallback a localStorage
+  const all = getAllDays();
+  currentDay = all[dateStr] ? JSON.parse(JSON.stringify(all[dateStr])) : emptyDay();
   render();
 }
 
-function saveCurrentDay() {
+async function saveCurrentDay() {
+  if (driveToken && appFolderId) {
+    setStatus('', 'Guardando en Drive...');
+    try {
+      currentDay = await saveDayToDrive(currentDate, currentDay);
+      // Cache estructura localmente
+      const all = getAllDays();
+      all[currentDate] = {
+        title: currentDay.title, notes: currentDay.notes,
+        media: currentDay.media.map(m => ({ type: m.type, name: m.name, driveFileId: m.driveFileId, caption: m.caption }))
+      };
+      saveAllDays(all);
+      dirty = false;
+      setStatus('saved', 'Guardado en Drive ✓');
+      setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
+      return;
+    } catch(e) {
+      alert('No se pudo guardar en Drive: ' + e.message);
+      setStatus('unsaved', 'Error al guardar');
+      return;
+    }
+  }
+
+  // Fallback a localStorage
   const all = getAllDays();
   all[currentDate] = JSON.parse(JSON.stringify(currentDay));
   saveAllDays(all);
@@ -674,23 +727,43 @@ function renderMedia() {
     card.style.animationDelay = `${idx * 0.04}s`;
 
     if (item.type === 'image') {
+      const imgSrc = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w1200` : '');
       card.innerHTML = `
-        <img class="media-thumb" src="${item.data}" alt="${item.name}" loading="lazy">
+        <img class="media-thumb" src="${imgSrc}" alt="${item.name}" loading="lazy">
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <button class="media-delete" data-idx="${idx}">Eliminar</button>
         </div>`;
     } else {
+      const audioSrc = item.data || '';
       card.innerHTML = `
         <div class="audio-thumb">
           <div class="audio-icon">🎙️</div>
           <div class="audio-filename">${item.name}</div>
-          <audio controls src="${item.data}"></audio>
+          ${audioSrc
+            ? `<audio controls src="${audioSrc}" data-idx="${idx}"></audio>`
+            : `<div class="audio-loading" data-idx="${idx}" style="font-size:0.75rem;color:var(--ink-muted);padding:0.5rem 0;">Cargando audio...</div>`}
         </div>
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre este audio..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <button class="media-delete" data-idx="${idx}">Eliminar</button>
         </div>`;
+      // Fetch audio content from Drive si no está en memoria
+      if (!audioSrc && item.driveFileId) {
+        fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
+          item.data = dataUrl;
+          const loadingEl = card.querySelector(`.audio-loading[data-idx="${idx}"]`);
+          if (loadingEl) {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = dataUrl;
+            loadingEl.replaceWith(audio);
+          }
+        }).catch(() => {
+          const loadingEl = card.querySelector(`.audio-loading[data-idx="${idx}"]`);
+          if (loadingEl) loadingEl.textContent = 'Audio no disponible';
+        });
+      }
     }
     grid.appendChild(card);
   });
@@ -846,6 +919,171 @@ function openDaysModal() {
   document.getElementById('modal-overlay').classList.add('open');
 }
 
+// ─── GOOGLE DRIVE ─────────────────────────────────────────
+
+function initGoogleAuth() {
+  try {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: DRIVE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: async (response) => {
+        if (response.error) {
+          setStatus('', 'Error al conectar Drive');
+          return;
+        }
+        driveToken = response.access_token;
+        localStorage.setItem('drive_token', driveToken);
+        await onDriveConnected();
+      }
+    });
+    // Restore saved token
+    const saved = localStorage.getItem('drive_token');
+    if (saved) { driveToken = saved; onDriveConnected(); }
+    updateDriveBtn();
+  } catch(e) {
+    console.warn('Google Auth no disponible:', e);
+  }
+}
+
+async function onDriveConnected() {
+  try {
+    appFolderId = await getOrCreateFolder(APP_FOLDER_NAME, 'root');
+    updateDriveBtn();
+    loadDay(currentDate);
+  } catch(e) {
+    driveToken = null;
+    appFolderId = null;
+    localStorage.removeItem('drive_token');
+    updateDriveBtn();
+  }
+}
+
+function updateDriveBtn() {
+  const btn = document.getElementById('btn-drive');
+  if (!btn) return;
+  if (driveToken && appFolderId) {
+    btn.title = 'Drive conectado ✓';
+    btn.style.color = '#6a9f6a';
+    btn.style.borderColor = '#6a9f6a';
+  } else {
+    btn.title = 'Conectar Google Drive';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }
+}
+
+async function driveReq(method, url, body) {
+  const headers = { 'Authorization': `Bearer ${driveToken}` };
+  const opts = { method, headers };
+  if (body instanceof FormData) {
+    opts.body = body;
+  } else if (body) {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    driveToken = null; appFolderId = null;
+    localStorage.removeItem('drive_token');
+    updateDriveBtn();
+    throw new Error('Token expirado — reconectá Drive');
+  }
+  return res;
+}
+
+async function getOrCreateFolder(name, parentId) {
+  const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`);
+  const data = await res.json();
+  if (data.files && data.files.length) return data.files[0].id;
+  const create = await driveReq('POST', 'https://www.googleapis.com/drive/v3/files',
+    { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] });
+  const folder = await create.json();
+  return folder.id;
+}
+
+async function findFileInFolder(name, folderId) {
+  const q = `name='${name}' and '${folderId}' in parents and trashed=false`;
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`);
+  const data = await res.json();
+  return data.files && data.files.length ? data.files[0].id : null;
+}
+
+async function uploadFile(blob, name, folderId, existingId = null) {
+  const meta = { name };
+  if (!existingId) meta.parents = [folderId];
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+  form.append('file', blob);
+  const url = existingId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  const res = await driveReq(existingId ? 'PATCH' : 'POST', url, form);
+  const file = await res.json();
+  return file.id;
+}
+
+function base64ToBlob(dataUrl) {
+  const [header, b64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function fetchFileAsDataUrl(fileId) {
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  const blob = await res.blob();
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function saveDayToDrive(dateStr, day) {
+  const dayFolderId = await getOrCreateFolder(dateStr, appFolderId);
+  // Upload new media (items with data but no driveFileId)
+  for (const item of day.media) {
+    if (!item.driveFileId && item.data) {
+      const blob = base64ToBlob(item.data);
+      item.driveFileId = await uploadFile(blob, item.name, dayFolderId);
+    }
+  }
+  // Save day.json
+  const dayJson = {
+    version: 2, title: day.title, notes: day.notes,
+    media: day.media.map(m => ({ type: m.type, name: m.name, driveFileId: m.driveFileId || null, caption: m.caption || '' }))
+  };
+  const existingJsonId = await findFileInFolder('day.json', dayFolderId);
+  const blob = new Blob([JSON.stringify(dayJson, null, 2)], { type: 'application/json' });
+  await uploadFile(blob, 'day.json', dayFolderId, existingJsonId);
+  return day;
+}
+
+async function loadDayFromDrive(dateStr) {
+  try {
+    const q = `name='${dateStr}' and mimeType='application/vnd.google-apps.folder' and '${appFolderId}' in parents and trashed=false`;
+    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`);
+    const data = await res.json();
+    if (!data.files || !data.files.length) return null;
+    const dayFolderId = data.files[0].id;
+    const jsonId = await findFileInFolder('day.json', dayFolderId);
+    if (!jsonId) return null;
+    const jsonRes = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${jsonId}?alt=media`);
+    const dayJson = await jsonRes.json();
+    return {
+      title: dayJson.title || '',
+      notes: dayJson.notes || '',
+      media: (dayJson.media || []).map(m => ({ type: m.type, name: m.name, driveFileId: m.driveFileId, caption: m.caption || '' }))
+    };
+  } catch(e) {
+    console.warn('Error cargando desde Drive:', e);
+    return null;
+  }
+}
+
 // ─── HELPERS ─────────────────────────────────────────────
 function markDirty() {
   dirty = true;
@@ -921,6 +1159,21 @@ document.getElementById('date-display').addEventListener('click', () => {
 document.getElementById('date-input').addEventListener('change', e => {
   if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
   loadDay(e.target.value);
+});
+
+// drive
+document.getElementById('btn-drive').addEventListener('click', () => {
+  if (driveToken && appFolderId) {
+    if (confirm('¿Desconectar Google Drive?')) {
+      driveToken = null; appFolderId = null;
+      localStorage.removeItem('drive_token');
+      updateDriveBtn();
+    }
+  } else if (tokenClient) {
+    tokenClient.requestAccessToken();
+  } else {
+    alert('Google Drive no está disponible. Chequeá tu conexión.');
+  }
 });
 
 // modal
@@ -1028,7 +1281,9 @@ btnRecord.addEventListener('click', () => {
 });
 
 // ─── INIT ────────────────────────────────────────────────
-loadDay(todayStr());
+// loadDay se llama desde initGoogleAuth() si hay token guardado,
+// o directamente si no hay Drive configurado todavía
+if (!localStorage.getItem('drive_token')) loadDay(todayStr());
 </script>
 </body>
 </html>
