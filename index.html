@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅 — Mis Viajes</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://accounts.google.com/gsi/client" onload="initGoogleAuth()" async></script>
+<script src="drive.js"></script>
+<style>
+
+/* ─── HOME PAGE ─── */
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+}
+
+.home-intro {
+  margin-bottom: 3rem;
+}
+.home-intro h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(2rem, 5vw, 3rem);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 0.5rem;
+}
+.home-intro h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+.home-intro p {
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+}
+
+/* ─── ALBUMS GRID ─── */
+.albums-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.album-card {
+  background: var(--surface);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  animation: fadeUp 0.35s ease both;
+}
+.album-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.album-cover {
+  width: 100%;
+  aspect-ratio: 3/2;
+  object-fit: cover;
+  display: block;
+  background: var(--accent-light);
+}
+.album-cover-empty {
+  width: 100%;
+  aspect-ratio: 3/2;
+  background: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'DM Serif Display', serif;
+  font-size: 3rem;
+  color: var(--accent);
+  opacity: 0.5;
+}
+
+.album-info {
+  padding: 1rem 1.25rem 1.25rem;
+}
+.album-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.3rem;
+  line-height: 1.2;
+}
+.album-dates {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+.album-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ink-faint);
+}
+.album-days-count {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+.album-arrow {
+  font-size: 0.9rem;
+  color: var(--ink-faint);
+  transition: color 0.15s, transform 0.15s;
+}
+.album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
+
+/* ─── NEW ALBUM CARD ─── */
+.album-card-new {
+  border: 1.5px dashed var(--ink-faint);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 2.5rem 1.5rem;
+  min-height: 200px;
+  background: none;
+  animation: fadeUp 0.35s ease both;
+}
+.album-card-new:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.album-card-new-icon {
+  font-size: 2rem;
+  opacity: 0.35;
+}
+.album-card-new-label {
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+
+/* ─── EMPTY STATE ─── */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--ink-muted);
+}
+.empty-state-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.3;
+}
+.empty-state h2 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.5rem;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+}
+.empty-state p { font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+/* ─── CONNECT STATE ─── */
+.connect-state {
+  text-align: center;
+  padding: 5rem 2rem;
+}
+.connect-state h2 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+}
+.connect-state p {
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+  max-width: 340px;
+  margin: 0 auto 2rem;
+  line-height: 1.7;
+}
+
+/* ─── NEW ALBUM MODAL ─── */
+.modal-body { padding: 1.25rem 1.5rem 1.5rem; }
+
+.date-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+/* ─── LOADING ─── */
+.loading-albums {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  gap: 0.75rem;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--ink-faint);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 500px) {
+  main { padding: 2rem 1rem 5rem; }
+  .albums-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .album-info { padding: 0.75rem 1rem 1rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <a href="index.html" class="app-logo">旅 <span>mis viajes</span></a>
+  <div style="display:flex;gap:0.5rem;align-items:center;">
+    <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>
+  </div>
+</header>
+
+<main id="main-content">
+  <div class="loading-albums">
+    <div class="spinner"></div>
+    Cargando...
+  </div>
+</main>
+
+<!-- Modal: nuevo álbum -->
+<div class="modal-overlay" id="modal-new-album">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Nuevo álbum</div>
+      <button class="modal-close" onclick="closeNewAlbumModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-field">
+        <label class="form-label">Nombre del viaje</label>
+        <input class="form-input" id="album-name" type="text" placeholder="Ej: Japón 2026">
+      </div>
+      <div class="date-range">
+        <div class="form-field">
+          <label class="form-label">Desde</label>
+          <input class="form-input" id="album-from" type="date">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Hasta</label>
+          <input class="form-input" id="album-to" type="date">
+        </div>
+      </div>
+      <div id="migrate-notice" style="display:none; font-size:0.8rem; color:var(--accent); margin-bottom:1rem; line-height:1.5;">
+        ✓ Se van a migrar los días que ya tenés guardados a este álbum.
+      </div>
+      <div id="album-error" style="display:none; font-size:0.8rem; color:var(--red); margin-bottom:1rem;"></div>
+      <button class="btn btn-primary" style="width:100%;" onclick="submitNewAlbum()">Crear álbum</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let albums = [];
+let hasMigratable = false;
+
+// ─── DRIVE CALLBACK ──────────────────────────────────────
+async function initGoogleAuth() {
+  initDrive(async () => {
+    updateDriveBtn();
+    await renderAlbums();
+    await checkMigratable();
+  });
+
+  // Also init tokenClient for manual connect
+  try {
+    window._tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: DRIVE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: async (response) => {
+        if (response.error) return;
+        driveToken = response.access_token;
+        localStorage.setItem('drive_token', driveToken);
+        rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+        updateDriveBtn();
+        await renderAlbums();
+        await checkMigratable();
+      }
+    });
+  } catch(e) {}
+
+  if (!isDriveConnected()) renderDisconnected();
+}
+
+function handleDriveBtn() {
+  if (isDriveConnected()) {
+    if (confirm('¿Desconectar Google Drive?')) {
+      disconnectDrive();
+      updateDriveBtn();
+      renderDisconnected();
+    }
+  } else {
+    if (window._tokenClient) window._tokenClient.requestAccessToken();
+    else alert('Google Drive no está disponible.');
+  }
+}
+
+function updateDriveBtn() {
+  const btn = document.getElementById('btn-drive');
+  if (isDriveConnected()) {
+    btn.textContent = '● Drive conectado';
+    btn.classList.add('connected');
+  } else {
+    btn.textContent = 'Conectar Drive';
+    btn.classList.remove('connected');
+  }
+}
+
+// ─── CHECK MIGRATABLE ────────────────────────────────────
+async function checkMigratable() {
+  if (!isDriveConnected()) return;
+  const folders = await listFolders(rootFolderId);
+  hasMigratable = folders.some(f => /^\d{4}-\d{2}-\d{2}$/.test(f.name));
+}
+
+// ─── RENDER ──────────────────────────────────────────────
+function renderDisconnected() {
+  document.getElementById('main-content').innerHTML = `
+    <div class="connect-state fade-up">
+      <h2>Tu diario de viaje</h2>
+      <p>Conectá Google Drive para acceder a tus álbumes desde cualquier dispositivo.</p>
+      <button class="btn btn-primary" onclick="handleDriveBtn()">Conectar con Google Drive</button>
+    </div>`;
+}
+
+async function renderAlbums() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Cargando álbumes...</div>`;
+
+  albums = await loadAlbums();
+
+  if (!albums.length) {
+    main.innerHTML = `
+      <div class="home-intro fade-up">
+        <h1>Tus <em>viajes</em></h1>
+        <p>Cada viaje es un álbum. Creá el primero para empezar.</p>
+      </div>
+      <div class="albums-grid">
+        <button class="album-card-new" onclick="openNewAlbumModal()">
+          <div class="album-card-new-icon">＋</div>
+          <div class="album-card-new-label">Nuevo álbum</div>
+        </button>
+      </div>`;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="home-intro fade-up">
+      <h1>Tus <em>viajes</em></h1>
+      <p>${albums.length} álbum${albums.length > 1 ? 's' : ''}</p>
+    </div>
+    <div class="albums-grid" id="albums-grid"></div>`;
+
+  const grid = document.getElementById('albums-grid');
+
+  albums.forEach((album, idx) => {
+    const card = document.createElement('a');
+    card.className = 'album-card';
+    card.href = `diary.html?album=${encodeURIComponent(album.id)}`;
+    card.style.animationDelay = `${idx * 0.07}s`;
+
+    const coverSrc = album.coverFileId
+      ? `https://drive.google.com/thumbnail?id=${album.coverFileId}&sz=w600`
+      : null;
+
+    const coverHtml = coverSrc
+      ? `<img class="album-cover" src="${coverSrc}" alt="${album.name}" loading="lazy">`
+      : `<div class="album-cover-empty">旅</div>`;
+
+    const fromFmt = album.dateFrom ? formatDate(album.dateFrom) : '—';
+    const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
+
+    card.innerHTML = `
+      ${coverHtml}
+      <div class="album-info">
+        <div class="album-name">${album.name}</div>
+        <div class="album-dates">${fromFmt} — ${toFmt}</div>
+        <div class="album-meta">
+          <div class="album-days-count" id="days-count-${album.id}">—</div>
+          <div class="album-arrow">→</div>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+
+    // Load day count async
+    loadDayCount(album.id);
+  });
+
+  // Add "new album" card at end
+  const newCard = document.createElement('button');
+  newCard.className = 'album-card-new';
+  newCard.style.animationDelay = `${albums.length * 0.07}s`;
+  newCard.innerHTML = `<div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div>`;
+  newCard.onclick = openNewAlbumModal;
+  grid.appendChild(newCard);
+}
+
+async function loadDayCount(albumId) {
+  try {
+    const albumFolderId = await getAlbumFolderId(albumId);
+    const days = await listDayFolders(albumFolderId);
+    const el = document.getElementById(`days-count-${albumId}`);
+    if (el) el.textContent = days.length ? `${days.length} día${days.length > 1 ? 's' : ''}` : 'Sin días aún';
+  } catch {}
+}
+
+// ─── NEW ALBUM MODAL ─────────────────────────────────────
+function openNewAlbumModal() {
+  if (!isDriveConnected()) {
+    handleDriveBtn(); return;
+  }
+  document.getElementById('album-name').value = '';
+  document.getElementById('album-from').value = '';
+  document.getElementById('album-to').value = '';
+  document.getElementById('album-error').style.display = 'none';
+  document.getElementById('migrate-notice').style.display = hasMigratable ? 'block' : 'none';
+  document.getElementById('modal-new-album').classList.add('open');
+  setTimeout(() => document.getElementById('album-name').focus(), 100);
+}
+
+function closeNewAlbumModal() {
+  document.getElementById('modal-new-album').classList.remove('open');
+}
+
+async function submitNewAlbum() {
+  const name     = document.getElementById('album-name').value.trim();
+  const dateFrom = document.getElementById('album-from').value;
+  const dateTo   = document.getElementById('album-to').value;
+  const errEl    = document.getElementById('album-error');
+
+  if (!name) { showAlbumError('El nombre es obligatorio'); return; }
+
+  const id = name.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  errEl.style.display = 'none';
+  const btn = document.querySelector('#modal-new-album .btn-primary');
+  btn.textContent = 'Creando...';
+  btn.disabled = true;
+
+  try {
+    await createAlbum({ id, name, dateFrom, dateTo });
+
+    if (hasMigratable) {
+      btn.textContent = 'Migrando días...';
+      const count = await migrateOldDaysToAlbum(id);
+      console.log(`Migrados ${count} días`);
+    }
+
+    closeNewAlbumModal();
+    await renderAlbums();
+    await checkMigratable();
+  } catch(e) {
+    showAlbumError(e.message);
+    btn.textContent = 'Crear álbum';
+    btn.disabled = false;
+  }
+}
+
+function showAlbumError(msg) {
+  const el = document.getElementById('album-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ─── UTILS ───────────────────────────────────────────────
+function formatDate(str) {
+  const [y, m, d] = str.split('-');
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
+}
+
+// Close modal on overlay click
+document.getElementById('modal-new-album').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeNewAlbumModal();
+});
+</script>
+</body>
+</html>
