@@ -221,6 +221,7 @@ main {
 <header class="app-header">
   <a href="index.html" class="app-logo">旅 <span>mis viajes</span></a>
   <div style="display:flex;gap:0.5rem;align-items:center;">
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.0</span>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>
   </div>
 </header>
@@ -269,7 +270,11 @@ let hasMigratable = false;
 
 // ─── DRIVE CALLBACK ──────────────────────────────────────
 async function initGoogleAuth() {
+  // Check if we came from diary.html needing auth
+  const redirectUrl = new URLSearchParams(location.search).get('redirect');
+
   initDrive(async () => {
+    if (redirectUrl) { location.href = redirectUrl; return; }
     updateDriveBtn();
     await renderAlbums();
     await checkMigratable();
@@ -285,6 +290,7 @@ async function initGoogleAuth() {
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+        if (redirectUrl) { location.href = redirectUrl; return; }
         updateDriveBtn();
         await renderAlbums();
         await checkMigratable();
