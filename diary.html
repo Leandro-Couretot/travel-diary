@@ -421,17 +421,7 @@ let gsiLoaded      = false;
 async function onGsiLoaded() {
   gsiLoaded = true;
 
-  initDrive(async () => {
-    albumFolderId = await getAlbumFolderId(albumId);
-    const albums  = await loadAlbums();
-    albumMeta     = albums.find(a => a.id === albumId) || { name: albumId };
-    document.getElementById('album-name-header').textContent = albumMeta.name;
-    document.title = `旅 — ${albumMeta.name}`;
-    renderPage();
-    await loadDay(currentDate);
-  });
-
-  // Register tokenClient for first-time login only
+  // Register tokenClient for first-time login
   if (window.google && window.google.accounts) {
     window._tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: DRIVE_CLIENT_ID,
@@ -451,9 +441,34 @@ async function onGsiLoaded() {
     });
   }
 
-  if (!isDriveConnected()) {
+  const saved = localStorage.getItem('drive_token');
+  if (!saved) {
+    // No token at all — go to login
     location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
+    return;
   }
+
+  // Token exists — bootstrap Drive, redirect only if it genuinely fails
+  const redirectToLogin = () => {
+    location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
+  };
+
+  initDrive(async () => {
+    albumFolderId = await getAlbumFolderId(albumId);
+    const albums  = await loadAlbums();
+    albumMeta     = albums.find(a => a.id === albumId) || { name: albumId };
+    document.getElementById('album-name-header').textContent = albumMeta.name;
+    document.title = `旅 — ${albumMeta.name}`;
+    renderPage();
+    await loadDay(currentDate);
+  }, redirectToLogin);
+
+  // Give bootstrap time to complete before checking
+  setTimeout(() => {
+    if (!isDriveConnected()) {
+      location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
+    }
+  }, 4000);
 }
 
 // ─── RENDER PAGE ─────────────────────────────────────────
