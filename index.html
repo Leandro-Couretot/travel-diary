@@ -270,7 +270,6 @@ let hasMigratable = false;
 
 // ─── DRIVE CALLBACK ──────────────────────────────────────
 async function initGoogleAuth() {
-  // Check if we came from diary.html needing auth
   const redirectUrl = new URLSearchParams(location.search).get('redirect');
 
   initDrive(async () => {
@@ -280,8 +279,9 @@ async function initGoogleAuth() {
     await checkMigratable();
   });
 
-  // Also init tokenClient for manual connect
-  try {
+  // initGoogleAuth en drive.js ya registró el tokenClient
+  // Solo necesitamos el callback para conexiones nuevas (primer login)
+  if (window.google && window.google.accounts) {
     window._tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: DRIVE_CLIENT_ID,
       scope: DRIVE_SCOPE,
@@ -290,13 +290,14 @@ async function initGoogleAuth() {
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+        if (_onConnected) { await _onConnected(); return; }
         if (redirectUrl) { location.href = redirectUrl; return; }
         updateDriveBtn();
         await renderAlbums();
         await checkMigratable();
       }
     });
-  } catch(e) {}
+  }
 
   if (!isDriveConnected()) renderDisconnected();
 }
