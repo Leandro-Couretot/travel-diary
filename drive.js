@@ -28,8 +28,11 @@ function initGoogleAuth() {
         await _bootstrapDrive();
       }
     });
-    const saved = localStorage.getItem('drive_token');
-    if (saved) { driveToken = saved; _bootstrapDrive(); }
+    // Solo llama a _bootstrapDrive si initDrive() no lo hizo ya
+    if (!_onConnected) {
+      const saved = localStorage.getItem('drive_token');
+      if (saved) { driveToken = saved; _bootstrapDrive(); }
+    }
   } catch(e) {
     console.warn('Google Auth no disponible:', e);
   }
