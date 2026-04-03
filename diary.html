@@ -184,6 +184,39 @@ audio { width: 100%; height: 32px; }
 .media-set-cover.is-cover { color: var(--accent); font-weight: 500; }
 .empty-media { text-align: center; padding: 1rem 0 0; color: var(--ink-faint); font-size: 0.85rem; }
 
+/* ─── VIDEO ─── */
+.video-thumb {
+  width: 100%; aspect-ratio: 4/3; display: block;
+  background: #0e0e0c;
+}
+
+/* ─── DRAG TO REORDER ─── */
+.media-card {
+  cursor: grab;
+}
+.media-card:active { cursor: grabbing; }
+.media-card.dragging {
+  opacity: 0.4;
+  transform: scale(0.97);
+  box-shadow: none;
+}
+.media-card.drag-over {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0;
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  cursor: grab;
+  user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+
 /* ─── ALBUM VIEW ─── */
 .album-overlay {
   display: none;
@@ -445,9 +478,9 @@ function renderPage() {
       <div class="drop-zone" id="drop-zone">
         <div class="drop-icon">📎</div>
         <div class="drop-text"><strong>Subí fotos o audios</strong></div>
-        <div class="drop-sub">jpg, png, heic · mp3, m4a, wav, ogg · arrastrá o tocá acá</div>
+        <div class="drop-sub">jpg, png, heic · mp4, mov · mp3, m4a · arrastrá o tocá acá</div>
       </div>
-      <input type="file" id="file-input" accept="image/*,audio/*" multiple>
+      <input type="file" id="file-input" accept="image/*,audio/*,video/*" multiple>
       <div class="recorder-row" id="recorder-row">
         <button class="btn-record" id="btn-record" title="Grabar audio">🎙️</button>
         <div class="recorder-info">
@@ -570,11 +603,14 @@ function renderMedia() {
     const card = document.createElement('div');
     card.className = 'media-card';
     card.style.animationDelay = `${idx * 0.04}s`;
+    card.dataset.idx = idx;
+    card.draggable = true;
     const isCover = albumMeta && albumMeta.coverFileId && item.driveFileId === albumMeta.coverFileId;
 
     if (item.type === 'image') {
       const imgSrc = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w1200` : '');
       card.innerHTML = `
+        <div class="drag-handle">⠿⠿⠿</div>
         <img class="media-thumb" src="${imgSrc}" alt="${item.name}" loading="lazy">
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
@@ -583,9 +619,41 @@ function renderMedia() {
             <button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}">${isCover ? '★ Portada' : '☆ Portada'}</button>
           </div>
         </div>`;
+
+    } else if (item.type === 'video') {
+      const videoSrc = item.data || '';
+      card.innerHTML = `
+        <div class="drag-handle">⠿⠿⠿</div>
+        ${videoSrc
+          ? `<video class="video-thumb" controls playsinline preload="metadata" src="${videoSrc}"></video>`
+          : `<div class="audio-thumb"><div class="audio-icon">🎬</div><div class="audio-filename">${item.name}</div><div class="audio-loading" data-idx="${idx}" style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>`}
+        <div class="media-footer">
+          <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
+          <div class="media-footer-actions">
+            <button class="media-delete" data-idx="${idx}">Eliminar</button>
+          </div>
+        </div>`;
+      if (!videoSrc && item.driveFileId) {
+        fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
+          item.data = dataUrl;
+          const el = card.querySelector(`.audio-loading[data-idx="${idx}"]`);
+          if (el) {
+            const v = document.createElement('video');
+            v.className = 'video-thumb'; v.controls = true; v.playsinline = true;
+            v.preload = 'metadata'; v.src = dataUrl;
+            el.closest('.audio-thumb').replaceWith(v);
+          }
+        }).catch(() => {
+          const el = card.querySelector(`.audio-loading[data-idx="${idx}"]`);
+          if (el) el.textContent = 'Video no disponible';
+        });
+      }
+
     } else {
+      // audio
       const audioSrc = item.data || '';
       card.innerHTML = `
+        <div class="drag-handle">⠿⠿⠿</div>
         <div class="audio-thumb">
           <div class="audio-icon">🎙️</div>
           <div class="audio-filename">${item.name}</div>
@@ -613,6 +681,7 @@ function renderMedia() {
     grid.appendChild(card);
   });
 
+  // captions
   grid.querySelectorAll('.media-caption').forEach(ta => {
     ta.addEventListener('input', e => {
       currentDay.media[parseInt(e.target.dataset.idx)].caption = e.target.value;
@@ -620,12 +689,16 @@ function renderMedia() {
     });
     autoResize(ta);
   });
+
+  // delete
   grid.querySelectorAll('.media-delete').forEach(btn => {
     btn.addEventListener('click', e => {
       currentDay.media.splice(parseInt(e.target.dataset.idx), 1);
       markDirty(); renderMedia();
     });
   });
+
+  // set cover
   grid.querySelectorAll('.media-set-cover').forEach(btn => {
     btn.addEventListener('click', async e => {
       const item = currentDay.media[parseInt(e.target.dataset.idx)];
@@ -634,6 +707,12 @@ function renderMedia() {
       renderMedia();
     });
   });
+
+  // drag-to-reorder (desktop)
+  initDragReorder(grid);
+
+  // touch reorder (mobile)
+  initTouchReorder(grid);
 }
 
 // ─── FILE HANDLING ───────────────────────────────────────
@@ -663,17 +742,23 @@ function compressImage(file) {
 }
 
 function processFiles(files) {
-  const allowed = ['image/', 'audio/'];
+  const allowed = ['image/', 'audio/', 'video/'];
   const valid = Array.from(files).filter(f => allowed.some(t => f.type.startsWith(t)));
   if (!valid.length) return;
   let loaded = 0;
   valid.forEach(file => {
-    const isImg = file.type.startsWith('image/');
+    const isImg   = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
     if (isImg) {
       compressImage(file).then(data => {
         currentDay.media.push({ type: 'image', name: file.name, data, caption: '' });
         loaded++; if (loaded === valid.length) { markDirty(); renderMedia(); }
       });
+    } else if (isVideo) {
+      // Videos go directly to Drive on save — store as blob URL in memory for preview
+      const blobUrl = URL.createObjectURL(file);
+      currentDay.media.push({ type: 'video', name: file.name, data: blobUrl, _file: file, caption: '' });
+      loaded++; if (loaded === valid.length) { markDirty(); renderMedia(); }
     } else {
       const reader = new FileReader();
       reader.onload = e => {
@@ -913,6 +998,100 @@ function finalizeRecording() {
     setTimeout(() => { const el = document.getElementById('recorder-sub'); if (el) el.textContent = 'Tocá para empezar a grabar'; }, 3000);
   };
   reader.readAsDataURL(blob);
+}
+
+// ─── DRAG TO REORDER ─────────────────────────────────────
+let dragSrcIdx = null;
+
+function initDragReorder(grid) {
+  grid.querySelectorAll('.media-card').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      dragSrcIdx = parseInt(card.dataset.idx);
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      grid.querySelectorAll('.media-card').forEach(c => c.classList.remove('drag-over'));
+    });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      grid.querySelectorAll('.media-card').forEach(c => c.classList.remove('drag-over'));
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      const targetIdx = parseInt(card.dataset.idx);
+      if (dragSrcIdx === null || dragSrcIdx === targetIdx) return;
+      const moved = currentDay.media.splice(dragSrcIdx, 1)[0];
+      currentDay.media.splice(targetIdx, 0, moved);
+      dragSrcIdx = null;
+      saveCurrentDay();
+      renderMedia();
+    });
+  });
+}
+
+function initTouchReorder(grid) {
+  let touchSrcIdx = null;
+  let touchClone  = null;
+  let touchOffX   = 0, touchOffY = 0;
+
+  grid.querySelectorAll('.drag-handle').forEach(handle => {
+    handle.addEventListener('touchstart', e => {
+      const card = handle.closest('.media-card');
+      touchSrcIdx = parseInt(card.dataset.idx);
+      const rect = card.getBoundingClientRect();
+      touchOffX = e.touches[0].clientX - rect.left;
+      touchOffY = e.touches[0].clientY - rect.top;
+      // Create floating clone
+      touchClone = card.cloneNode(true);
+      touchClone.style.cssText = `position:fixed;width:${rect.width}px;opacity:0.85;pointer-events:none;z-index:999;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.15);transition:none;`;
+      touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px';
+      touchClone.style.top  = (e.touches[0].clientY - touchOffY) + 'px';
+      document.body.appendChild(touchClone);
+      card.style.opacity = '0.3';
+      e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchmove', e => {
+      if (!touchClone) return;
+      touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px';
+      touchClone.style.top  = (e.touches[0].clientY - touchOffY) + 'px';
+      // Highlight card under finger
+      touchClone.style.display = 'none';
+      const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+      touchClone.style.display = '';
+      const targetCard = el && el.closest('.media-card');
+      grid.querySelectorAll('.media-card').forEach(c => c.classList.remove('drag-over'));
+      if (targetCard && targetCard !== grid.querySelector(`[data-idx="${touchSrcIdx}"]`)) {
+        targetCard.classList.add('drag-over');
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchend', e => {
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      grid.querySelectorAll('.media-card').forEach(c => {
+        c.style.opacity = '';
+        c.classList.remove('drag-over');
+      });
+      // Find drop target
+      const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      const targetCard = el && el.closest('.media-card');
+      if (targetCard) {
+        const targetIdx = parseInt(targetCard.dataset.idx);
+        if (touchSrcIdx !== null && touchSrcIdx !== targetIdx) {
+          const moved = currentDay.media.splice(touchSrcIdx, 1)[0];
+          currentDay.media.splice(targetIdx, 0, moved);
+          saveCurrentDay();
+          renderMedia();
+        }
+      }
+      touchSrcIdx = null;
+    });
+  });
 }
 
 // ─── HELPERS ─────────────────────────────────────────────

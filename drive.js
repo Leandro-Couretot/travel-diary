@@ -201,10 +201,23 @@ async function getAlbumFolderId(albumId) {
 async function saveDayToDrive(albumFolderId, dateStr, day) {
   const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId);
   for (const item of day.media) {
-    if (!item.driveFileId && item.data) {
-      const blob = base64ToBlob(item.data);
+    if (!item.driveFileId) {
+      let blob;
+      if (item._file) {
+        // Video: use original File object directly
+        blob = item._file;
+      } else if (item.data && item.data.startsWith('data:')) {
+        blob = base64ToBlob(item.data);
+      } else {
+        continue; // blob URL or no data — skip
+      }
       item.driveFileId = await uploadFile(blob, item.name, dayFolderId);
-      delete item.data; // free memory after upload
+      if (item._file) {
+        // Replace blob URL with Drive thumbnail reference, free memory
+        URL.revokeObjectURL(item.data);
+        delete item.data;
+        delete item._file;
+      }
     }
   }
   const dayJson = {
