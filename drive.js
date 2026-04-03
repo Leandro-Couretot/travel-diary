@@ -7,11 +7,13 @@ const ROOT_FOLDER     = 'travel-diary';
 let driveToken    = null;
 let rootFolderId  = null;
 let tokenClient   = null;
-let _onConnected  = null; // callback set by each page
+let _onConnected  = null;
+let _onFailure    = null;
 
 // ─── INIT ────────────────────────────────────────────────
-function initDrive(onConnectedCallback) {
+function initDrive(onConnectedCallback, onFailureCallback) {
   _onConnected = onConnectedCallback;
+  _onFailure   = onFailureCallback || null;
   const saved = localStorage.getItem('drive_token');
   if (saved) { driveToken = saved; _bootstrapDrive(); }
 }
@@ -46,6 +48,7 @@ async function _bootstrapDrive() {
     console.warn('Drive bootstrap error:', e);
     driveToken = null; rootFolderId = null;
     localStorage.removeItem('drive_token');
+    if (_onFailure) _onFailure();
   }
 }
 
