@@ -462,13 +462,6 @@ async function onGsiLoaded() {
     renderPage();
     await loadDay(currentDate);
   }, redirectToLogin);
-
-  // Give bootstrap time to complete before checking
-  setTimeout(() => {
-    if (!isDriveConnected()) {
-      location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
-    }
-  }, 4000);
 }
 
 // ─── RENDER PAGE ─────────────────────────────────────────

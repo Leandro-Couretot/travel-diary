@@ -199,12 +199,14 @@ async function updateAlbumMeta(albumId, patch) {
 }
 
 async function getAlbumFolderId(albumId) {
+  if (!rootFolderId) throw new Error('rootFolderId no disponible todavía');
   return await getOrCreateFolder(albumId, rootFolderId);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
 
 async function saveDayToDrive(albumFolderId, dateStr, day) {
+  if (!albumFolderId) throw new Error('albumFolderId no disponible — esperá a que Drive termine de cargar');
   const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId);
   for (const item of day.media) {
     if (!item.driveFileId) {
