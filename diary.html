@@ -387,13 +387,8 @@ audio { width: 100%; height: 32px; }
       <button class="modal-close" id="feed-close">×</button>
     </div>
     <div class="day-list" id="day-list"></div>
-    <div class="modal-footer">
-      <button class="modal-action-btn" id="btn-export">⬇ Exportar backup</button>
-      <button class="modal-action-btn" id="btn-import">⬆ Importar backup</button>
-    </div>
   </div>
 </div>
-<input type="file" id="import-input" accept=".json" style="display:none">
 
 <!-- Save bar -->
 <div class="save-bar">
@@ -409,13 +404,9 @@ audio { width: 100%; height: 32px; }
 const params   = new URLSearchParams(location.search);
 const albumId  = params.get('album');
 
-if (!albumId) {
-  // Fallback: redirect to index
-  location.href = 'index.html';
-}
+if (!albumId) location.href = 'index.html';
 
 // ─── STATE ───────────────────────────────────────────────
-const STORAGE_KEY  = `diary_${albumId}`;
 let currentDate    = todayStr();
 let currentDay     = emptyDay();
 let albumFolderId  = null;
@@ -456,7 +447,10 @@ async function onGsiLoaded() {
     });
   } catch(e) {}
 
-  if (!isDriveConnected()) renderPage();
+  if (!isDriveConnected()) {
+    // No Drive token — send back to index to login
+    location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
+  }
 }
 
 // ─── RENDER PAGE ─────────────────────────────────────────
@@ -513,18 +507,14 @@ async function loadDay(dateStr) {
   currentDate = dateStr;
   dirty = false;
   updateDateHeader();
+  setStatus('', 'Cargando...');
 
-  if (isDriveConnected() && albumFolderId) {
-    setStatus('', 'Cargando...');
+  try {
     const driveDay = await loadDayFromDrive(albumFolderId, dateStr);
-    if (driveDay) {
-      currentDay = driveDay;
-      cacheDay(dateStr, driveDay);
-    } else {
-      currentDay = getCachedDay(dateStr);
-    }
-  } else {
-    currentDay = getCachedDay(dateStr);
+    currentDay = driveDay || emptyDay();
+  } catch(e) {
+    setStatus('error', 'Error al cargar desde Drive');
+    currentDay = emptyDay();
   }
 
   const titleEl = document.getElementById('day-title');
@@ -539,55 +529,22 @@ async function loadDay(dateStr) {
 }
 
 async function saveCurrentDay() {
-  if (isDriveConnected() && albumFolderId) {
-    setStatus('', 'Guardando...');
-    try {
-      currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay);
-      cacheDay(currentDate, currentDay);
+  setStatus('', 'Guardando...');
+  try {
+    currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay);
 
-      // Update album cover if this is the first image and no cover set
-      if (albumMeta && !albumMeta.coverFileId) {
-        const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
-        if (firstImg) {
-          albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
-        }
-      }
-
-      dirty = false;
-      setStatus('saved', 'Guardado en Drive ✓');
-      setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
-    } catch(e) {
-      setStatus('error', 'Error: ' + e.message);
+    // Auto-set album cover if none set yet
+    if (albumMeta && !albumMeta.coverFileId) {
+      const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
+      if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
     }
-    return;
-  }
-  // Fallback localStorage
-  const all = getAllLocal();
-  all[currentDate] = JSON.parse(JSON.stringify(currentDay));
-  saveLocal(all);
-  dirty = false;
-  setStatus('saved', 'Guardado ✓');
-  setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
-}
 
-// ─── LOCAL CACHE ─────────────────────────────────────────
-function getAllLocal() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
-}
-function saveLocal(all) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(all)); } catch(e) {
-    if (e.name === 'QuotaExceededError') alert('⚠️ Almacenamiento local lleno. Conectá Drive para continuar.');
+    dirty = false;
+    setStatus('saved', 'Guardado en Drive ✓');
+    setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
+  } catch(e) {
+    setStatus('error', 'Error al guardar: ' + e.message);
   }
-}
-function getCachedDay(dateStr) {
-  const all = getAllLocal();
-  return all[dateStr] ? JSON.parse(JSON.stringify(all[dateStr])) : emptyDay();
-}
-function cacheDay(dateStr, day) {
-  const all = getAllLocal();
-  all[dateStr] = { title: day.title, notes: day.notes,
-    media: day.media.map(m => ({ type: m.type, name: m.name, driveFileId: m.driveFileId, caption: m.caption })) };
-  saveLocal(all);
 }
 
 // ─── RENDER MEDIA ────────────────────────────────────────
@@ -778,10 +735,11 @@ async function openFeedModal() {
   if (albumMeta) document.getElementById('feed-title').textContent = albumMeta.name;
 
   let dates = [];
-  if (isDriveConnected() && albumFolderId) {
+  try {
     dates = await listDayFolders(albumFolderId);
-  } else {
-    dates = Object.keys(getAllLocal()).sort();
+  } catch(e) {
+    list.innerHTML = '<div class="empty-days">Error al cargar los días desde Drive</div>';
+    return;
   }
 
   list.innerHTML = '';
@@ -790,23 +748,15 @@ async function openFeedModal() {
     return;
   }
 
-  // Reverse: most recent first
   dates.slice().reverse().forEach(d => {
-    const cached = getCachedDay(d);
     const item = document.createElement('div');
     item.className = 'day-list-item' + (d === currentDate ? ' active' : '');
-    const count = (cached.media || []).length;
-    const firstImg = (cached.media || []).find(m => m.type === 'image');
-    const thumbSrc = firstImg?.driveFileId
-      ? `https://drive.google.com/thumbnail?id=${firstImg.driveFileId}&sz=w80`
-      : firstImg?.data || '';
     item.innerHTML = `
-      ${thumbSrc ? `<img class="day-list-thumb" src="${thumbSrc}" loading="lazy">` : '<div class="day-list-thumb"></div>'}
+      <div class="day-list-thumb"></div>
       <div class="day-list-info">
         <div class="day-list-date">${formatDate(d)}</div>
-        <div class="day-list-title">${cached.title || formatDateLong(d)}</div>
-      </div>
-      <div class="day-list-count">${count > 0 ? count + ' archivo' + (count > 1 ? 's' : '') : ''}</div>`;
+        <div class="day-list-title">${formatDateLong(d)}</div>
+      </div>`;
     item.addEventListener('click', () => {
       if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
       loadDay(d);
@@ -816,54 +766,24 @@ async function openFeedModal() {
   });
 }
 
-// ─── EXPORT / IMPORT ─────────────────────────────────────
-function exportBackup() {
-  const all   = getAllLocal();
-  const backup = { version: 1, albumId, exportedAt: new Date().toISOString(), days: all };
-  const json  = JSON.stringify(backup, null, 2);
-  try {
-    const blob = new Blob([json], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `${albumId}-backup-${todayStr()}.json`;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  } catch(e) {}
-  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
-  window.open(dataUri, '_blank');
-  document.getElementById('modal-feed').classList.remove('open');
-}
-
-function importBackup(file) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const backup = JSON.parse(e.target.result);
-      const days = backup.days || backup;
-      if (typeof days !== 'object' || Array.isArray(days)) throw new Error('Formato inválido');
-      if (!confirm(`¿Importar ${Object.keys(days).length} día(s)? Reemplaza los datos actuales.`)) return;
-      saveLocal(days);
-      loadDay(currentDate);
-      setStatus('saved', 'Backup importado ✓');
-      setTimeout(() => setStatus('', 'Sin cambios'), 2500);
-    } catch { alert('No se pudo leer el archivo. Compartilo para migrarlo.'); }
-  };
-  reader.readAsText(file);
-}
-
 // ─── ALBUM VIEW ──────────────────────────────────────────
 let albumDays = [], albumIdx = 0, albumPhotoIdx = 0, albumSwipeX = 0;
 
 async function openAlbum() {
   let dates = [];
-  if (isDriveConnected() && albumFolderId) {
+  try {
     dates = await listDayFolders(albumFolderId);
-  } else {
-    const all = getAllLocal();
-    dates = Object.keys(all).filter(d => { const day = all[d]; return day.title || day.notes || (day.media && day.media.length); }).sort();
+  } catch(e) {
+    alert('Error al cargar el álbum desde Drive'); return;
   }
   if (!dates.length) { alert('Todavía no hay días guardados.'); return; }
-  albumDays = dates.map(d => ({ date: d, ...getCachedDay(d) }));
+  // Load day data for album view from Drive
+  const all = [];
+  for (const d of dates) {
+    const day = await loadDayFromDrive(albumFolderId, d);
+    all.push({ date: d, ...(day || emptyDay()) });
+  }
+  albumDays = all;
   albumIdx = Math.max(0, albumDays.findIndex(d => d.date === currentDate));
   albumPhotoIdx = 0;
   document.getElementById('album-overlay').classList.add('open');
@@ -1155,9 +1075,6 @@ document.getElementById('btn-album').addEventListener('click', openAlbum);
 document.getElementById('btn-feed').addEventListener('click', openFeedModal);
 document.getElementById('feed-close').addEventListener('click', () => document.getElementById('modal-feed').classList.remove('open'));
 document.getElementById('modal-feed').addEventListener('click', e => { if (e.target === e.currentTarget) e.target.classList.remove('open'); });
-document.getElementById('btn-export').addEventListener('click', exportBackup);
-document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-input').click());
-document.getElementById('import-input').addEventListener('change', e => { if (e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ''; });
 
 document.getElementById('date-display').addEventListener('click', () => {
   const input = document.getElementById('date-input');

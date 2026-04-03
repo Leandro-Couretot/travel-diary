@@ -269,7 +269,11 @@ let hasMigratable = false;
 
 // ─── DRIVE CALLBACK ──────────────────────────────────────
 async function initGoogleAuth() {
+  // Check if we came from diary.html needing auth
+  const redirectUrl = new URLSearchParams(location.search).get('redirect');
+
   initDrive(async () => {
+    if (redirectUrl) { location.href = redirectUrl; return; }
     updateDriveBtn();
     await renderAlbums();
     await checkMigratable();
@@ -285,6 +289,7 @@ async function initGoogleAuth() {
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+        if (redirectUrl) { location.href = redirectUrl; return; }
         updateDriveBtn();
         await renderAlbums();
         await checkMigratable();
