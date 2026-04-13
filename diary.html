@@ -184,6 +184,60 @@ audio { width: 100%; height: 32px; }
 .media-set-cover.is-cover { color: var(--accent); font-weight: 500; }
 .empty-media { text-align: center; padding: 1rem 0 0; color: var(--ink-faint); font-size: 0.85rem; }
 
+/* ─── LIGHTBOX ─── */
+.lightbox {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.95);
+  z-index: 400;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.lightbox.open { display: flex; }
+.lightbox-img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+.lightbox-close {
+  position: absolute; top: 1rem; right: 1rem;
+  background: rgba(255,255,255,0.15);
+  border: none; color: white; font-size: 1.4rem;
+  width: 40px; height: 40px; border-radius: 50%;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.lightbox-close:hover { background: rgba(255,255,255,0.25); }
+.lightbox-caption {
+  position: absolute; bottom: 4rem; left: 0; right: 0;
+  text-align: center; padding: 0 2rem;
+  font-size: 0.85rem; color: rgba(255,255,255,0.7);
+  line-height: 1.5;
+}
+.lightbox-counter {
+  position: absolute; bottom: 1.5rem; left: 0; right: 0;
+  text-align: center;
+  font-size: 0.72rem; color: rgba(255,255,255,0.35);
+  letter-spacing: 0.08em;
+}
+.lightbox-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(255,255,255,0.12);
+  border: none; color: white; font-size: 1.2rem;
+  width: 44px; height: 44px; border-radius: 50%;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.lightbox-btn:hover { background: rgba(255,255,255,0.25); }
+.lightbox-btn:disabled { opacity: 0.15; pointer-events: none; }
+.lightbox-prev { left: 0.75rem; }
+.lightbox-next { right: 0.75rem; }
+
 /* ─── VIDEO ─── */
 .video-thumb {
   width: 100%; aspect-ratio: 4/3; display: block;
@@ -393,6 +447,16 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close">✕</button>
+  <button class="lightbox-btn lightbox-prev" id="lightbox-prev">←</button>
+  <img class="lightbox-img" id="lightbox-img" src="" alt="">
+  <button class="lightbox-btn lightbox-next" id="lightbox-next">→</button>
+  <div class="lightbox-caption" id="lightbox-caption"></div>
+  <div class="lightbox-counter" id="lightbox-counter"></div>
+</div>
+
 <!-- Save bar -->
 <div class="save-bar">
   <div class="save-status" id="save-status">Sin cambios</div>
@@ -579,7 +643,7 @@ function renderMedia() {
       const imgSrc = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w1200` : '');
       card.innerHTML = `
         <div class="drag-handle">⠿⠿⠿</div>
-        <img class="media-thumb" src="${imgSrc}" alt="${item.name}" loading="lazy">
+        <img class="media-thumb" src="${imgSrc}" alt="${item.name}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;">
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <div class="media-footer-actions">
@@ -676,7 +740,10 @@ function renderMedia() {
     });
   });
 
-  // drag-to-reorder (desktop)
+  // lightbox
+  grid.querySelectorAll('img[data-lightbox]').forEach(img => {
+    img.addEventListener('click', () => openLightbox(parseInt(img.dataset.lightbox)));
+  });
   initDragReorder(grid);
 
   // touch reorder (mobile)
@@ -1025,6 +1092,77 @@ function initTouchReorder(grid) {
   });
 }
 
+// ─── LIGHTBOX ────────────────────────────────────────────
+let lbImages = [];
+let lbIdx    = 0;
+let lbSwipeX = 0;
+
+function openLightbox(mediaIdx) {
+  lbImages = currentDay.media
+    .map((m, i) => ({ ...m, mediaIdx: i }))
+    .filter(m => m.type === 'image');
+  lbIdx = lbImages.findIndex(m => m.mediaIdx === mediaIdx);
+  if (lbIdx < 0) lbIdx = 0;
+  document.getElementById('lightbox').classList.add('open');
+  renderLightbox();
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+function renderLightbox() {
+  const item = lbImages[lbIdx];
+  const src  = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w2000` : '');
+  const img  = document.getElementById('lightbox-img');
+  img.style.opacity = '0';
+  img.src = src;
+  img.onload = () => { img.style.opacity = '1'; };
+  document.getElementById('lightbox-caption').textContent = item.caption || '';
+  document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
+  document.getElementById('lightbox-prev').disabled = lbIdx === 0;
+  document.getElementById('lightbox-next').disabled = lbIdx === lbImages.length - 1;
+}
+
+function lbNav(delta) {
+  const next = lbIdx + delta;
+  if (next < 0 || next >= lbImages.length) return;
+  lbIdx = next;
+  renderLightbox();
+}
+
+// Lightbox events
+document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+document.getElementById('lightbox-prev').addEventListener('click', () => lbNav(-1));
+document.getElementById('lightbox-next').addEventListener('click', () => lbNav(1));
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeLightbox();
+});
+
+// Swipe on mobile
+document.getElementById('lightbox').addEventListener('touchstart', e => { lbSwipeX = e.touches[0].clientX; }, { passive: true });
+document.getElementById('lightbox').addEventListener('touchend', e => {
+  const diff = lbSwipeX - e.changedTouches[0].clientX;
+  if (Math.abs(diff) > 50) lbNav(diff > 0 ? 1 : -1);
+});
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (document.getElementById('lightbox').classList.contains('open')) {
+    if (e.key === 'ArrowLeft')  lbNav(-1);
+    if (e.key === 'ArrowRight') lbNav(1);
+    if (e.key === 'Escape')     closeLightbox();
+    return;
+  }
+  if (document.getElementById('album-overlay').classList.contains('open')) {
+    if (e.key === 'ArrowLeft')  albumNav(-1);
+    if (e.key === 'ArrowRight') albumNav(1);
+    if (e.key === 'Escape')     closeAlbum();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveCurrentDay(); }
+});
+
 // ─── HELPERS ─────────────────────────────────────────────
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
@@ -1096,15 +1234,6 @@ document.getElementById('date-input').addEventListener('change', e => {
   loadDay(e.target.value);
 });
 
-document.addEventListener('keydown', e => {
-  if (document.getElementById('album-overlay').classList.contains('open')) {
-    if (e.key === 'ArrowLeft') albumNav(-1);
-    if (e.key === 'ArrowRight') albumNav(1);
-    if (e.key === 'Escape') closeAlbum();
-    return;
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveCurrentDay(); }
-});
 </script>
 </body>
 </html>
