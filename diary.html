@@ -383,6 +383,14 @@ audio { width: 100%; height: 32px; }
   .media-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   #day-title { font-size: 1.5rem; }
 }
+
+/* ─── SHARED ALBUM ─── */
+.shared-album-banner {
+  font-size: 0.75rem; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 0.4rem 0.75rem; margin-bottom: 1.5rem;
+  background: var(--accent-light); letter-spacing: 0.02em;
+}
 </style>
 </head>
 <body>
@@ -442,7 +450,7 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="day-list" id="day-list"></div>
     <div class="modal-footer">
-      <div style="padding:0.75rem 1.5rem;font-size:0.72rem;color:var(--ink-faint);letter-spacing:0.04em;">Versión 1.0</div>
+      <div style="padding:0.75rem 1.5rem;font-size:0.72rem;color:var(--ink-faint);letter-spacing:0.04em;">Versión 1.3</div>
     </div>
   </div>
 </div>
@@ -468,10 +476,12 @@ audio { width: 100%; height: 32px; }
 
 <script>
 // ─── URL PARAMS ──────────────────────────────────────────
-const params   = new URLSearchParams(location.search);
-const albumId  = params.get('album');
+const params         = new URLSearchParams(location.search);
+const albumId        = params.get('album');
+const sharedFolderId = params.get('sharedFolder');
+const isSharedAlbum  = !!sharedFolderId;
 
-if (!albumId) location.href = 'index.html';
+if (!albumId && !sharedFolderId) location.href = 'index.html';
 
 // ─── STATE ───────────────────────────────────────────────
 let currentDate    = todayStr();
@@ -494,38 +504,53 @@ async function onGsiLoaded() {
         if (res.error) return;
         driveToken = res.access_token;
         localStorage.setItem('drive_token', driveToken);
-        rootFolderId  = await getOrCreateFolder(ROOT_FOLDER, 'root');
-        albumFolderId = await getAlbumFolderId(albumId);
-        const albums  = await loadAlbums();
-        albumMeta     = albums.find(a => a.id === albumId) || { name: albumId };
-        document.getElementById('album-name-header').textContent = albumMeta.name;
-        renderPage();
-        await loadDay(currentDate);
+        localStorage.setItem('scope_version', String(SCOPE_VERSION));
+        rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+        await bootstrapDiaryPage();
       }
     });
   }
 
   const saved = localStorage.getItem('drive_token');
   if (!saved) {
-    // No token at all — go to login
     location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
     return;
   }
 
-  // Token exists — bootstrap Drive, redirect only if it genuinely fails
   const redirectToLogin = () => {
     location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
   };
 
   initDrive(async () => {
-    albumFolderId = await getAlbumFolderId(albumId);
-    const albums  = await loadAlbums();
-    albumMeta     = albums.find(a => a.id === albumId) || { name: albumId };
-    document.getElementById('album-name-header').textContent = albumMeta.name;
-    document.title = `旅 — ${albumMeta.name}`;
-    renderPage();
-    await loadDay(currentDate);
+    await bootstrapDiaryPage();
   }, redirectToLogin);
+}
+
+async function bootstrapDiaryPage() {
+  if (isSharedAlbum) {
+    // Verify access to the shared folder before proceeding
+    const probe = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${sharedFolderId}?fields=id`).catch(() => null);
+    if (!probe || !probe.ok) {
+      document.getElementById('main-content').innerHTML = `
+        <div class="page-loading" style="flex-direction:column;gap:1rem;">
+          <div>Este álbum compartido ya no está disponible.</div>
+          <a href="index.html" style="color:var(--accent);">← Volver a mis viajes</a>
+        </div>`;
+      return;
+    }
+    albumFolderId = sharedFolderId;
+    const sharedData = await loadSharedAlbums().catch(() => ({ sharedAlbums: [] }));
+    const entry = sharedData.sharedAlbums.find(a => a.folderDriveId === sharedFolderId);
+    albumMeta = entry ? { name: entry.name, id: null } : { name: 'Álbum compartido', id: null };
+  } else {
+    albumFolderId = await getAlbumFolderId(albumId);
+    const loadedAlbums = await loadAlbums();
+    albumMeta = loadedAlbums.find(a => a.id === albumId) || { name: albumId };
+  }
+  document.getElementById('album-name-header').textContent = albumMeta.name;
+  document.title = `旅 — ${albumMeta.name}`;
+  renderPage();
+  await loadDay(currentDate);
 }
 
 // ─── RENDER PAGE ─────────────────────────────────────────
@@ -533,6 +558,7 @@ function renderPage() {
   const main = document.getElementById('main-content');
   main.innerHTML = `
     <a href="index.html" class="back-link">← Mis viajes</a>
+    ${isSharedAlbum ? '<div class="shared-album-banner">Álbum compartido — podés editarlo</div>' : ''}
     <div class="day-header">
       <div class="day-label" id="day-label">Hoy</div>
       <div class="day-title-row">
@@ -608,8 +634,8 @@ async function saveCurrentDay() {
   try {
     currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay);
 
-    // Auto-set album cover if none set yet
-    if (albumMeta && !albumMeta.coverFileId) {
+    // Auto-set album cover if none set yet (own albums only)
+    if (!isSharedAlbum && albumMeta && !albumMeta.coverFileId) {
       const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
       if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
     }
@@ -730,9 +756,10 @@ function renderMedia() {
     });
   });
 
-  // set cover
+  // set cover (own albums only)
   grid.querySelectorAll('.media-set-cover').forEach(btn => {
     btn.addEventListener('click', async e => {
+      if (isSharedAlbum) return;
       const item = currentDay.media[parseInt(e.target.dataset.idx)];
       if (!item.driveFileId) { alert('Guardá el día primero para poder establecer la portada.'); return; }
       albumMeta = await updateAlbumMeta(albumId, { coverFileId: item.driveFileId });

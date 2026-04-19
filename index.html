@@ -214,6 +214,28 @@ main {
   .albums-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
   .album-info { padding: 0.75rem 1rem 1rem; }
 }
+
+/* ─── SHARE ─── */
+.album-card-wrapper { position: relative; }
+.album-share-btn {
+  position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
+  background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
+  color: #fff; cursor: pointer; font-size: 0.8rem;
+  padding: 0.25rem 0.5rem; line-height: 1;
+  opacity: 0; transition: opacity 0.2s;
+}
+.album-card-wrapper:hover .album-share-btn { opacity: 1; }
+@media (hover: none) { .album-share-btn { opacity: 1; } }
+.album-shared-badge {
+  display: inline-block; font-size: 0.65rem; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 2px; padding: 0.1rem 0.35rem; margin-bottom: 0.35rem;
+}
+.section-heading {
+  font-family: 'DM Serif Display', serif; font-size: 1rem;
+  color: var(--ink-muted); margin: 2.5rem 0 1rem;
+  padding-bottom: 0.5rem; border-bottom: 1px solid var(--ink-faint);
+}
 </style>
 </head>
 <body>
@@ -221,7 +243,7 @@ main {
 <header class="app-header">
   <a href="index.html" class="app-logo">旅 <span>mis viajes</span></a>
   <div style="display:flex;gap:0.5rem;align-items:center;">
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.0</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.3</span>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>
   </div>
 </header>
@@ -264,23 +286,53 @@ main {
   </div>
 </div>
 
+<!-- Modal: compartir álbum -->
+<div class="modal-overlay" id="modal-share-album">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Compartir álbum</div>
+      <button class="modal-close" onclick="closeShareModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-field">
+        <label class="form-label">Email de Google</label>
+        <input class="form-input" id="share-email" type="email" placeholder="lucia@gmail.com">
+      </div>
+      <div id="share-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
+      <div id="share-success" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;line-height:1.5;word-break:break-all;"></div>
+      <button class="btn btn-primary" style="width:100%;" onclick="submitShare()">
+        Compartir y copiar link
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
 let albums = [];
 let hasMigratable = false;
+let shareTargetAlbum = null;
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 // ─── DRIVE CALLBACK ──────────────────────────────────────
 async function initGoogleAuth() {
-  const redirectUrl = new URLSearchParams(location.search).get('redirect');
+  const sp          = new URLSearchParams(location.search);
+  const redirectUrl = sp.get('redirect');
+  const joinId      = sp.get('join');
+  const joinName    = decodeURIComponent(sp.get('name') || '');
+  const joinFrom    = sp.get('from') || null;
+  const joinTo      = sp.get('to')   || null;
 
   initDrive(async () => {
+    if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
     if (redirectUrl) { location.href = redirectUrl; return; }
     updateDriveBtn();
     await renderAlbums();
     await checkMigratable();
   });
 
-  // initGoogleAuth en drive.js ya registró el tokenClient
-  // Solo necesitamos el callback para conexiones nuevas (primer login)
   if (window.google && window.google.accounts) {
     window._tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: DRIVE_CLIENT_ID,
@@ -289,9 +341,17 @@ async function initGoogleAuth() {
         if (response.error) return;
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
+        localStorage.setItem('scope_version', String(SCOPE_VERSION));
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
         if (_onConnected) { await _onConnected(); return; }
-        if (redirectUrl) { location.href = redirectUrl; return; }
+        const sp2 = new URLSearchParams(location.search);
+        const jId = sp2.get('join');
+        if (jId) {
+          await handleJoin(jId, decodeURIComponent(sp2.get('name') || ''), sp2.get('from'), sp2.get('to'));
+          return;
+        }
+        const rUrl = sp2.get('redirect');
+        if (rUrl) { location.href = rUrl; return; }
         updateDriveBtn();
         await renderAlbums();
         await checkMigratable();
@@ -299,7 +359,10 @@ async function initGoogleAuth() {
     });
   }
 
-  if (!isDriveConnected()) renderDisconnected();
+  if (!isDriveConnected()) {
+    if (joinId) renderJoinPending(joinName);
+    else renderDisconnected();
+  }
 }
 
 function handleDriveBtn() {
@@ -343,13 +406,47 @@ function renderDisconnected() {
     </div>`;
 }
 
+function renderJoinPending(albumName) {
+  document.getElementById('main-content').innerHTML = `
+    <div class="connect-state fade-up">
+      <h2>Invitación a álbum</h2>
+      <p>Te invitaron a ver <em>${escHtml(albumName)}</em>. Conectá tu cuenta de Google para aceptar.</p>
+      <button class="btn btn-primary" onclick="handleDriveBtn()">Conectar con Google Drive</button>
+    </div>`;
+}
+
+async function handleJoin(folderId, albumName, dateFrom, dateTo) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Procesando invitación...</div>`;
+  try {
+    const result = await joinSharedAlbum(folderId, albumName, dateFrom, dateTo);
+    if (!result.alreadyJoined) {
+      main.innerHTML = `<div class="connect-state fade-up"><h2>Álbum agregado</h2><p>Ya podés ver <em>${escHtml(albumName)}</em> en tus álbumes compartidos.</p></div>`;
+      await new Promise(r => setTimeout(r, 1400));
+    }
+    history.replaceState({}, '', 'index.html');
+    updateDriveBtn();
+    await renderAlbums();
+    await checkMigratable();
+  } catch(e) {
+    main.innerHTML = `
+      <div class="connect-state fade-up">
+        <h2>No se pudo unir al álbum</h2>
+        <p>${escHtml(e.message)}</p>
+        <button class="btn btn-primary" onclick="location.href='index.html'">Ir a mis viajes</button>
+      </div>`;
+  }
+}
+
 async function renderAlbums() {
   const main = document.getElementById('main-content');
   main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Cargando álbumes...</div>`;
 
-  albums = await loadAlbums();
+  const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
+  albums = ownAlbums;
+  const sharedAlbums = sharedData.sharedAlbums || [];
 
-  if (!albums.length) {
+  if (!albums.length && !sharedAlbums.length) {
     main.innerHTML = `
       <div class="home-intro fade-up">
         <h1>Tus <em>viajes</em></h1>
@@ -364,16 +461,24 @@ async function renderAlbums() {
     return;
   }
 
+  const totalOwn = albums.length;
   main.innerHTML = `
     <div class="home-intro fade-up">
       <h1>Tus <em>viajes</em></h1>
-      <p>${albums.length} álbum${albums.length > 1 ? 's' : ''}</p>
     </div>
-    <div class="albums-grid" id="albums-grid"></div>`;
+    <div id="section-own"></div>
+    ${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}`;
 
-  const grid = document.getElementById('albums-grid');
+  // Own albums section
+  const ownSection = document.getElementById('section-own');
+  const ownGrid = document.createElement('div');
+  ownGrid.className = 'albums-grid';
+  ownSection.appendChild(ownGrid);
 
   albums.forEach((album, idx) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'album-card-wrapper';
+
     const card = document.createElement('a');
     card.className = 'album-card';
     card.href = `diary.html?album=${encodeURIComponent(album.id)}`;
@@ -382,37 +487,80 @@ async function renderAlbums() {
     const coverSrc = album.coverFileId
       ? `https://drive.google.com/thumbnail?id=${album.coverFileId}&sz=w600`
       : null;
-
     const coverHtml = coverSrc
-      ? `<img class="album-cover" src="${coverSrc}" alt="${album.name}" loading="lazy">`
+      ? `<img class="album-cover" src="${coverSrc}" alt="${escHtml(album.name)}" loading="lazy">`
       : `<div class="album-cover-empty">旅</div>`;
-
     const fromFmt = album.dateFrom ? formatDate(album.dateFrom) : '—';
     const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
 
     card.innerHTML = `
       ${coverHtml}
       <div class="album-info">
-        <div class="album-name">${album.name}</div>
+        <div class="album-name">${escHtml(album.name)}</div>
         <div class="album-dates">${fromFmt} — ${toFmt}</div>
         <div class="album-meta">
           <div class="album-days-count" id="days-count-${album.id}">—</div>
           <div class="album-arrow">→</div>
         </div>
       </div>`;
-    grid.appendChild(card);
 
-    // Load day count async
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'album-share-btn';
+    shareBtn.title = 'Compartir álbum';
+    shareBtn.textContent = '↗';
+    shareBtn.addEventListener('click', e => openShareModal(e, album));
+
+    wrapper.appendChild(card);
+    wrapper.appendChild(shareBtn);
+    ownGrid.appendChild(wrapper);
     loadDayCount(album.id);
   });
 
-  // Add "new album" card at end
+  // New album card
   const newCard = document.createElement('button');
   newCard.className = 'album-card-new';
-  newCard.style.animationDelay = `${albums.length * 0.07}s`;
+  newCard.style.animationDelay = `${totalOwn * 0.07}s`;
   newCard.innerHTML = `<div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div>`;
   newCard.onclick = openNewAlbumModal;
-  grid.appendChild(newCard);
+  ownGrid.appendChild(newCard);
+
+  // Shared albums section
+  if (sharedAlbums.length) {
+    const sharedSection = document.getElementById('section-shared');
+    sharedSection.innerHTML = `<h2 class="section-heading">Compartidos conmigo</h2>`;
+    const sharedGrid = document.createElement('div');
+    sharedGrid.className = 'albums-grid';
+    sharedSection.appendChild(sharedGrid);
+
+    sharedAlbums.forEach((album, idx) => {
+      const card = document.createElement('a');
+      card.className = 'album-card';
+      card.href = `diary.html?sharedFolder=${encodeURIComponent(album.folderDriveId)}`;
+      card.style.animationDelay = `${idx * 0.07}s`;
+
+      const coverSrc = album.coverFileId
+        ? `https://drive.google.com/thumbnail?id=${album.coverFileId}&sz=w600`
+        : null;
+      const coverHtml = coverSrc
+        ? `<img class="album-cover" src="${coverSrc}" alt="${escHtml(album.name)}" loading="lazy">`
+        : `<div class="album-cover-empty">旅</div>`;
+      const fromFmt = album.dateFrom ? formatDate(album.dateFrom) : '—';
+      const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
+
+      card.innerHTML = `
+        ${coverHtml}
+        <div class="album-info">
+          <div class="album-shared-badge">Compartido</div>
+          <div class="album-name">${escHtml(album.name)}</div>
+          <div class="album-dates">${fromFmt} — ${toFmt}</div>
+          <div class="album-meta">
+            <div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div>
+            <div class="album-arrow">→</div>
+          </div>
+        </div>`;
+      sharedGrid.appendChild(card);
+    });
+  }
 }
 
 async function loadDayCount(albumId) {
@@ -491,9 +639,62 @@ function formatDate(str) {
   return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
 }
 
-// Close modal on overlay click
+// ─── SHARE MODAL ─────────────────────────────────────────
+function openShareModal(event, album) {
+  event.preventDefault();
+  event.stopPropagation();
+  shareTargetAlbum = album;
+  document.getElementById('share-email').value = '';
+  document.getElementById('share-error').style.display = 'none';
+  document.getElementById('share-success').style.display = 'none';
+  document.getElementById('modal-share-album').classList.add('open');
+  setTimeout(() => document.getElementById('share-email').focus(), 100);
+}
+
+function closeShareModal() {
+  document.getElementById('modal-share-album').classList.remove('open');
+  shareTargetAlbum = null;
+}
+
+async function submitShare() {
+  const email = document.getElementById('share-email').value.trim();
+  const errEl = document.getElementById('share-error');
+  const okEl  = document.getElementById('share-success');
+  if (!email || !email.includes('@')) {
+    errEl.textContent = 'Ingresá un email válido';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+  const btn = document.querySelector('#modal-share-album .btn-primary');
+  btn.textContent = 'Compartiendo...';
+  btn.disabled = true;
+  try {
+    const folderId = await getAlbumFolderId(shareTargetAlbum.id);
+    await shareAlbumWithUser(folderId, email);
+    const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
+    try {
+      await navigator.clipboard.writeText(link);
+      okEl.textContent = `✓ Compartido con ${email}. Link copiado al portapapeles.`;
+    } catch {
+      okEl.textContent = `✓ Compartido con ${email}. Link: ${link}`;
+    }
+    okEl.style.display = 'block';
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+  btn.textContent = 'Compartir y copiar link';
+  btn.disabled = false;
+}
+
+// Close modals on overlay click
 document.getElementById('modal-new-album').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeNewAlbumModal();
+});
+document.getElementById('modal-share-album').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeShareModal();
 });
 </script>
 </body>

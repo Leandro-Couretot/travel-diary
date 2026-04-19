@@ -1,7 +1,8 @@
 // ─── DRIVE CONFIG ────────────────────────────────────────
 const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
-const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive';
 const ROOT_FOLDER     = 'travel-diary';
+const SCOPE_VERSION   = 2;
 
 // ─── STATE ───────────────────────────────────────────────
 let driveToken    = null;
@@ -14,6 +15,11 @@ let _onFailure    = null;
 function initDrive(onConnectedCallback, onFailureCallback) {
   _onConnected = onConnectedCallback;
   _onFailure   = onFailureCallback || null;
+  const savedScope = parseInt(localStorage.getItem('scope_version') || '0');
+  if (savedScope < SCOPE_VERSION) {
+    localStorage.removeItem('drive_token');
+    localStorage.setItem('scope_version', String(SCOPE_VERSION));
+  }
   const saved = localStorage.getItem('drive_token');
   if (saved) { driveToken = saved; _bootstrapDrive(); }
 }
@@ -27,6 +33,7 @@ function initGoogleAuth() {
         if (response.error) { console.warn('Drive auth error:', response.error); return; }
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
+        localStorage.setItem('scope_version', String(SCOPE_VERSION));
         await _bootstrapDrive();
       }
     });
@@ -263,6 +270,66 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
     console.warn('Error cargando día desde Drive:', e);
     return null;
   }
+}
+
+// ─── SHARING ──────────────────────────────────────────────
+
+async function shareAlbumWithUser(albumFolderId, guestEmail) {
+  const res = await driveReq('POST',
+    `https://www.googleapis.com/drive/v3/files/${albumFolderId}/permissions`,
+    { role: 'writer', type: 'user', emailAddress: guestEmail, sendNotificationEmail: false }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Error al compartir');
+  }
+  return await res.json();
+}
+
+function generateShareLink(folderId, name, dateFrom, dateTo) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, 'index.html');
+  const p = new URLSearchParams({ join: folderId, name });
+  if (dateFrom) p.set('from', dateFrom);
+  if (dateTo)   p.set('to', dateTo);
+  return `${base}?${p.toString()}`;
+}
+
+async function loadSharedAlbums() {
+  if (!isDriveConnected()) return { version: 1, sharedAlbums: [] };
+  const fileId = await findFileInFolder('shared-albums.json', rootFolderId);
+  if (!fileId) return { version: 1, sharedAlbums: [] };
+  try {
+    const data = await readJsonFile(fileId);
+    return { version: 1, sharedAlbums: [], ...data };
+  } catch { return { version: 1, sharedAlbums: [] }; }
+}
+
+async function saveSharedAlbums(data) {
+  await writeJsonFile(data, 'shared-albums.json', rootFolderId);
+}
+
+async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
+  const stored = await loadSharedAlbums();
+  if (stored.sharedAlbums.some(a => a.folderDriveId === folderDriveId)) {
+    return { alreadyJoined: true };
+  }
+  let ownerEmail = null;
+  try {
+    const metaRes = await driveReq('GET',
+      `https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=id,owners`
+    );
+    if (!metaRes.ok) throw new Error('Sin acceso');
+    const meta = await metaRes.json();
+    ownerEmail = meta.owners?.[0]?.emailAddress || null;
+  } catch {
+    throw new Error('No se pudo acceder a la carpeta. Pedile al dueño que te comparta el álbum primero.');
+  }
+  stored.sharedAlbums.push({
+    folderDriveId, name: albumName, ownerEmail,
+    dateFrom: dateFrom || null, dateTo: dateTo || null, coverFileId: null
+  });
+  await saveSharedAlbums(stored);
+  return { alreadyJoined: false };
 }
 
 // ─── MIGRATION ───────────────────────────────────────────
