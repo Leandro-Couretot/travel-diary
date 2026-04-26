@@ -648,6 +648,20 @@ async function saveCurrentDay() {
   }
 }
 
+// ─── THUMBNAIL FALLBACK ──────────────────────────────────
+// drive.google.com/thumbnail requires browser-level Google session.
+// If it fails (e.g. guest user without Google cookies), fetch via API token.
+function addThumbFallback(imgEl, item) {
+  if (!item.driveFileId || item.data) return;
+  imgEl.onerror = () => {
+    imgEl.onerror = null;
+    fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
+      item.data = dataUrl;
+      imgEl.src = dataUrl;
+    }).catch(() => {});
+  };
+}
+
 // ─── RENDER MEDIA ────────────────────────────────────────
 function renderMedia() {
   const grid  = document.getElementById('media-grid');
@@ -737,6 +751,10 @@ function renderMedia() {
       }
     }
     grid.appendChild(card);
+
+    if (item.type === 'image') {
+      addThumbFallback(card.querySelector('.media-thumb'), item);
+    }
   });
 
   // captions
@@ -916,6 +934,7 @@ function renderAlbumPage() {
         <div class="album-photo-prev" onclick="albumPhotoNav(-1)"></div>
         <div class="album-photo-next" onclick="albumPhotoNav(1)"></div>
       </div>${caption}${dots}`;
+    addThumbFallback(heroEl.querySelector('img'), photo);
   } else {
     heroEl.innerHTML = `<div class="album-hero-empty">旅</div>`;
   }
@@ -931,6 +950,7 @@ function renderAlbumPage() {
       const src = img.data || (img.driveFileId ? `https://drive.google.com/thumbnail?id=${img.driveFileId}&sz=w200` : '');
       return `<img class="album-strip-thumb${i === albumPhotoIdx ? ' active' : ''}" src="${src}" onclick="albumGoPhoto(${i})">`;
     }).join('');
+    strip.querySelectorAll('img').forEach((imgEl, i) => addThumbFallback(imgEl, images[i]));
   } else { strip.style.display = 'none'; }
 }
 
@@ -1143,8 +1163,10 @@ function renderLightbox() {
   const src  = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w2000` : '');
   const img  = document.getElementById('lightbox-img');
   img.style.opacity = '0';
-  img.src = src;
+  img.onerror = null;
   img.onload = () => { img.style.opacity = '1'; };
+  addThumbFallback(img, item);
+  img.src = src;
   document.getElementById('lightbox-caption').textContent = item.caption || '';
   document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
   document.getElementById('lightbox-prev').disabled = lbIdx === 0;
