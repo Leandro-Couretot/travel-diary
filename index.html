@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>旅 — Mis Viajes</title>
 <link rel="stylesheet" href="style.css">
-<script src="https://accounts.google.com/gsi/client" onload="initGoogleAuth()" async></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <script src="drive.js"></script>
 <style>
 
@@ -813,6 +813,15 @@ document.getElementById('modal-new-album').addEventListener('click', e => {
 document.getElementById('modal-share-album').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeShareModal();
 });
+
+// Wait for GSI script to load then init
+(function waitForGSI() {
+  if (window.google && window.google.accounts) {
+    initGoogleAuth();
+  } else {
+    setTimeout(waitForGSI, 50);
+  }
+})();
 </script>
 
 <!-- ─── SLIDESHOW OVERLAY ─── -->
