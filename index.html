@@ -665,7 +665,10 @@ async function renderAlbums() {
       const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
 
       card.innerHTML = `
-        ${coverHtml}
+        <div class="album-cover-wrap">
+          ${coverHtml}
+          <button class="album-play-btn" title="Ver slideshow">▶</button>
+        </div>
         <div class="album-info">
           <div class="album-shared-badge">Compartido</div>
           <div class="album-name">${escHtml(album.name)}</div>
@@ -675,6 +678,13 @@ async function renderAlbums() {
             <div class="album-arrow">→</div>
           </div>
         </div>`;
+
+      card.querySelector('.album-play-btn').addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true });
+      });
+
       sharedGrid.appendChild(card);
     });
   }
@@ -860,7 +870,9 @@ async function startSlideshow(album) {
   document.getElementById('slideshow-progress-bar').style.width = '0%';
 
   try {
-    const albumFolderId = await getAlbumFolderId(album.id);
+    const albumFolderId = album._shared
+      ? album._folderId
+      : await getAlbumFolderId(album.id);
     const dates = await listDayFolders(albumFolderId);
     const items = [];
 
