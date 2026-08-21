@@ -113,6 +113,113 @@ main {
 }
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 
+/* ─── PLAY BUTTON ─── */
+.album-play-btn {
+  position: absolute;
+  bottom: 0.6rem;
+  right: 0.6rem;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+  z-index: 2;
+}
+.album-play-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.1); }
+.album-cover-wrap {
+  position: relative;
+  display: block;
+}
+
+/* ─── SLIDESHOW ─── */
+.slideshow-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: #000;
+  z-index: 500;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.slideshow-overlay.open { display: flex; }
+
+.slideshow-media {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  position: absolute; inset: 0;
+}
+.slideshow-video {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  position: absolute; inset: 0;
+  background: #000;
+}
+
+.slideshow-ui {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.slideshow-top {
+  display: flex; justify-content: flex-end; align-items: center;
+  padding: 1rem 1rem 0;
+  gap: 0.5rem;
+  pointer-events: all;
+}
+.slideshow-btn {
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(6px);
+  border: none; color: white;
+  width: 40px; height: 40px; border-radius: 50%;
+  font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.slideshow-btn:hover { background: rgba(255,255,255,0.3); }
+
+.slideshow-bottom {
+  padding: 0 1.5rem 2rem;
+  pointer-events: none;
+}
+.slideshow-caption {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.75);
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.slideshow-progress-wrap {
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.slideshow-progress-bar {
+  height: 100%;
+  background: white;
+  border-radius: 2px;
+  width: 0%;
+  transition: width linear;
+}
+.slideshow-day-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+  text-align: center;
+  margin-bottom: 0.4rem;
+}
+
 /* ─── NEW ALBUM CARD ─── */
 .album-card-new {
   border: 1.5px dashed var(--ink-faint);
@@ -494,7 +601,10 @@ async function renderAlbums() {
     const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
 
     card.innerHTML = `
-      ${coverHtml}
+      <div class="album-cover-wrap">
+        ${coverHtml}
+        <button class="album-play-btn" title="Ver slideshow">▶</button>
+      </div>
       <div class="album-info">
         <div class="album-name">${escHtml(album.name)}</div>
         <div class="album-dates">${fromFmt} — ${toFmt}</div>
@@ -503,6 +613,13 @@ async function renderAlbums() {
           <div class="album-arrow">→</div>
         </div>
       </div>`;
+
+    // Play button opens slideshow without navigating to diary
+    card.querySelector('.album-play-btn').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      startSlideshow(album);
+    });
 
     const shareBtn = document.createElement('button');
     shareBtn.className = 'album-share-btn';
@@ -695,6 +812,200 @@ document.getElementById('modal-new-album').addEventListener('click', e => {
 });
 document.getElementById('modal-share-album').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeShareModal();
+});
+</script>
+
+<!-- ─── SLIDESHOW OVERLAY ─── -->
+<div class="slideshow-overlay" id="slideshow-overlay">
+  <img class="slideshow-media" id="slideshow-img" src="" alt="" style="display:none;">
+  <video class="slideshow-video" id="slideshow-video" playsinline style="display:none;" muted></video>
+  <div class="slideshow-ui">
+    <div class="slideshow-top">
+      <button class="slideshow-btn" id="slideshow-pause" title="Pausar">⏸</button>
+      <button class="slideshow-btn" id="slideshow-close" title="Cerrar">✕</button>
+    </div>
+    <div class="slideshow-bottom">
+      <div class="slideshow-day-label" id="slideshow-day-label"></div>
+      <div class="slideshow-caption" id="slideshow-caption"></div>
+      <div class="slideshow-progress-wrap">
+        <div class="slideshow-progress-bar" id="slideshow-progress-bar"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── SLIDESHOW ────────────────────────────────────────────
+let ssItems    = [];
+let ssIdx      = 0;
+let ssPaused   = false;
+let ssTimer    = null;
+let ssProgress = null;
+
+async function startSlideshow(album) {
+  // Collect all media (images + videos) across all days in order
+  const overlay = document.getElementById('slideshow-overlay');
+  overlay.classList.add('open');
+  document.getElementById('slideshow-day-label').textContent = 'Cargando...';
+  document.getElementById('slideshow-caption').textContent = '';
+  document.getElementById('slideshow-progress-bar').style.width = '0%';
+
+  try {
+    const albumFolderId = await getAlbumFolderId(album.id);
+    const dates = await listDayFolders(albumFolderId);
+    const items = [];
+
+    for (const date of dates) {
+      const day = await loadDayFromDrive(albumFolderId, date);
+      if (!day) continue;
+      for (const m of (day.media || [])) {
+        if (m.type === 'image' || m.type === 'video') {
+          items.push({ ...m, date, dayTitle: day.title || '' });
+        }
+      }
+    }
+
+    if (!items.length) {
+      closeSlideshow();
+      alert('Este álbum no tiene fotos ni videos aún.');
+      return;
+    }
+
+    ssItems  = items;
+    ssIdx    = 0;
+    ssPaused = false;
+    document.getElementById('slideshow-pause').textContent = '⏸';
+    showSsItem();
+  } catch(e) {
+    closeSlideshow();
+    alert('Error al cargar el álbum: ' + e.message);
+  }
+}
+
+function showSsItem() {
+  clearSsTimers();
+  if (ssIdx >= ssItems.length) { closeSlideshow(); return; }
+
+  const item    = ssItems[ssIdx];
+  const imgEl   = document.getElementById('slideshow-img');
+  const videoEl = document.getElementById('slideshow-video');
+  const bar     = document.getElementById('slideshow-progress-bar');
+
+  // Update labels
+  document.getElementById('slideshow-day-label').textContent = formatDate(item.date) + (item.dayTitle ? ` · ${item.dayTitle}` : '');
+  document.getElementById('slideshow-caption').textContent = item.caption || '';
+
+  // Reset progress
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+
+  if (item.type === 'image') {
+    videoEl.style.display = 'none';
+    videoEl.src = '';
+    imgEl.style.display = 'block';
+    imgEl.style.opacity = '0';
+    const src = item.driveFileId
+      ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w2000`
+      : item.data || '';
+    imgEl.src = src;
+    imgEl.onload = () => {
+      imgEl.style.transition = 'opacity 0.5s';
+      imgEl.style.opacity = '1';
+      if (!ssPaused) startPhotoTimer();
+    };
+
+  } else if (item.type === 'video') {
+    imgEl.style.display = 'none';
+    videoEl.style.display = 'block';
+    videoEl.style.opacity = '0';
+    const src = item.driveFileId
+      ? `https://www.googleapis.com/drive/v3/files/${item.driveFileId}?alt=media`
+      : item.data || '';
+
+    // For Drive videos we need auth header — fetch as blob
+    if (item.driveFileId) {
+      fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
+        videoEl.src = dataUrl;
+        videoEl.style.transition = 'opacity 0.5s';
+        videoEl.style.opacity = '1';
+        if (!ssPaused) videoEl.play();
+      }).catch(() => {
+        // Skip to next on error
+        ssIdx++;
+        showSsItem();
+      });
+    } else {
+      videoEl.src = src;
+      videoEl.style.transition = 'opacity 0.5s';
+      videoEl.style.opacity = '1';
+      if (!ssPaused) videoEl.play();
+    }
+
+    videoEl.onended = () => { if (!ssPaused) { ssIdx++; showSsItem(); } };
+    videoEl.ontimeupdate = () => {
+      if (videoEl.duration) {
+        bar.style.transition = 'none';
+        bar.style.width = (videoEl.currentTime / videoEl.duration * 100) + '%';
+      }
+    };
+  }
+}
+
+function startPhotoTimer() {
+  const duration = (Math.random() * 4 + 3) * 1000; // 3–7s
+  const bar = document.getElementById('slideshow-progress-bar');
+  // Animate progress bar
+  requestAnimationFrame(() => {
+    bar.style.transition = `width ${duration}ms linear`;
+    bar.style.width = '100%';
+  });
+  ssTimer = setTimeout(() => {
+    ssIdx++;
+    showSsItem();
+  }, duration);
+}
+
+function clearSsTimers() {
+  if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; }
+  const videoEl = document.getElementById('slideshow-video');
+  videoEl.onended = null;
+  videoEl.ontimeupdate = null;
+  videoEl.pause();
+}
+
+function toggleSsPause() {
+  ssPaused = !ssPaused;
+  const btn     = document.getElementById('slideshow-pause');
+  const videoEl = document.getElementById('slideshow-video');
+  const item    = ssItems[ssIdx];
+  btn.textContent = ssPaused ? '▶' : '⏸';
+
+  if (ssPaused) {
+    clearSsTimers();
+    if (item?.type === 'video') videoEl.pause();
+  } else {
+    if (item?.type === 'image') startPhotoTimer();
+    else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; }
+  }
+}
+
+function closeSlideshow() {
+  clearSsTimers();
+  const overlay = document.getElementById('slideshow-overlay');
+  overlay.classList.remove('open');
+  const videoEl = document.getElementById('slideshow-video');
+  videoEl.pause();
+  videoEl.src = '';
+  document.getElementById('slideshow-img').src = '';
+  ssItems = []; ssIdx = 0; ssPaused = false;
+}
+
+document.getElementById('slideshow-close').addEventListener('click', closeSlideshow);
+document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('slideshow-overlay').classList.contains('open')) return;
+  if (e.key === 'Escape') closeSlideshow();
+  if (e.key === ' ') { e.preventDefault(); toggleSsPause(); }
 });
 </script>
 </body>
