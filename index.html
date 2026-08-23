@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="drive.js"></script>
+<script src="exif.js"></script>
 <style>
 
 /* ─── HOME PAGE ─── */
@@ -297,7 +298,75 @@ main {
   gap: 1rem;
 }
 
-/* ─── LOADING ─── */
+/* ─── BULK UPLOAD ─── */
+.bulk-drop-zone {
+  border: 1.5px dashed var(--ink-faint);
+  border-radius: var(--radius-lg);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg);
+  margin-bottom: 1.25rem;
+}
+.bulk-drop-zone:hover, .bulk-drop-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
+.bulk-drop-text { font-size: 0.875rem; color: var(--ink-muted); }
+.bulk-drop-text strong { color: var(--ink); font-weight: 500; }
+.bulk-drop-sub { font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.25rem; }
+
+.bulk-summary { margin-bottom: 1.25rem; }
+.bulk-summary-title {
+  font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-muted); margin-bottom: 0.75rem;
+}
+.bulk-day-group {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--ink-faint);
+  font-size: 0.875rem;
+}
+.bulk-day-group:last-child { border-bottom: none; }
+.bulk-day-date {
+  font-family: 'DM Serif Display', serif;
+  font-size: 0.95rem; min-width: 100px;
+}
+.bulk-day-count { color: var(--ink-muted); font-size: 0.8rem; flex: 1; }
+.bulk-undated-group {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--ink-faint);
+  margin-bottom: 0.5rem;
+}
+.bulk-undated-label {
+  font-size: 0.8rem; color: var(--red); margin-bottom: 0.4rem;
+}
+.bulk-undated-file {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.3rem 0; font-size: 0.8rem; color: var(--ink-muted);
+}
+.bulk-undated-file input[type="date"] {
+  border: 1px solid var(--ink-faint); border-radius: var(--radius);
+  padding: 0.2rem 0.4rem; font-size: 0.78rem;
+  font-family: 'DM Sans', sans-serif; background: none; color: var(--ink);
+}
+.bulk-album-select {
+  margin-bottom: 1rem;
+}
+.bulk-album-select select {
+  width: 100%; padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ink-faint); border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif; font-size: 0.875rem;
+  background: var(--surface); color: var(--ink); outline: none;
+}
+.bulk-album-select select:focus { border-color: var(--accent); }
+.bulk-progress {
+  margin-top: 0.75rem; font-size: 0.82rem; color: var(--ink-muted);
+  text-align: center; min-height: 1.4em;
+}
+.bulk-progress.error { color: var(--red); }
 .loading-albums {
   display: flex;
   align-items: center;
@@ -350,7 +419,8 @@ main {
 <header class="app-header">
   <a href="index.html" class="app-logo">旅 <span>mis viajes</span></a>
   <div style="display:flex;gap:0.5rem;align-items:center;">
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.3</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.4</span>
+    <button class="btn-nav" id="btn-bulk-upload" title="Carga masiva" style="display:none;" onclick="openBulkUpload()">⬆ Cargar</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>
   </div>
 </header>
@@ -487,12 +557,15 @@ function handleDriveBtn() {
 
 function updateDriveBtn() {
   const btn = document.getElementById('btn-drive');
+  const bulkBtn = document.getElementById('btn-bulk-upload');
   if (isDriveConnected()) {
     btn.textContent = '● Drive conectado';
     btn.classList.add('connected');
+    bulkBtn.style.display = '';
   } else {
     btn.textContent = 'Conectar Drive';
     btn.classList.remove('connected');
+    bulkBtn.style.display = 'none';
   }
 }
 
@@ -834,6 +907,44 @@ document.getElementById('modal-share-album').addEventListener('click', e => {
 })();
 </script>
 
+<!-- Modal: carga masiva -->
+<div class="modal-overlay" id="modal-bulk-upload">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">Carga masiva</div>
+      <button class="modal-close" onclick="closeBulkUpload()">×</button>
+    </div>
+    <div class="modal-body" id="bulk-modal-body">
+      <!-- Step 1: drop zone -->
+      <div id="bulk-step-drop">
+        <div class="bulk-drop-zone" id="bulk-drop-zone">
+          <div class="bulk-drop-icon">📁</div>
+          <div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div>
+          <div class="bulk-drop-sub">Arrastrá acá o tocá para elegir · jpg, png, heic, mp4, mov</div>
+        </div>
+        <input type="file" id="bulk-file-input" accept="image/*,video/*" multiple style="display:none;">
+        <p style="font-size:0.8rem;color:var(--ink-muted);text-align:center;">La app lee la fecha de cada archivo automáticamente y los agrupa por día.</p>
+      </div>
+
+      <!-- Step 2: review & confirm -->
+      <div id="bulk-step-review" style="display:none;">
+        <div class="bulk-album-select">
+          <div class="form-label" style="margin-bottom:0.4rem;">Álbum de destino</div>
+          <select id="bulk-album-select"></select>
+        </div>
+        <div class="bulk-summary">
+          <div class="bulk-summary-title">Resumen de archivos</div>
+          <div id="bulk-dated-list"></div>
+          <div id="bulk-undated-list"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" id="bulk-confirm-btn" onclick="confirmBulkUpload()">Guardar todo en Drive</button>
+        <div class="bulk-progress" id="bulk-progress"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<input type="file" id="bulk-file-input-hidden" accept="image/*,video/*" multiple style="display:none;">
+
 <!-- ─── SLIDESHOW OVERLAY ─── -->
 <div class="slideshow-overlay" id="slideshow-overlay">
   <img class="slideshow-media" id="slideshow-img" src="" alt="" style="display:none;">
@@ -854,6 +965,207 @@ document.getElementById('modal-share-album').addEventListener('click', e => {
 </div>
 
 <script>
+// ─── BULK UPLOAD ─────────────────────────────────────────
+let bulkGrouped  = null; // { dated: {date: [File]}, undated: [File] }
+let bulkUndatedDates = {}; // filename -> assigned date
+
+function openBulkUpload() {
+  bulkGrouped = null;
+  bulkUndatedDates = {};
+  document.getElementById('bulk-step-drop').style.display = '';
+  document.getElementById('bulk-step-review').style.display = 'none';
+  document.getElementById('bulk-progress').textContent = '';
+  document.getElementById('modal-bulk-upload').classList.add('open');
+}
+
+function closeBulkUpload() {
+  document.getElementById('modal-bulk-upload').classList.remove('open');
+}
+
+// Drop zone events
+const bulkDrop = document.getElementById('bulk-drop-zone');
+const bulkInput = document.getElementById('bulk-file-input');
+bulkDrop.addEventListener('click', () => bulkInput.click());
+bulkDrop.addEventListener('dragover', e => { e.preventDefault(); bulkDrop.classList.add('drag-over'); });
+bulkDrop.addEventListener('dragleave', () => bulkDrop.classList.remove('drag-over'));
+bulkDrop.addEventListener('drop', e => { e.preventDefault(); bulkDrop.classList.remove('drag-over'); processBulkFiles(e.dataTransfer.files); });
+bulkInput.addEventListener('change', e => { if (e.target.files.length) processBulkFiles(e.target.files); e.target.value = ''; });
+
+async function processBulkFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+  if (!files.length) return;
+
+  bulkDrop.innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
+
+  bulkGrouped = await groupFilesByDate(files);
+  renderBulkReview();
+}
+
+function renderBulkReview() {
+  // Populate album selector
+  const sel = document.getElementById('bulk-album-select');
+  sel.innerHTML = albums.map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('');
+
+  // Dated groups
+  const datedList = document.getElementById('bulk-dated-list');
+  datedList.innerHTML = '';
+  const sortedDates = Object.keys(bulkGrouped.dated).sort();
+  if (sortedDates.length) {
+    sortedDates.forEach(date => {
+      const files = bulkGrouped.dated[date];
+      const row = document.createElement('div');
+      row.className = 'bulk-day-group';
+      const imgs = files.filter(f => f.type.startsWith('image/')).length;
+      const vids = files.filter(f => f.type.startsWith('video/')).length;
+      const parts = [];
+      if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`);
+      if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
+      row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
+      datedList.appendChild(row);
+    });
+  }
+
+  // Undated files
+  const undatedList = document.getElementById('bulk-undated-list');
+  undatedList.innerHTML = '';
+  if (bulkGrouped.undated.length) {
+    const header = document.createElement('div');
+    header.className = 'bulk-undated-label';
+    header.textContent = `⚠ ${bulkGrouped.undated.length} archivo${bulkGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día manualmente:`;
+    undatedList.appendChild(header);
+    bulkGrouped.undated.forEach(file => {
+      const row = document.createElement('div');
+      row.className = 'bulk-undated-file';
+      const today = new Date().toISOString().slice(0, 10);
+      bulkUndatedDates[file.name] = today;
+      row.innerHTML = `
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(file.name)}</span>
+        <input type="date" value="${today}" data-filename="${escHtml(file.name)}">`;
+      undatedList.appendChild(row);
+    });
+    undatedList.querySelectorAll('input[type="date"]').forEach(inp => {
+      inp.addEventListener('change', e => { bulkUndatedDates[e.target.dataset.filename] = e.target.value; });
+    });
+  }
+
+  document.getElementById('bulk-step-drop').style.display = 'none';
+  document.getElementById('bulk-step-review').style.display = '';
+}
+
+async function confirmBulkUpload() {
+  const albumId = document.getElementById('bulk-album-select').value;
+  const album   = albums.find(a => a.id === albumId);
+  if (!album) return;
+
+  const btn      = document.getElementById('bulk-confirm-btn');
+  const progress = document.getElementById('bulk-progress');
+  btn.disabled   = true;
+
+  try {
+    const albumFolderId = await getAlbumFolderId(albumId);
+
+    // Merge undated into dated using assigned dates
+    const allGroups = { ...bulkGrouped.dated };
+    bulkGrouped.undated.forEach(file => {
+      const date = bulkUndatedDates[file.name];
+      if (!date) return;
+      if (!allGroups[date]) allGroups[date] = [];
+      allGroups[date].push(file);
+    });
+
+    const dates = Object.keys(allGroups).sort();
+    let totalFiles = 0;
+    let uploaded   = 0;
+    dates.forEach(d => totalFiles += allGroups[d].length);
+
+    for (const date of dates) {
+      const files = allGroups[date];
+      progress.textContent = `Guardando ${formatDate(date)}...`;
+
+      // Load existing day or create empty
+      let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
+      const dayFolderId = await getOrCreateFolder(date, albumFolderId);
+
+      for (const file of files) {
+        const isImg   = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+        let data = null;
+
+        if (isImg) {
+          // Compress images
+          data = await compressImageFile(file);
+        }
+
+        const blob    = data ? base64ToBlob(data) : file;
+        const fileId  = await uploadFile(blob, file.name, dayFolderId);
+        day.media.push({
+          type: isImg ? 'image' : 'video',
+          name: file.name,
+          driveFileId: fileId,
+          caption: ''
+        });
+        uploaded++;
+        progress.textContent = `Subiendo... ${uploaded}/${totalFiles}`;
+      }
+
+      // Save day.json
+      await writeJsonFile(
+        { version: 2, title: day.title, notes: day.notes, media: day.media },
+        'day.json',
+        dayFolderId
+      );
+
+      // Auto-set cover if album has none
+      if (!album.coverFileId) {
+        const firstImg = day.media.find(m => m.type === 'image' && m.driveFileId);
+        if (firstImg) {
+          album = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
+        }
+      }
+    }
+
+    progress.textContent = `✓ ${uploaded} archivo${uploaded > 1 ? 's' : ''} guardado${uploaded > 1 ? 's' : ''} correctamente`;
+    progress.className = 'bulk-progress';
+    setTimeout(() => {
+      closeBulkUpload();
+      renderAlbums();
+    }, 1500);
+
+  } catch(e) {
+    progress.textContent = 'Error: ' + e.message;
+    progress.className = 'bulk-progress error';
+    btn.disabled = false;
+  }
+}
+
+// Image compression helper (same as diary.html)
+function compressImageFile(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        const MAX = 1200;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('modal-bulk-upload').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeBulkUpload();
+});
+
 // ─── SLIDESHOW ────────────────────────────────────────────
 let ssItems    = [];
 let ssIdx      = 0;

@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://accounts.google.com/gsi/client" onload="onGsiLoaded()" async></script>
 <script src="drive.js"></script>
+<script src="exif.js"></script>
 <style>
 
 /* ─── DIARY PAGE ─── */
@@ -821,29 +822,92 @@ function compressImage(file) {
   });
 }
 
-function processFiles(files) {
+async function processFiles(files) {
   const allowed = ['image/', 'audio/', 'video/'];
   const valid = Array.from(files).filter(f => allowed.some(t => f.type.startsWith(t)));
   if (!valid.length) return;
+
+  // Check EXIF dates for images/videos
+  const imgVid = valid.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+  const audio  = valid.filter(f => f.type.startsWith('audio/'));
+
+  if (imgVid.length > 0) {
+    const grouped = await groupFilesByDate(imgVid);
+    const otherDays = Object.keys(grouped.dated).filter(d => d !== currentDate);
+
+    if (otherDays.length > 0) {
+      // Some files are from other days — ask user
+      const otherCount = otherDays.reduce((n, d) => n + grouped.dated[d].length, 0);
+      const msg = `${otherCount} archivo${otherCount > 1 ? 's' : ''} son de otro${otherDays.length > 1 ? 's' : ''} día${otherDays.length > 1 ? 's' : ''}:\n` +
+        otherDays.map(d => `• ${formatDate(d)}: ${grouped.dated[d].length} archivo${grouped.dated[d].length > 1 ? 's' : ''}`).join('\n') +
+        `\n\n¿Qué querés hacer?`;
+      const choice = confirm(msg + '\n\nAceptar = Guardar cada foto en su día correspondiente\nCancelar = Guardar todo en el día actual');
+
+      if (choice) {
+        // Save to correct days
+        await saveFilesToCorrectDays(grouped, audio);
+        return;
+      }
+      // Fall through: save all to current day
+    }
+  }
+
+  // Normal flow: save everything to current day
+  addFilesToCurrentDay(valid);
+}
+
+async function saveFilesToCorrectDays(grouped, audioFiles) {
+  setStatus('', 'Guardando en días correspondientes...');
+  const allDates = Object.keys(grouped.dated).sort();
+
+  for (const date of allDates) {
+    const files = grouped.dated[date];
+    let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
+    const dayFolderId = await getOrCreateFolder(date, albumFolderId);
+
+    for (const file of files) {
+      const isImg = file.type.startsWith('image/');
+      let data = null;
+      if (isImg) data = await compressImage(file);
+      const blob   = data ? base64ToBlob(data) : file;
+      const fileId = await uploadFile(blob, file.name, dayFolderId);
+      day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
+    }
+
+    await writeJsonFile(
+      { version: 2, title: day.title, notes: day.notes, media: day.media },
+      'day.json', dayFolderId
+    );
+  }
+
+  // Undated files and audios go to current day
+  const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
+  if (toCurrentDay.length) addFilesToCurrentDay(toCurrentDay);
+
+  setStatus('saved', 'Guardado en días correspondientes ✓');
+  setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
+}
+
+function addFilesToCurrentDay(files) {
   let loaded = 0;
-  valid.forEach(file => {
+  const total = files.length;
+  files.forEach(file => {
     const isImg   = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
     if (isImg) {
       compressImage(file).then(data => {
         currentDay.media.push({ type: 'image', name: file.name, data, caption: '' });
-        loaded++; if (loaded === valid.length) { markDirty(); renderMedia(); }
+        loaded++; if (loaded === total) { markDirty(); renderMedia(); }
       });
     } else if (isVideo) {
-      // Videos go directly to Drive on save — store as blob URL in memory for preview
       const blobUrl = URL.createObjectURL(file);
       currentDay.media.push({ type: 'video', name: file.name, data: blobUrl, _file: file, caption: '' });
-      loaded++; if (loaded === valid.length) { markDirty(); renderMedia(); }
+      loaded++; if (loaded === total) { markDirty(); renderMedia(); }
     } else {
       const reader = new FileReader();
       reader.onload = e => {
         currentDay.media.push({ type: 'audio', name: file.name, data: e.target.result, caption: '' });
-        loaded++; if (loaded === valid.length) { markDirty(); renderMedia(); }
+        loaded++; if (loaded === total) { markDirty(); renderMedia(); }
       };
       reader.readAsDataURL(file);
     }
