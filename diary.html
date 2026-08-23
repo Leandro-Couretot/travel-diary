@@ -367,6 +367,24 @@ audio { width: 100%; height: 32px; }
 /* ─── FEED MODAL ─── */
 #modal-feed .modal { max-width: 360px; }
 
+/* ─── HELP MODAL ─── */
+.help-section { padding: 1rem 1.5rem; border-bottom: 1px solid var(--ink-faint); }
+.help-section:last-child { border-bottom: none; }
+.help-section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1rem; margin-bottom: 0.6rem;
+}
+.help-item {
+  display: flex; gap: 0.5rem; margin-bottom: 0.4rem;
+  font-size: 0.83rem; line-height: 1.5;
+}
+.help-item-dot { color: var(--accent); flex-shrink: 0; }
+.help-tip {
+  font-size: 0.78rem; color: var(--ink-muted);
+  background: var(--accent-light); border-radius: var(--radius);
+  padding: 0.5rem 0.75rem; margin-top: 0.5rem; line-height: 1.5;
+}
+
 /* ─── LOADING ─── */
 .page-loading {
   display: flex; align-items: center; justify-content: center;
@@ -405,6 +423,7 @@ audio { width: 100%; height: 32px; }
     <input type="date" id="date-input" style="position:absolute;opacity:0;pointer-events:none;top:64px;right:1rem;">
     <button class="btn-nav" id="btn-album" title="Ver álbum">▣</button>
     <button class="btn-nav" id="btn-feed" title="Ver todos los días">☰</button>
+    <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
   </div>
 </header>
 
@@ -1347,6 +1366,60 @@ document.getElementById('date-input').addEventListener('change', e => {
   loadDay(e.target.value);
 });
 
+function openHelp()  { document.getElementById('modal-help-diary').classList.add('open'); }
+function closeHelp() { document.getElementById('modal-help-diary').classList.remove('open'); }
+document.getElementById('modal-help-diary').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeHelp();
+});
+
 </script>
+
+<!-- Modal: ayuda -->
+<div class="modal-overlay" id="modal-help-diary">
+  <div class="modal" style="max-width:480px;max-height:80vh;">
+    <div class="modal-header">
+      <div class="modal-title">¿Cómo usar el diario?</div>
+      <button class="modal-close" onclick="closeHelp()">×</button>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📅 Navegar entre días</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Usá <strong>← →</strong> en el header para ir al día anterior o siguiente.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá la fecha para abrir un selector de calendario y saltar a cualquier día.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>☰</strong> para ver todos los días guardados del álbum y saltar directamente a uno.</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">✏ Escribir</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el título para editarlo. Cada día puede tener su propio nombre.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Escribí tus notas en el área de texto debajo del título.</span></div>
+      <div class="help-tip">Acordate de tocar <strong>Guardar día</strong> antes de cambiar de día — los cambios no se guardan solos.</div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📷 Fotos y videos</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Arrastrá archivos al área de carga o tocala para seleccionarlos desde tu dispositivo.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Si las fotos son de un día diferente al actual, la app te pregunta si separarlas automáticamente en sus días correspondientes.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Swipe o flechas para pasar entre fotos.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Mantenés presionado el ícono <strong>⠿</strong> sobre un archivo y arrastrás para reordenar.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>☆ Portada</strong> en una foto para usarla como portada del álbum en la home.</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">🎙 Grabar audio</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el botón del micrófono para grabar. Tocá <strong>⏹</strong> para detener y guardar el audio en el día.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Cada audio tiene su propio campo de comentario.</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">▣ Vista álbum</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>▣</strong> en el header para ver todas las fotos del álbum en modo pantalla completa.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Swipe o usá las flechas para pasar entre días. Tocá <strong>✏</strong> para ir a editar ese día.</span></div>
+    </div>
+
+    <div style="padding:0.6rem 1.5rem 1rem;font-size:0.72rem;color:var(--ink-faint);text-align:right;letter-spacing:0.04em;">Versión 1.4</div>
+  </div>
+</div>
+
 </body>
 </html>

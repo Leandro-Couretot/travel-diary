@@ -114,6 +114,31 @@ main {
 }
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 
+/* ─── HELP MODAL ─── */
+.help-modal { max-width: 520px; max-height: 80vh; }
+.help-section { padding: 1rem 1.5rem; border-bottom: 1px solid var(--ink-faint); }
+.help-section:last-child { border-bottom: none; padding-bottom: 0.5rem; }
+.help-section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1rem; margin-bottom: 0.6rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.help-item {
+  display: flex; gap: 0.5rem; margin-bottom: 0.4rem;
+  font-size: 0.83rem; line-height: 1.5; color: var(--ink);
+}
+.help-item-dot { color: var(--accent); flex-shrink: 0; margin-top: 0.05rem; }
+.help-tip {
+  font-size: 0.78rem; color: var(--ink-muted);
+  background: var(--accent-light); border-radius: var(--radius);
+  padding: 0.5rem 0.75rem; margin-top: 0.5rem; line-height: 1.5;
+}
+.help-version {
+  padding: 0.6rem 1.5rem 1rem;
+  font-size: 0.72rem; color: var(--ink-faint);
+  text-align: right; letter-spacing: 0.04em;
+}
+
 /* ─── PLAY BUTTON ─── */
 .album-play-btn {
   position: absolute;
@@ -421,6 +446,7 @@ main {
   <div style="display:flex;gap:0.5rem;align-items:center;">
     <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.4</span>
     <button class="btn-nav" id="btn-bulk-upload" title="Carga masiva" style="display:none;" onclick="openBulkUpload()">⬆ Cargar</button>
+    <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>
   </div>
 </header>
@@ -896,6 +922,12 @@ document.getElementById('modal-new-album').addEventListener('click', e => {
 document.getElementById('modal-share-album').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeShareModal();
 });
+document.getElementById('modal-help').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeHelp();
+});
+
+function openHelp()  { document.getElementById('modal-help').classList.add('open'); }
+function closeHelp() { document.getElementById('modal-help').classList.remove('open'); }
 
 // Wait for GSI script to load then init
 (function waitForGSI() {
@@ -906,6 +938,64 @@ document.getElementById('modal-share-album').addEventListener('click', e => {
   }
 })();
 </script>
+
+<!-- Modal: ayuda -->
+<div class="modal-overlay" id="modal-help">
+  <div class="modal help-modal">
+    <div class="modal-header">
+      <div class="modal-title">¿Cómo usar la app?</div>
+      <button class="modal-close" onclick="closeHelp()">×</button>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">🗂 Tus álbumes</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Cada viaje es un álbum. Tocá <strong>Nuevo álbum</strong> para crear uno, dale un nombre y elegí las fechas.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá la tarjeta de un álbum para entrar al diario de ese viaje.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el ícono <strong>↗</strong> en la tarjeta para compartir el álbum con otra persona.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>▶</strong> en la tarjeta para ver un slideshow automático con todas las fotos y videos del álbum.</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">⬆ Carga masiva</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>⬆ Cargar</strong> en el header para subir muchas fotos y videos de una sola vez.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>La app lee la fecha de cada archivo automáticamente y los agrupa por día.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Los archivos sin fecha los podés asignar manualmente a un día antes de confirmar.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Elegís el álbum destino y la app guarda todo en Drive en las carpetas correctas.</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📅 El diario</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Usá las flechas <strong>← →</strong> o tocá la fecha en el header para navegar entre días.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Escribí el título del día y tus notas en los campos de texto.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Subí fotos, videos y audios arrastrando o tocando la zona de carga. Si las fotos son de otro día, la app te pregunta si separarlas automáticamente.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el ícono <strong>⠿</strong> sobre una foto o audio para arrastrarlos y cambiar el orden.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Swipe o flechas para pasar entre fotos.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>☆ Portada</strong> en una foto para usarla como portada del álbum.</span></div>
+      <div class="help-tip">Acordate de tocar <strong>Guardar día</strong> (o Cmd+S) antes de cambiar de día — los cambios no se guardan solos.</div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">🎙 Grabar audio</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el botón del micrófono para grabar un audio en el momento, como en WhatsApp.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>⏹</strong> para detener. El audio queda en el día con su propio comentario.</span></div>
+      <div class="help-tip">La grabación necesita HTTPS para funcionar. Desde la URL de GitHub Pages funciona sin problemas.</div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">▣ Vista álbum y slideshow</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Desde el diario, tocá <strong>▣</strong> en el header para ver todas las fotos del álbum en modo pantalla completa.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Swipe o flechas para pasar entre días. Tocá <strong>✏</strong> para ir a editar ese día.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Desde la home, tocá <strong>▶</strong> en un álbum para el slideshow automático: fotos cada 3–7 segundos, videos completos.</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">☰ Menú de días</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>☰</strong> en el diario para ver todos los días guardados del álbum y saltar directamente a uno.</span></div>
+    </div>
+
+    <div class="help-version">Versión 1.4</div>
+  </div>
+</div>
 
 <!-- Modal: carga masiva -->
 <div class="modal-overlay" id="modal-bulk-upload">
