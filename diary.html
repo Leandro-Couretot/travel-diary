@@ -367,6 +367,28 @@ audio { width: 100%; height: 32px; }
 /* ─── FEED MODAL ─── */
 #modal-feed .modal { max-width: 360px; }
 
+/* ─── BULK UPLOAD (diary) ─── */
+.bulk-drop-zone {
+  border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg);
+  padding: 2rem 1.5rem; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem;
+}
+.bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
+.bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
+.bulk-drop-text { font-size: 0.875rem; color: var(--ink-muted); }
+.bulk-drop-text strong { color: var(--ink); font-weight: 500; }
+.bulk-drop-sub { font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.25rem; }
+.bulk-summary-title { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 0.75rem; }
+.bulk-day-group { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--ink-faint); font-size: 0.875rem; }
+.bulk-day-group:last-child { border-bottom: none; }
+.bulk-day-date { font-family: 'DM Serif Display', serif; font-size: 0.95rem; min-width: 100px; }
+.bulk-day-count { color: var(--ink-muted); font-size: 0.8rem; flex: 1; }
+.bulk-undated-label { font-size: 0.8rem; color: var(--red); margin-bottom: 0.4rem; }
+.bulk-undated-file { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.8rem; color: var(--ink-muted); }
+.bulk-undated-file input[type="date"] { border: 1px solid var(--ink-faint); border-radius: var(--radius); padding: 0.2rem 0.4rem; font-size: 0.78rem; font-family: 'DM Sans', sans-serif; background: none; color: var(--ink); }
+.bulk-progress { margin-top: 0.75rem; font-size: 0.82rem; color: var(--ink-muted); text-align: center; min-height: 1.4em; }
+.bulk-progress.error { color: var(--red); }
+
 /* ─── HELP MODAL ─── */
 .help-section { padding: 1rem 1.5rem; border-bottom: 1px solid var(--ink-faint); }
 .help-section:last-child { border-bottom: none; }
@@ -563,6 +585,7 @@ audio { width: 100%; height: 32px; }
 <header class="app-header">
   <a href="index.html" class="app-logo">旅 <span id="album-name-header">diario</span></a>
   <div style="display:flex;gap:0.5rem;align-items:center;">
+    <button class="btn-nav" id="btn-bulk-diary" title="Carga masiva">⬆</button>
     <button class="btn-nav" id="btn-album" title="Ver álbum">▣</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
   </div>
@@ -1661,6 +1684,146 @@ document.getElementById('date-input').addEventListener('change', e => {
   loadDay(e.target.value);
 });
 
+// ─── BULK UPLOAD (diary) ─────────────────────────────────
+let bulkDiaryGrouped = null;
+let bulkDiaryUndatedDates = {};
+
+function openBulkDiary() {
+  bulkDiaryGrouped = null;
+  bulkDiaryUndatedDates = {};
+  document.getElementById('bulk-diary-step-drop').style.display = '';
+  document.getElementById('bulk-diary-step-review').style.display = 'none';
+  document.getElementById('bulk-diary-progress').textContent = '';
+  document.getElementById('modal-bulk-diary').classList.add('open');
+}
+function closeBulkDiary() {
+  document.getElementById('modal-bulk-diary').classList.remove('open');
+}
+
+const bulkDiaryDrop  = document.getElementById('bulk-diary-drop-zone');
+const bulkDiaryInput = document.getElementById('bulk-diary-file-input');
+
+bulkDiaryDrop.addEventListener('click', () => bulkDiaryInput.click());
+bulkDiaryDrop.addEventListener('dragover', e => { e.preventDefault(); bulkDiaryDrop.classList.add('drag-over'); });
+bulkDiaryDrop.addEventListener('dragleave', () => bulkDiaryDrop.classList.remove('drag-over'));
+bulkDiaryDrop.addEventListener('drop', e => { e.preventDefault(); bulkDiaryDrop.classList.remove('drag-over'); processBulkDiaryFiles(e.dataTransfer.files); });
+bulkDiaryInput.addEventListener('change', e => { if (e.target.files.length) processBulkDiaryFiles(e.target.files); e.target.value = ''; });
+
+async function processBulkDiaryFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+  if (!files.length) return;
+  bulkDiaryDrop.innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
+  bulkDiaryGrouped = await groupFilesByDate(files);
+  renderBulkDiaryReview();
+}
+
+function renderBulkDiaryReview() {
+  const datedList = document.getElementById('bulk-diary-dated-list');
+  datedList.innerHTML = '';
+  const sortedDates = Object.keys(bulkDiaryGrouped.dated).sort();
+  if (sortedDates.length) {
+    sortedDates.forEach(date => {
+      const files = bulkDiaryGrouped.dated[date];
+      const row = document.createElement('div');
+      row.className = 'bulk-day-group';
+      const imgs = files.filter(f => f.type.startsWith('image/')).length;
+      const vids = files.filter(f => f.type.startsWith('video/')).length;
+      const parts = [];
+      if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`);
+      if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
+      row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
+      datedList.appendChild(row);
+    });
+  }
+
+  const undatedList = document.getElementById('bulk-diary-undated-list');
+  undatedList.innerHTML = '';
+  if (bulkDiaryGrouped.undated.length) {
+    const header = document.createElement('div');
+    header.className = 'bulk-undated-label';
+    header.textContent = `⚠ ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
+    undatedList.appendChild(header);
+    bulkDiaryGrouped.undated.forEach(file => {
+      const row = document.createElement('div');
+      row.className = 'bulk-undated-file';
+      const today = todayStr();
+      bulkDiaryUndatedDates[file.name] = today;
+      row.innerHTML = `
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${file.name}</span>
+        <input type="date" value="${today}" data-filename="${file.name}">`;
+      undatedList.appendChild(row);
+    });
+    undatedList.querySelectorAll('input[type="date"]').forEach(inp => {
+      inp.addEventListener('change', e => { bulkDiaryUndatedDates[e.target.dataset.filename] = e.target.value; });
+    });
+  }
+
+  document.getElementById('bulk-diary-step-drop').style.display = 'none';
+  document.getElementById('bulk-diary-step-review').style.display = '';
+}
+
+async function confirmBulkDiary() {
+  const btn      = document.getElementById('bulk-diary-confirm-btn');
+  const progress = document.getElementById('bulk-diary-progress');
+  btn.disabled   = true;
+
+  try {
+    const allGroups = { ...bulkDiaryGrouped.dated };
+    bulkDiaryGrouped.undated.forEach(file => {
+      const date = bulkDiaryUndatedDates[file.name];
+      if (!date) return;
+      if (!allGroups[date]) allGroups[date] = [];
+      allGroups[date].push(file);
+    });
+
+    const dates = Object.keys(allGroups).sort();
+    let total = 0, uploaded = 0;
+    dates.forEach(d => total += allGroups[d].length);
+
+    for (const date of dates) {
+      progress.textContent = `Guardando ${formatDate(date)}...`;
+      let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
+      const dayFolderId = await getOrCreateFolder(date, albumFolderId);
+
+      for (const file of allGroups[date]) {
+        const isImg = file.type.startsWith('image/');
+        let blob = file;
+        if (isImg) { const data = await compressImage(file); blob = base64ToBlob(data); }
+        const fileId = await uploadFile(blob, file.name, dayFolderId);
+        day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
+        uploaded++;
+        progress.textContent = `Subiendo... ${uploaded}/${total}`;
+      }
+
+      await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
+
+      // Auto-set cover
+      if (albumMeta && !albumMeta.coverFileId) {
+        const firstImg = day.media.find(m => m.type === 'image' && m.driveFileId);
+        if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
+      }
+    }
+
+    progress.textContent = `✓ ${uploaded} archivo${uploaded > 1 ? 's' : ''} guardado${uploaded > 1 ? 's' : ''} correctamente`;
+    setTimeout(() => {
+      closeBulkDiary();
+      // Refresh current day if it was among uploaded
+      loadDay(currentDate);
+      allDates = []; // force list/cal refresh
+    }, 1500);
+
+  } catch(e) {
+    progress.textContent = 'Error: ' + e.message;
+    progress.className = 'bulk-progress error';
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('modal-bulk-diary').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeBulkDiary();
+});
+document.getElementById('btn-bulk-diary').addEventListener('click', openBulkDiary);
+
 function openHelp()  { document.getElementById('modal-help-diary').classList.add('open'); }
 function closeHelp() { document.getElementById('modal-help-diary').classList.remove('open'); }
 document.getElementById('modal-help-diary').addEventListener('click', e => {
@@ -1668,6 +1831,35 @@ document.getElementById('modal-help-diary').addEventListener('click', e => {
 });
 
 </script>
+
+<!-- Modal: carga masiva (diary) -->
+<div class="modal-overlay" id="modal-bulk-diary">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">Carga masiva</div>
+      <button class="modal-close" onclick="closeBulkDiary()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="bulk-diary-step-drop">
+        <div class="bulk-drop-zone" id="bulk-diary-drop-zone">
+          <div class="bulk-drop-icon">📁</div>
+          <div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div>
+          <div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>
+        </div>
+        <input type="file" id="bulk-diary-file-input" accept="image/*,video/*" multiple style="display:none;">
+      </div>
+      <div id="bulk-diary-step-review" style="display:none;">
+        <div class="bulk-summary">
+          <div class="bulk-summary-title">Resumen de archivos</div>
+          <div id="bulk-diary-dated-list"></div>
+          <div id="bulk-diary-undated-list"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" id="bulk-diary-confirm-btn" onclick="confirmBulkDiary()">Guardar en este álbum</button>
+        <div class="bulk-progress" id="bulk-diary-progress"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: ayuda -->
 <div class="modal-overlay" id="modal-help-diary">
