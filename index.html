@@ -528,14 +528,9 @@ async function initGoogleAuth() {
   const joinFrom    = sp.get('from') || null;
   const joinTo      = sp.get('to')   || null;
 
-  initDrive(async () => {
-    if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
-    if (redirectUrl) { location.href = redirectUrl; return; }
-    updateDriveBtn();
-    await renderAlbums();
-    await checkMigratable();
-  });
+  const hasSavedToken = !!localStorage.getItem('drive_token');
 
+  // Register tokenClient for first-time login
   if (window.google && window.google.accounts) {
     window._tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: DRIVE_CLIENT_ID,
@@ -562,10 +557,25 @@ async function initGoogleAuth() {
     });
   }
 
-  if (!isDriveConnected()) {
+  if (!hasSavedToken) {
+    // No token at all — show login immediately
     if (joinId) renderJoinPending(joinName);
     else renderDisconnected();
+    return;
   }
+
+  // Token exists — bootstrap Drive, show disconnect only on failure
+  initDrive(async () => {
+    if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
+    if (redirectUrl) { location.href = redirectUrl; return; }
+    updateDriveBtn();
+    await renderAlbums();
+    await checkMigratable();
+  }, () => {
+    // Bootstrap failed (expired token etc)
+    if (joinId) renderJoinPending(joinName);
+    else renderDisconnected();
+  });
 }
 
 function handleDriveBtn() {
