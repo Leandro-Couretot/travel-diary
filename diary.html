@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>旅 — Diario</title>
 <link rel="stylesheet" href="style.css">
-<script src="https://accounts.google.com/gsi/client" onload="onGsiLoaded()" async></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <script src="drive.js"></script>
 <script src="exif.js"></script>
 <style>
@@ -1694,20 +1694,16 @@ function openBulkDiary() {
   document.getElementById('bulk-diary-step-drop').style.display = '';
   document.getElementById('bulk-diary-step-review').style.display = 'none';
   document.getElementById('bulk-diary-progress').textContent = '';
+  // Reset drop zone
+  document.getElementById('bulk-diary-drop-zone').innerHTML = `
+    <div class="bulk-drop-icon">📁</div>
+    <div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div>
+    <div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-diary').classList.add('open');
 }
 function closeBulkDiary() {
   document.getElementById('modal-bulk-diary').classList.remove('open');
 }
-
-const bulkDiaryDrop  = document.getElementById('bulk-diary-drop-zone');
-const bulkDiaryInput = document.getElementById('bulk-diary-file-input');
-
-bulkDiaryDrop.addEventListener('click', () => bulkDiaryInput.click());
-bulkDiaryDrop.addEventListener('dragover', e => { e.preventDefault(); bulkDiaryDrop.classList.add('drag-over'); });
-bulkDiaryDrop.addEventListener('dragleave', () => bulkDiaryDrop.classList.remove('drag-over'));
-bulkDiaryDrop.addEventListener('drop', e => { e.preventDefault(); bulkDiaryDrop.classList.remove('drag-over'); processBulkDiaryFiles(e.dataTransfer.files); });
-bulkDiaryInput.addEventListener('change', e => { if (e.target.files.length) processBulkDiaryFiles(e.target.files); e.target.value = ''; });
 
 async function processBulkDiaryFiles(fileList) {
   const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
@@ -1823,6 +1819,21 @@ document.getElementById('modal-bulk-diary').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeBulkDiary();
 });
 document.getElementById('btn-bulk-diary').addEventListener('click', openBulkDiary);
+// Bulk diary drop zone events (after DOM ready)
+document.getElementById('bulk-diary-drop-zone').addEventListener('click', () => document.getElementById('bulk-diary-file-input').click());
+document.getElementById('bulk-diary-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
+document.getElementById('bulk-diary-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
+document.getElementById('bulk-diary-drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); processBulkDiaryFiles(e.dataTransfer.files); });
+document.getElementById('bulk-diary-file-input').addEventListener('change', e => { if (e.target.files.length) processBulkDiaryFiles(e.target.files); e.target.value = ''; });
+
+// GSI polling — same fix as index.html
+(function waitForGSI() {
+  if (window.google && window.google.accounts) {
+    onGsiLoaded();
+  } else {
+    setTimeout(waitForGSI, 50);
+  }
+})();
 
 function openHelp()  { document.getElementById('modal-help-diary').classList.add('open'); }
 function closeHelp() { document.getElementById('modal-help-diary').classList.remove('open'); }
