@@ -932,9 +932,6 @@ document.getElementById('modal-new-album').addEventListener('click', e => {
 document.getElementById('modal-share-album').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeShareModal();
 });
-document.getElementById('modal-help').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeHelp();
-});
 
 function openHelp()  { document.getElementById('modal-help').classList.add('open'); }
 function closeHelp() { document.getElementById('modal-help').classList.remove('open'); }
@@ -1065,6 +1062,11 @@ function closeHelp() { document.getElementById('modal-help').classList.remove('o
 </div>
 
 <script>
+// Modal help listener (here because modal-help HTML is above this script)
+document.getElementById('modal-help').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeHelp();
+});
+
 // ─── BULK UPLOAD ─────────────────────────────────────────
 let bulkGrouped  = null; // { dated: {date: [File]}, undated: [File] }
 let bulkUndatedDates = {}; // filename -> assigned date
