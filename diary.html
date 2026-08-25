@@ -1815,18 +1815,7 @@ async function confirmBulkDiary() {
   }
 }
 
-document.getElementById('modal-bulk-diary').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeBulkDiary();
-});
-document.getElementById('btn-bulk-diary').addEventListener('click', openBulkDiary);
-// Bulk diary drop zone events (after DOM ready)
-document.getElementById('bulk-diary-drop-zone').addEventListener('click', () => document.getElementById('bulk-diary-file-input').click());
-document.getElementById('bulk-diary-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
-document.getElementById('bulk-diary-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
-document.getElementById('bulk-diary-drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); processBulkDiaryFiles(e.dataTransfer.files); });
-document.getElementById('bulk-diary-file-input').addEventListener('change', e => { if (e.target.files.length) processBulkDiaryFiles(e.target.files); e.target.value = ''; });
-
-// GSI polling — same fix as index.html
+// GSI polling
 (function waitForGSI() {
   if (window.google && window.google.accounts) {
     onGsiLoaded();
@@ -1837,9 +1826,6 @@ document.getElementById('bulk-diary-file-input').addEventListener('change', e =>
 
 function openHelp()  { document.getElementById('modal-help-diary').classList.add('open'); }
 function closeHelp() { document.getElementById('modal-help-diary').classList.remove('open'); }
-document.getElementById('modal-help-diary').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeHelp();
-});
 
 </script>
 
@@ -1920,5 +1906,20 @@ document.getElementById('modal-help-diary').addEventListener('click', e => {
   </div>
 </div>
 
+<script>
+// All listeners that depend on modal HTML being in the DOM
+document.getElementById('modal-help-diary').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeHelp();
+});
+document.getElementById('modal-bulk-diary').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeBulkDiary();
+});
+document.getElementById('btn-bulk-diary').addEventListener('click', openBulkDiary);
+document.getElementById('bulk-diary-drop-zone').addEventListener('click', () => document.getElementById('bulk-diary-file-input').click());
+document.getElementById('bulk-diary-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
+document.getElementById('bulk-diary-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
+document.getElementById('bulk-diary-drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); processBulkDiaryFiles(e.dataTransfer.files); });
+document.getElementById('bulk-diary-file-input').addEventListener('change', e => { if (e.target.files.length) processBulkDiaryFiles(e.target.files); e.target.value = ''; });
+</script>
 </body>
 </html>
