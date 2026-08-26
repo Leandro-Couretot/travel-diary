@@ -2074,7 +2074,7 @@ function closeBulkDiary() {
 async function processBulkDiaryFiles(fileList) {
   const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
   if (!files.length) return;
-  bulkDiaryDrop.innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
+  document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
   bulkDiaryGrouped = await groupFilesByDate(files);
   renderBulkDiaryReview();
 }
