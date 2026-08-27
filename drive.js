@@ -332,7 +332,60 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
   return { alreadyJoined: false };
 }
 
-// ─── MIGRATION ───────────────────────────────────────────
+// ─── AUTHENTICATED IMAGE URLS ────────────────────────────
+// Cache de blob URLs para no re-descargar imágenes
+const _imgCache = {};
+
+async function getAuthImgUrl(fileId, size = 'w800') {
+  if (!fileId) return '';
+  const cacheKey = `${fileId}_${size}`;
+  if (_imgCache[cacheKey]) return _imgCache[cacheKey];
+
+  // Intentar con thumbnail URL primero (más rápido, no requiere auth en browser normal)
+  // Si falla (PWA/contexto aislado), caer a API autenticada
+  const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
+
+  // Test si la thumbnail URL funciona
+  try {
+    const testRes = await fetch(thumbUrl, { method: 'HEAD', mode: 'no-cors' });
+    // no-cors siempre "succeeds" opaquely, así que usamos la URL directo
+    // y dejamos que el <img> maneje el error via onerror
+    _imgCache[cacheKey] = thumbUrl;
+    return thumbUrl;
+  } catch {
+    // Caer a API autenticada
+    return await fetchAuthImgUrl(fileId);
+  }
+}
+
+async function fetchAuthImgUrl(fileId) {
+  const cacheKey = `auth_${fileId}`;
+  if (_imgCache[cacheKey]) return _imgCache[cacheKey];
+  try {
+    const res  = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    _imgCache[cacheKey] = url;
+    return url;
+  } catch(e) {
+    console.warn('Error cargando imagen autenticada:', e);
+    return '';
+  }
+}
+
+// Helper para img elements: intenta thumbnail, si falla usa API auth
+function setAuthImg(imgEl, fileId, size = 'w800') {
+  if (!fileId || !imgEl) return;
+  const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
+  imgEl.src = thumbUrl;
+  imgEl.onerror = async () => {
+    imgEl.onerror = null; // evitar loop
+    const authUrl = await fetchAuthImgUrl(fileId);
+    if (authUrl) imgEl.src = authUrl;
+  };
+}
+
+
 // Moves old flat structure (travel-diary/YYYY-MM-DD/) into album folder
 
 async function migrateOldDaysToAlbum(albumId) {

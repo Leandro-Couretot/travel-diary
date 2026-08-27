@@ -701,11 +701,8 @@ async function renderAlbums() {
     card.href = `diary.html?album=${encodeURIComponent(album.id)}`;
     card.style.animationDelay = `${idx * 0.07}s`;
 
-    const coverSrc = album.coverFileId
-      ? `https://drive.google.com/thumbnail?id=${album.coverFileId}&sz=w600`
-      : null;
-    const coverHtml = coverSrc
-      ? `<img class="album-cover" src="${coverSrc}" alt="${escHtml(album.name)}" loading="lazy">`
+    const coverHtml = album.coverFileId
+      ? `<img class="album-cover" id="cover-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
       : `<div class="album-cover-empty">旅</div>`;
     const fromFmt = album.dateFrom ? formatDate(album.dateFrom) : '—';
     const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
@@ -723,6 +720,10 @@ async function renderAlbums() {
           <div class="album-arrow">→</div>
         </div>
       </div>`;
+
+    if (album.coverFileId) {
+      setAuthImg(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600');
+    }
 
     // Play button opens slideshow without navigating to diary
     card.querySelector('.album-play-btn').addEventListener('click', e => {
@@ -765,11 +766,8 @@ async function renderAlbums() {
       card.href = `diary.html?sharedFolder=${encodeURIComponent(album.folderDriveId)}`;
       card.style.animationDelay = `${idx * 0.07}s`;
 
-      const coverSrc = album.coverFileId
-        ? `https://drive.google.com/thumbnail?id=${album.coverFileId}&sz=w600`
-        : null;
-      const coverHtml = coverSrc
-        ? `<img class="album-cover" src="${coverSrc}" alt="${escHtml(album.name)}" loading="lazy">`
+      const coverHtml = album.coverFileId
+        ? `<img class="album-cover" id="cover-sh-${escHtml(album.folderDriveId)}" alt="${escHtml(album.name)}" loading="lazy">`
         : `<div class="album-cover-empty">旅</div>`;
       const fromFmt = album.dateFrom ? formatDate(album.dateFrom) : '—';
       const toFmt   = album.dateTo   ? formatDate(album.dateTo)   : '—';
@@ -788,6 +786,10 @@ async function renderAlbums() {
             <div class="album-arrow">→</div>
           </div>
         </div>`;
+
+      if (album.coverFileId) {
+        setAuthImg(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600');
+      }
 
       card.querySelector('.album-play-btn').addEventListener('click', e => {
         e.preventDefault();

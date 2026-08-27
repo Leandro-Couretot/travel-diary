@@ -1069,8 +1069,8 @@ async function renderListTab() {
       if (firstImg) {
         const img = document.createElement('img');
         img.className = 'list-day-thumb';
-        img.src = `https://drive.google.com/thumbnail?id=${firstImg.driveFileId}&sz=w80`;
         img.style.borderRadius = '4px';
+        setAuthImg(img, firstImg.driveFileId, 'w80');
         thumb.replaceWith(img);
       }
     }).catch(() => {});
@@ -1108,13 +1108,12 @@ async function renderCalendar() {
         title: day.title || '',
         coverFileId: (day.media || []).find(m => m.type === 'image' && m.driveFileId)?.driveFileId || null
       };
-      // Update cell if visible
       const cell = document.querySelector(`.cal-cell[data-date="${date}"]`);
       if (cell && calDayData[date].coverFileId) {
         const img = document.createElement('img');
         img.className = 'cal-cell-img';
-        img.src = `https://drive.google.com/thumbnail?id=${calDayData[date].coverFileId}&sz=w200`;
         img.loading = 'lazy';
+        setAuthImg(img, calDayData[date].coverFileId, 'w200');
         cell.insertBefore(img, cell.firstChild);
         cell.querySelector('.cal-cell-num')?.classList.remove('dark');
       }
@@ -1151,9 +1150,7 @@ function renderCalendarMonth(wrap) {
         const isToday   = dateStr === today;
         const isCurrent = dateStr === currentDate;
         const data      = calDayData[dateStr];
-        const imgHtml   = data?.coverFileId
-          ? `<img class="cal-cell-img" src="https://drive.google.com/thumbnail?id=${data.coverFileId}&sz=w200" loading="lazy">`
-          : '';
+        const imgHtml   = data?.coverFileId ? `<img class="cal-cell-img" id="cal-${dateStr}" loading="lazy">` : '';
         const numClass  = imgHtml ? '' : ' dark';
         let cls = 'cal-cell';
         if (hasContent)  cls += ' has-content';
@@ -1166,6 +1163,14 @@ function renderCalendarMonth(wrap) {
         </div>`;
       }).join('')}
     </div>`;
+
+  // Set authenticated images on calendar cells
+  Object.keys(calDayData).forEach(date => {
+    const data = calDayData[date];
+    if (!data?.coverFileId) return;
+    const img = wrap.querySelector(`#cal-${date}`);
+    if (img) setAuthImg(img, data.coverFileId, 'w200');
+  });
 }
 
 function calNavMonth(delta) {
@@ -1279,8 +1284,11 @@ function buildBookPage(page, idx) {
     imgs.forEach(img => {
       const cell = document.createElement('div');
       cell.className = 'bp';
-      const src = `https://drive.google.com/thumbnail?id=${img.driveFileId}&sz=w800`;
-      cell.innerHTML = `<img src="${src}" loading="lazy" alt="">`;
+      const imgEl = document.createElement('img');
+      imgEl.loading = 'lazy';
+      imgEl.alt = '';
+      setAuthImg(imgEl, img.driveFileId, 'w800');
+      cell.appendChild(imgEl);
       grid.appendChild(cell);
     });
     photoArea.appendChild(grid);
@@ -1421,10 +1429,10 @@ function renderMedia() {
     const isCover = albumMeta && albumMeta.coverFileId && item.driveFileId === albumMeta.coverFileId;
 
     if (item.type === 'image') {
-      const imgSrc = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w1200` : '');
+      const imgSrc = item.data || '';
       card.innerHTML = `
         <div class="drag-handle">⠿⠿⠿</div>
-        <img class="media-thumb" src="${imgSrc}" alt="${item.name}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;">
+        <img class="media-thumb" id="mt-${idx}" alt="${item.name}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;${imgSrc ? `src="${imgSrc}"` : ''}">
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <div class="media-footer-actions">
@@ -1432,6 +1440,9 @@ function renderMedia() {
             <button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}">${isCover ? '★ Portada' : '☆ Portada'}</button>
           </div>
         </div>`;
+      const imgEl = card.querySelector(`#mt-${idx}`);
+      if (item.data) { imgEl.src = item.data; }
+      else if (item.driveFileId) { setAuthImg(imgEl, item.driveFileId, 'w1200'); }
 
     } else if (item.type === 'video') {
       const videoSrc = item.data || '';
@@ -1691,16 +1702,17 @@ function renderAlbumPage() {
   document.getElementById('album-btn-next').disabled = albumIdx === albumDays.length - 1;
   const heroEl = document.getElementById('album-hero');
   if (photo) {
-    const src = photo.data || (photo.driveFileId ? `https://drive.google.com/thumbnail?id=${photo.driveFileId}&sz=w1200` : '');
     const caption = photo.caption ? `<div class="album-caption">${photo.caption}</div>` : '';
     const dots = images.length > 1
       ? `<div class="album-dots">${images.map((_, i) => `<div class="album-dot${i === albumPhotoIdx ? ' active' : ''}"></div>`).join('')}</div>` : '';
-    heroEl.innerHTML = `<img src="${src}" alt="${photo.name}">
+    heroEl.innerHTML = `<img id="album-hero-img" alt="${photo.name}">
       <div class="album-photo-nav">
         <div class="album-photo-prev" onclick="albumPhotoNav(-1)"></div>
         <div class="album-photo-next" onclick="albumPhotoNav(1)"></div>
       </div>${caption}${dots}`;
-    addThumbFallback(heroEl.querySelector('img'), photo);
+    const heroImg = document.getElementById('album-hero-img');
+    if (photo.data) { heroImg.src = photo.data; }
+    else if (photo.driveFileId) { setAuthImg(heroImg, photo.driveFileId, 'w1200'); }
   } else {
     heroEl.innerHTML = `<div class="album-hero-empty">旅</div>`;
   }
@@ -1712,11 +1724,15 @@ function renderAlbumPage() {
   const strip = document.getElementById('album-strip');
   if (images.length > 1) {
     strip.style.display = 'flex';
-    strip.innerHTML = images.map((img, i) => {
-      const src = img.data || (img.driveFileId ? `https://drive.google.com/thumbnail?id=${img.driveFileId}&sz=w200` : '');
-      return `<img class="album-strip-thumb${i === albumPhotoIdx ? ' active' : ''}" src="${src}" onclick="albumGoPhoto(${i})">`;
-    }).join('');
-    strip.querySelectorAll('img').forEach((imgEl, i) => addThumbFallback(imgEl, images[i]));
+    strip.innerHTML = images.map((img, i) =>
+      `<img class="album-strip-thumb${i === albumPhotoIdx ? ' active' : ''}" id="strip-${i}" onclick="albumGoPhoto(${i})">`
+    ).join('');
+    images.forEach((img, i) => {
+      const imgEl = document.getElementById(`strip-${i}`);
+      if (!imgEl) return;
+      if (img.data) { imgEl.src = img.data; }
+      else if (img.driveFileId) { setAuthImg(imgEl, img.driveFileId, 'w200'); }
+    });
   } else { strip.style.display = 'none'; }
 }
 
@@ -1926,13 +1942,14 @@ function closeLightbox() {
 
 function renderLightbox() {
   const item = lbImages[lbIdx];
-  const src  = item.data || (item.driveFileId ? `https://drive.google.com/thumbnail?id=${item.driveFileId}&sz=w2000` : '');
   const img  = document.getElementById('lightbox-img');
   img.style.opacity = '0';
-  img.onerror = null;
   img.onload = () => { img.style.opacity = '1'; };
-  addThumbFallback(img, item);
-  img.src = src;
+  if (item.data) {
+    img.src = item.data;
+  } else if (item.driveFileId) {
+    setAuthImg(img, item.driveFileId, 'w2000');
+  }
   document.getElementById('lightbox-caption').textContent = item.caption || '';
   document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
   document.getElementById('lightbox-prev').disabled = lbIdx === 0;
