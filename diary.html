@@ -918,12 +918,12 @@ async function onGsiLoaded() {
 
   const saved = localStorage.getItem('drive_token');
   if (!saved) {
-    location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
+    location.replace(`index.html?redirect=${encodeURIComponent(location.href)}`);
     return;
   }
 
   const redirectToLogin = () => {
-    location.href = `index.html?redirect=${encodeURIComponent(location.href)}`;
+    location.replace(`index.html?redirect=${encodeURIComponent(location.href)}`);
   };
 
   initDrive(async () => {
@@ -939,7 +939,7 @@ async function bootstrapDiaryPage() {
       document.getElementById('main-content').innerHTML = `
         <div class="page-loading" style="flex-direction:column;gap:1rem;">
           <div>Este álbum compartido ya no está disponible.</div>
-          <a href="index.html" style="color:var(--accent);">← Volver a mis viajes</a>
+          <a href="index.html" style="color:var(--accent);" onclick="event.preventDefault();window.location.replace('index.html');">← Volver a mis viajes</a>
         </div>`;
       return;
     }
