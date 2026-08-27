@@ -550,7 +550,7 @@ async function initGoogleAuth() {
           return;
         }
         const rUrl = sp2.get('redirect');
-        if (rUrl) { location.href = rUrl; return; }
+        if (rUrl) { location.replace(rUrl); return; }
         updateDriveBtn();
         await renderAlbums();
         await checkMigratable();
@@ -568,7 +568,7 @@ async function initGoogleAuth() {
   // Token exists — bootstrap Drive, show disconnect only on failure
   initDrive(async () => {
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
-    if (redirectUrl) { location.href = redirectUrl; return; }
+    if (redirectUrl) { location.replace(redirectUrl); return; }
     updateDriveBtn();
     await renderAlbums();
     await checkMigratable();
@@ -650,7 +650,7 @@ async function handleJoin(folderId, albumName, dateFrom, dateTo) {
       <div class="connect-state fade-up">
         <h2>No se pudo unir al álbum</h2>
         <p>${escHtml(e.message)}</p>
-        <button class="btn btn-primary" onclick="location.href='index.html'">Ir a mis viajes</button>
+        <button class="btn btn-primary" onclick="location.replace('index.html')">Ir a mis viajes</button>
       </div>`;
   }
 }
@@ -699,6 +699,11 @@ async function renderAlbums() {
     const card = document.createElement('a');
     card.className = 'album-card';
     card.href = `diary.html?album=${encodeURIComponent(album.id)}`;
+    card.onclick = e => {
+      if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn')) return;
+      e.preventDefault();
+      location.replace(`diary.html?album=${encodeURIComponent(album.id)}`);
+    };
     card.style.animationDelay = `${idx * 0.07}s`;
 
     const coverHtml = album.coverFileId
@@ -764,6 +769,11 @@ async function renderAlbums() {
       const card = document.createElement('a');
       card.className = 'album-card';
       card.href = `diary.html?sharedFolder=${encodeURIComponent(album.folderDriveId)}`;
+      card.onclick = e => {
+        if (e.target.closest('.album-play-btn')) return;
+        e.preventDefault();
+        location.replace(`diary.html?sharedFolder=${encodeURIComponent(album.folderDriveId)}`);
+      };
       card.style.animationDelay = `${idx * 0.07}s`;
 
       const coverHtml = album.coverFileId
