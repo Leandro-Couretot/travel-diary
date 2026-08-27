@@ -777,7 +777,7 @@ audio { width: 100%; height: 32px; }
 <body>
 
 <header class="app-header">
-  <a href="index.html" class="app-logo">旅 <span id="album-name-header">diario</span></a>
+  <a href="index.html" class="app-logo" onclick="event.preventDefault();window.location.replace('index.html');">旅 <span id="album-name-header">diario</span></a>
   <div style="display:flex;gap:0.5rem;align-items:center;">
     <button class="btn-nav" id="btn-bulk-diary" title="Carga masiva">⬆</button>
     <button class="btn-nav" id="btn-album" title="Ver álbum">▣</button>
