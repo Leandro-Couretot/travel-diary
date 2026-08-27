@@ -544,7 +544,7 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
-<div class="save-bar">
+<div class="save-bar" style="display:none;">
   <div class="save-status" id="save-status">Sin cambios</div>
   <div class="save-actions">
     <button class="btn btn-secondary" id="btn-discard">Descartar</button>
@@ -654,6 +654,8 @@ function navigateTo(view, params = {}) {
   document.getElementById('save-bar-wrap') && (document.getElementById('save-bar-wrap').style.display = view === 'diary' ? '' : 'none');
 
   if (view === 'home') {
+    document.querySelector('.save-bar').style.display = 'none';
+    dirty = false;
     document.getElementById('header-subtitle').textContent = 'mis viajes';
     renderHomeHeader();
     renderAlbums();
@@ -1195,8 +1197,9 @@ async function saveCurrentDay() {
       const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
       if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
     }
-    dirty = false; setStatus('saved', 'Guardado en Drive ✓');
-    setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
+    dirty = false; 
+    setStatus('saved', 'Guardado en Drive ✓');
+    document.querySelector('.save-bar').style.display = 'none';
   } catch(e) { setStatus('error', 'Error: ' + e.message); }
 }
 
@@ -1772,8 +1775,17 @@ function updateDateHeader() {
   if (lbl)  lbl.textContent  = isToday(currentDate) ? 'Hoy · ' + formatDateLong(currentDate) : formatDateLong(currentDate);
   document.querySelectorAll('.cal-cell').forEach(c => c.classList.toggle('is-current', c.dataset.date === currentDate));
 }
-function markDirty() { dirty = true; setStatus('unsaved', 'Cambios sin guardar'); }
-function setStatus(cls, msg) { const el = document.getElementById('save-status'); if (!el) return; el.className = 'save-status' + (cls ? ' ' + cls : ''); el.textContent = msg; }
+function markDirty() { 
+  dirty = true; 
+  setStatus('unsaved', 'Cambios sin guardar');
+  document.querySelector('.save-bar').style.display = 'flex';
+}
+function setStatus(cls, msg) { 
+  const el = document.getElementById('save-status'); 
+  if (!el) return; 
+  el.className = 'save-status' + (cls ? ' ' + cls : ''); 
+  el.textContent = msg; 
+}
 function autoResize(el) { if (!el) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
 function navigate(delta) { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; const date = new Date(currentDate + 'T12:00:00'); date.setDate(date.getDate() + delta); loadDay(date.toISOString().slice(0, 10)); }
 
@@ -1790,7 +1802,12 @@ function bindDiaryEvents() {
 
 // ─── Static event listeners ───────────────────────────────
 document.getElementById('btn-save').addEventListener('click', saveCurrentDay);
-document.getElementById('btn-discard').addEventListener('click', () => { loadDay(currentDate); setStatus('', 'Cambios descartados'); });
+document.getElementById('btn-discard').addEventListener('click', () => { 
+  loadDay(currentDate); 
+  setStatus('', ''); 
+  document.querySelector('.save-bar').style.display = 'none';
+  dirty = false;
+});
 document.getElementById('btn-prev').addEventListener('click', () => navigate(-1));
 document.getElementById('btn-next').addEventListener('click', () => navigate(1));
 document.getElementById('date-display').addEventListener('click', () => { const input = document.getElementById('date-input'); input.value = currentDate; input.style.pointerEvents = 'all'; input.click(); input.style.pointerEvents = 'none'; });
