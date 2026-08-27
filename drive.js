@@ -1,8 +1,8 @@
 // ─── DRIVE CONFIG ────────────────────────────────────────
 const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
-const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive';
+const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file';
 const ROOT_FOLDER     = 'travel-diary';
-const SCOPE_VERSION   = 2;
+const SCOPE_VERSION   = 3; // bumped: drive → drive.file
 
 // ─── STATE ───────────────────────────────────────────────
 let driveToken    = null;
