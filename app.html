@@ -1110,23 +1110,39 @@ function todayStr()  { return new Date().toISOString().slice(0, 10); }
 function isToday(s)  { return s === todayStr(); }
 
 async function bootstrapDiaryPage() {
-  document.getElementById('tab-day').querySelector('#day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
+  document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
   allDates = []; calDayData = {};
   try {
-    if (isSharedAlbum) {
-      // albumFolderId already set from params
-    } else {
+    if (!isSharedAlbum) {
       albumFolderId = await getAlbumFolderId(albumId);
       const al = await loadAlbums();
       albumMeta = al.find(a => a.id === albumId) || { name: albumId };
       document.getElementById('header-subtitle').textContent = albumMeta.name;
     }
-    currentDate = todayStr();
+    currentDate = await resolveStartDate();
     renderDiaryPage();
     await loadDay(currentDate);
   } catch(e) {
-    document.getElementById('tab-day').querySelector('#day-editor').innerHTML = `<div class="page-loading">Error: ${escHtml(e.message)}</div>`;
+    document.getElementById('day-editor').innerHTML = `<div class="page-loading">Error: ${escHtml(e.message)}</div>`;
   }
+}
+
+async function resolveStartDate() {
+  const today   = todayStr();
+  const dateTo  = albumMeta?.dateTo  || null;
+  const dateFrom = albumMeta?.dateFrom || null;
+
+  // Álbum terminado en el pasado → primer día con contenido
+  if (dateTo && dateTo < today) {
+    try {
+      const dates = await listDayFolders(albumFolderId);
+      if (dates.length) return dates[0]; // primer día con contenido
+    } catch {}
+    return dateFrom || today;
+  }
+
+  // Viaje en curso o sin fecha fin → hoy
+  return today;
 }
 
 function switchTab(tab) {
