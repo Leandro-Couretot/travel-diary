@@ -363,9 +363,90 @@ audio { width: 100%; height: 32px; }
   .list-day-item { padding: 0.65rem 1rem; }
   .cal-wrap { padding: 0.75rem 0.5rem 4rem; }
 }
+/* ─── INSTALL BANNER ─── */
+.install-banner {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 600;
+  padding: 0.75rem 1rem;
+  background: var(--ink);
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.install-banner-icon { font-size: 1.5rem; flex-shrink: 0; }
+.install-banner-text { flex: 1; }
+.install-banner-title { font-size: 0.85rem; font-weight: 500; margin-bottom: 0.1rem; }
+.install-banner-sub { font-size: 0.72rem; color: rgba(255,255,255,0.55); line-height: 1.4; }
+.install-banner-btn {
+  background: var(--accent); border: none; color: white;
+  padding: 0.5rem 0.9rem; border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif; font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: background 0.15s;
+}
+.install-banner-btn:hover { background: #b8924a; }
+.install-banner-close {
+  background: none; border: none; color: rgba(255,255,255,0.4);
+  font-size: 1.1rem; cursor: pointer; padding: 0.2rem; flex-shrink: 0;
+  line-height: 1;
+}
+.install-banner-close:hover { color: white; }
+
+/* iOS instructions modal */
+.ios-install-steps { padding: 1rem 1.5rem 1.5rem; }
+.ios-step { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1rem; font-size: 0.875rem; line-height: 1.5; }
+.ios-step-num { background: var(--accent); color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 600; flex-shrink: 0; margin-top: 0.1rem; }
+.ios-step-icon { font-size: 1.2rem; flex-shrink: 0; }
 </style>
 </head>
 <body>
+
+<!-- ─── INSTALL BANNER ─── -->
+<div id="install-banner" style="display:none;" class="install-banner">
+  <div class="install-banner-icon">旅</div>
+  <div class="install-banner-text">
+    <div class="install-banner-title">Instalá la app</div>
+    <div class="install-banner-sub" id="install-banner-sub">Accedé sin el browser, más rápido</div>
+  </div>
+  <button class="install-banner-btn" id="install-banner-btn">Instalar</button>
+  <button class="install-banner-close" id="install-banner-close">✕</button>
+</div>
+
+<!-- iOS install instructions modal -->
+<div class="modal-overlay" id="modal-ios-install">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-header">
+      <div class="modal-title">Cómo instalar la app</div>
+      <button class="modal-close" onclick="document.getElementById('modal-ios-install').classList.remove('open')">×</button>
+    </div>
+    <div class="ios-install-steps">
+      <div class="ios-step">
+        <div class="ios-step-num">1</div>
+        <div>Tocá el botón de compartir <span class="ios-step-icon">⎙</span> en la barra del browser (abajo en Safari)</div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">2</div>
+        <div>Scrolleá y tocá <strong>"Añadir a pantalla de inicio"</strong></div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">3</div>
+        <div>Tocá <strong>"Añadir"</strong> arriba a la derecha</div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">4</div>
+        <div>¡Listo! El ícono 旅 aparece en tu pantalla de inicio</div>
+      </div>
+      <p style="font-size:0.78rem;color:var(--ink-muted);margin-top:0.5rem;line-height:1.5;">
+        Asegurate de estar usando <strong>Safari</strong> — otros browsers en iPhone no soportan la instalación.
+      </p>
+    </div>
+  </div>
+</div>
 
 <!-- ─── SHARED HEADER ─── -->
 <header class="app-header" id="app-header">
@@ -1749,6 +1830,85 @@ function checkJoinParam() {
   const sp = new URLSearchParams(location.search);
   if (sp.get('join')) initGoogleAuth();
 }
+
+// ═══════════════════════════════════════════════════════════
+// ─── PWA INSTALL BANNER ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+let deferredInstallPrompt = null;
+
+function isRunningAsPWA() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true;
+}
+
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function hasDismissedInstall() {
+  return localStorage.getItem('install_dismissed') === '1';
+}
+
+function showInstallBanner() {
+  if (isRunningAsPWA()) return; // already installed
+  if (hasDismissedInstall()) return; // user dismissed before
+
+  const banner = document.getElementById('install-banner');
+  const btn    = document.getElementById('install-banner-btn');
+  const sub    = document.getElementById('install-banner-sub');
+  const close  = document.getElementById('install-banner-close');
+
+  if (isIOS()) {
+    sub.textContent = 'Usá Safari para instalarla en tu pantalla de inicio';
+    btn.textContent = 'Cómo instalar';
+    btn.onclick = () => {
+      document.getElementById('modal-ios-install').classList.add('open');
+    };
+  } else if (deferredInstallPrompt) {
+    btn.textContent = 'Instalar';
+    btn.onclick = async () => {
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      banner.style.display = 'none';
+      if (outcome === 'accepted') localStorage.setItem('install_dismissed', '1');
+    };
+  } else {
+    return; // not iOS and no prompt available — don't show banner
+  }
+
+  close.onclick = () => {
+    banner.style.display = 'none';
+    localStorage.setItem('install_dismissed', '1');
+  };
+
+  // Show after a small delay so it doesn't feel intrusive on first load
+  setTimeout(() => { banner.style.display = 'flex'; }, 2500);
+}
+
+// Capture Android/Chrome install prompt
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner();
+});
+
+// On iOS, check after page load
+window.addEventListener('load', () => {
+  if (isIOS() && !isRunningAsPWA()) {
+    showInstallBanner();
+  }
+});
+
+// Hide banner if app gets installed
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-banner').style.display = 'none';
+  localStorage.setItem('install_dismissed', '1');
+});
+
+document.getElementById('modal-ios-install').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
 
 // ─── GSI Polling ─────────────────────────────────────────
 (function waitForGSI() {
