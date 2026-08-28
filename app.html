@@ -1879,32 +1879,37 @@ function toggleDiaryMenu() {
   menu.className = 'diary-menu-dropdown';
   menu.id = 'diary-menu-dropdown';
   menu.innerHTML = `
-    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(enterSelectionMode,50)">
+    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(enterSelectionMode,50)">
       <span class="diary-menu-item-icon">☑</span> Seleccionar fotos
     </button>
-    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(openBulkDiary,50)">
+    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">⬆</span> Carga masiva
     </button>
-    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(openAlbum,50)">
+    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
       <span class="diary-menu-item-icon">▣</span> Ver álbum
     </button>
-    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(openHelp,50)">
+    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openHelp,50)">
       <span class="diary-menu-item-icon">?</span> Ayuda
     </button>`;
   document.getElementById('app-header').appendChild(menu);
 
-  // Overlay to close on outside click
-  const overlay = document.createElement('div');
-  overlay.className = 'diary-menu-overlay';
-  overlay.id = 'diary-menu-overlay';
-  overlay.onclick = closeDiaryMenu;
-  document.body.appendChild(overlay);
+  // Close on outside click using document listener
+  setTimeout(() => {
+    document.addEventListener('click', _closeDiaryMenuOnOutside);
+  }, 0);
+}
+
+function _closeDiaryMenuOnOutside(e) {
+  const menu = document.getElementById('diary-menu-dropdown');
+  if (menu && !menu.contains(e.target)) {
+    closeDiaryMenu();
+  }
 }
 
 function closeDiaryMenu() {
   diaryMenuOpen = false;
   document.getElementById('diary-menu-dropdown')?.remove();
-  document.getElementById('diary-menu-overlay')?.remove();
+  document.removeEventListener('click', _closeDiaryMenuOnOutside);
 }
 
 // ─── SELECTION MODE ───────────────────────────────────────
