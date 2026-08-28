@@ -366,7 +366,64 @@ audio { width: 100%; height: 32px; }
   .list-day-item { padding: 0.65rem 1rem; }
   .cal-wrap { padding: 0.75rem 0.5rem 4rem; }
 }
-/* ─── INSTALL BANNER ─── */
+/* ─── DIARY DROPDOWN MENU ─── */
+.diary-menu-dropdown {
+  position: absolute;
+  top: 56px; right: 0.75rem;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 200px;
+  z-index: 150;
+  overflow: hidden;
+  animation: fadeUp 0.15s ease;
+}
+.diary-menu-item {
+  display: flex; align-items: center; gap: 0.75rem;
+  width: 100%; padding: 0.85rem 1.25rem;
+  background: none; border: none; border-bottom: 1px solid var(--ink-faint);
+  font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 300;
+  color: var(--ink); cursor: pointer; text-align: left;
+  transition: background 0.15s;
+}
+.diary-menu-item:last-child { border-bottom: none; }
+.diary-menu-item:hover { background: var(--accent-light); }
+.diary-menu-item-icon { font-size: 1rem; width: 20px; text-align: center; }
+.diary-menu-overlay {
+  position: fixed; inset: 0; z-index: 149;
+}
+
+/* ─── SELECTION MODE ─── */
+.media-card.selectable { cursor: pointer; }
+.media-card.selected { outline: 2.5px solid var(--accent); outline-offset: -2px; }
+.media-card .selection-check {
+  position: absolute; top: 0.5rem; left: 0.5rem; z-index: 5;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: white; border: 2px solid var(--ink-faint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; transition: all 0.15s;
+}
+.media-card.selected .selection-check {
+  background: var(--accent); border-color: var(--accent); color: white;
+}
+.selection-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--ink); color: white;
+  display: none; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  z-index: 100; gap: 1rem;
+}
+.selection-bar.active { display: flex; }
+.selection-count { font-size: 0.875rem; font-weight: 500; flex: 1; }
+.selection-actions { display: flex; gap: 0.75rem; }
+.selection-btn {
+  background: rgba(255,255,255,0.15); border: none; color: white;
+  padding: 0.45rem 1rem; border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif; font-size: 0.82rem; cursor: pointer;
+  transition: background 0.15s;
+}
+.selection-btn:hover { background: rgba(255,255,255,0.25); }
+.selection-btn.danger:hover { background: var(--red); }
 .install-banner {
   position: fixed;
   bottom: 0; left: 0; right: 0;
@@ -408,6 +465,16 @@ audio { width: 100%; height: 32px; }
 </style>
 </head>
 <body>
+
+<!-- ─── SELECTION BAR ─── -->
+<div class="selection-bar" id="selection-bar">
+  <div class="selection-count" id="selection-count">0 seleccionadas</div>
+  <div class="selection-actions">
+    <button class="selection-btn" onclick="shareSelected()">↗ Compartir</button>
+    <button class="selection-btn danger" onclick="deleteSelected()">✕ Eliminar</button>
+    <button class="selection-btn" onclick="exitSelectionMode()">Cancelar</button>
+  </div>
+</div>
 
 <!-- ─── INSTALL BANNER ─── -->
 <div id="install-banner" style="display:none;" class="install-banner">
@@ -687,9 +754,7 @@ function renderHomeHeader() {
 
 function renderDiaryHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <button class="btn-nav" id="btn-bulk-diary" onclick="openBulkDiary()" title="Carga masiva">⬆</button>
-    <button class="btn-nav" id="btn-album" onclick="openAlbum()" title="Ver álbum">▣</button>
-    <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
+    <button class="btn-nav" id="btn-diary-menu" onclick="toggleDiaryMenu()" title="Menú">···</button>`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1154,6 +1219,8 @@ async function resolveStartDate() {
 }
 
 function switchTab(tab) {
+  closeDiaryMenu();
+  if (selectionMode) exitSelectionMode();
   currentTab = tab;
   document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
@@ -1245,13 +1312,14 @@ function renderMedia() {
     if (item.type === 'image') {
       card.innerHTML = `
         <div class="drag-handle">⠿⠿⠿</div>
+        <div class="selection-check" style="position:absolute;top:0.5rem;left:0.5rem;z-index:5;width:22px;height:22px;border-radius:50%;background:white;border:2px solid var(--ink-faint);display:flex;align-items:center;justify-content:center;font-size:0.75rem;transition:all 0.15s;display:none;">✓</div>
         <img class="media-thumb" id="mt-${idx}" alt="${item.name}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;">
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <div class="media-footer-actions">
-            <button class="media-delete" data-idx="${idx}">Eliminar</button>
-            <button class="media-share" data-idx="${idx}">↗ Compartir</button>
-            <button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}">${isCover ? '★ Portada' : '☆ Portada'}</button>
+            <button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>
+            <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
+            <button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? 'Portada' : 'Establecer portada'}">${isCover ? '★' : '☆'}</button>
           </div>
         </div>`;
       const imgEl = card.querySelector(`#mt-${idx}`);
@@ -1261,12 +1329,13 @@ function renderMedia() {
     } else if (item.type === 'video') {
       card.innerHTML = `
         <div class="drag-handle">⠿⠿⠿</div>
+        <div class="selection-check" style="position:absolute;top:0.5rem;left:0.5rem;z-index:5;width:22px;height:22px;border-radius:50%;background:white;border:2px solid var(--ink-faint);display:none;align-items:center;justify-content:center;font-size:0.75rem;transition:all 0.15s;">✓</div>
         <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">🎬</div><div class="audio-filename">${item.name}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <div class="media-footer-actions">
-            <button class="media-delete" data-idx="${idx}">Eliminar</button>
-            <button class="media-share" data-idx="${idx}">↗ Compartir</button>
+            <button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>
+            <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
           </div>
         </div>`;
       const src = item.data || '';
@@ -1798,6 +1867,143 @@ function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; co
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.textContent = ssPaused ? '▶' : '⏸'; if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
 function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; }
+
+// ─── DIARY MENU ───────────────────────────────────────────
+let diaryMenuOpen = false;
+
+function toggleDiaryMenu() {
+  if (diaryMenuOpen) { closeDiaryMenu(); return; }
+  diaryMenuOpen = true;
+
+  const menu = document.createElement('div');
+  menu.className = 'diary-menu-dropdown';
+  menu.id = 'diary-menu-dropdown';
+  menu.innerHTML = `
+    <button class="diary-menu-item" onclick="closeDiaryMenu();enterSelectionMode()">
+      <span class="diary-menu-item-icon">☑</span> Seleccionar fotos
+    </button>
+    <button class="diary-menu-item" onclick="closeDiaryMenu();openBulkDiary()">
+      <span class="diary-menu-item-icon">⬆</span> Carga masiva
+    </button>
+    <button class="diary-menu-item" onclick="closeDiaryMenu();openAlbum()">
+      <span class="diary-menu-item-icon">▣</span> Ver álbum
+    </button>
+    <button class="diary-menu-item" onclick="closeDiaryMenu();openHelp()">
+      <span class="diary-menu-item-icon">?</span> Ayuda
+    </button>`;
+  document.getElementById('app-header').appendChild(menu);
+
+  // Overlay to close on outside click
+  const overlay = document.createElement('div');
+  overlay.className = 'diary-menu-overlay';
+  overlay.id = 'diary-menu-overlay';
+  overlay.onclick = closeDiaryMenu;
+  document.body.appendChild(overlay);
+}
+
+function closeDiaryMenu() {
+  diaryMenuOpen = false;
+  document.getElementById('diary-menu-dropdown')?.remove();
+  document.getElementById('diary-menu-overlay')?.remove();
+}
+
+// ─── SELECTION MODE ───────────────────────────────────────
+let selectionMode = false;
+let selectedIdxs  = new Set();
+
+function enterSelectionMode() {
+  selectionMode = true;
+  selectedIdxs.clear();
+  document.getElementById('selection-bar').classList.add('active');
+  updateSelectionBar();
+
+  const grid = document.getElementById('media-grid');
+  if (!grid) return;
+
+  // Show checkboxes, disable drag, disable lightbox
+  grid.querySelectorAll('.media-card').forEach(card => {
+    card.classList.add('selectable');
+    card.draggable = false;
+    const check = card.querySelector('.selection-check');
+    if (check) check.style.display = 'flex';
+    // Hide action buttons
+    const footer = card.querySelector('.media-footer-actions');
+    if (footer) footer.style.display = 'none';
+    const handle = card.querySelector('.drag-handle');
+    if (handle) handle.style.display = 'none';
+
+    card.addEventListener('click', onSelectionCardClick);
+  });
+}
+
+function exitSelectionMode() {
+  selectionMode = false;
+  selectedIdxs.clear();
+  document.getElementById('selection-bar').classList.remove('active');
+  renderMedia(); // re-render to restore normal state
+}
+
+function onSelectionCardClick(e) {
+  if (e.target.closest('.media-footer-actions') || e.target.closest('.drag-handle')) return;
+  const card = e.currentTarget;
+  const idx  = parseInt(card.dataset.idx);
+  if (selectedIdxs.has(idx)) {
+    selectedIdxs.delete(idx);
+    card.classList.remove('selected');
+  } else {
+    selectedIdxs.add(idx);
+    card.classList.add('selected');
+    const check = card.querySelector('.selection-check');
+    if (check) { check.style.background = 'var(--accent)'; check.style.borderColor = 'var(--accent)'; check.style.color = 'white'; }
+  }
+  updateSelectionBar();
+}
+
+function updateSelectionBar() {
+  const n = selectedIdxs.size;
+  document.getElementById('selection-count').textContent =
+    n === 0 ? 'Seleccioná fotos' : `${n} seleccionada${n > 1 ? 's' : ''}`;
+}
+
+async function shareSelected() {
+  if (!selectedIdxs.size) return;
+  const items = [...selectedIdxs].map(i => currentDay.media[i]).filter(Boolean);
+  const files = [];
+  for (const item of items) {
+    let dataUrl = item.data;
+    if (!dataUrl && item.driveFileId) dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+    if (!dataUrl) continue;
+    const res  = await fetch(dataUrl);
+    const blob = await res.blob();
+    files.push(new File([blob], item.name, { type: blob.type }));
+  }
+  if (!files.length) return;
+  try {
+    if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files });
+    } else {
+      // Fallback: download each
+      for (const file of files) {
+        const url = URL.createObjectURL(file);
+        const a   = document.createElement('a');
+        a.href = url; a.download = file.name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
+    }
+  } catch(e) { if (e.name !== 'AbortError') alert('No se pudo compartir: ' + e.message); }
+  exitSelectionMode();
+}
+
+async function deleteSelected() {
+  if (!selectedIdxs.size) return;
+  const n = selectedIdxs.size;
+  if (!confirm(`¿Eliminar ${n} archivo${n > 1 ? 's' : ''}?`)) return;
+  const toDelete = [...selectedIdxs].sort((a, b) => b - a); // reverse to preserve indices
+  for (const idx of toDelete) currentDay.media.splice(idx, 1);
+  markDirty();
+  exitSelectionMode();
+}
 
 // ─── Share media ──────────────────────────────────────────
 async function shareMediaItem(item) {
