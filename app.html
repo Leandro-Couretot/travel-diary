@@ -193,6 +193,8 @@ audio { width: 100%; height: 32px; }
 .media-set-cover { background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 0.75rem; padding: 0.2rem 0; transition: color 0.15s; }
 .media-set-cover:hover { color: var(--accent); }
 .media-set-cover.is-cover { color: var(--accent); font-weight: 500; }
+.media-share { background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 0.75rem; padding: 0.2rem 0; transition: color 0.15s; }
+.media-share:hover { color: var(--ink); }
 .drag-handle { display: flex; align-items: center; justify-content: center; padding: 0.35rem 0; color: var(--ink-faint); font-size: 0.75rem; letter-spacing: 0.15em; cursor: grab; user-select: none; }
 .drag-handle:active { cursor: grabbing; }
 .empty-media { text-align: center; padding: 1rem 0 0; color: var(--ink-faint); font-size: 0.85rem; }
@@ -501,6 +503,7 @@ audio { width: 100%; height: 32px; }
   <button class="lightbox-btn lightbox-next" id="lightbox-next">→</button>
   <div class="lightbox-caption" id="lightbox-caption"></div>
   <div class="lightbox-counter" id="lightbox-counter"></div>
+  <button id="lightbox-share" style="position:absolute;bottom:2.5rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:white;padding:0.5rem 1rem;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:0.82rem;cursor:pointer;">↗ Compartir</button>
 </div>
 
 <div class="album-overlay" id="album-overlay">
@@ -1247,6 +1250,7 @@ function renderMedia() {
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
           <div class="media-footer-actions">
             <button class="media-delete" data-idx="${idx}">Eliminar</button>
+            <button class="media-share" data-idx="${idx}">↗ Compartir</button>
             <button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}">${isCover ? '★ Portada' : '☆ Portada'}</button>
           </div>
         </div>`;
@@ -1260,7 +1264,10 @@ function renderMedia() {
         <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">🎬</div><div class="audio-filename">${item.name}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
-          <div class="media-footer-actions"><button class="media-delete" data-idx="${idx}">Eliminar</button></div>
+          <div class="media-footer-actions">
+            <button class="media-delete" data-idx="${idx}">Eliminar</button>
+            <button class="media-share" data-idx="${idx}">↗ Compartir</button>
+          </div>
         </div>`;
       const src = item.data || '';
       if (src) { const v = document.createElement('video'); v.className = 'video-thumb'; v.controls = true; v.playsinline = true; v.preload = 'metadata'; v.src = src; card.querySelector(`#vt-${idx}`).replaceWith(v); }
@@ -1306,7 +1313,10 @@ function renderMedia() {
     if (!item.driveFileId) { alert('Guardá el día primero para poder establecer la portada.'); return; }
     albumMeta = await updateAlbumMeta(albumId, { coverFileId: item.driveFileId }); renderMedia();
   }));
-  grid.querySelectorAll('img[data-lightbox]').forEach(img => img.addEventListener('click', () => openLightbox(parseInt(img.dataset.lightbox))));
+  grid.querySelectorAll('.media-share').forEach(btn => btn.addEventListener('click', async e => {
+    const item = currentDay.media[parseInt(e.target.dataset.idx)];
+    await shareMediaItem(item);
+  }));
   initDragReorder(grid);
   initTouchReorder(grid);
 }
@@ -1789,6 +1799,44 @@ function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null;
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.textContent = ssPaused ? '▶' : '⏸'; if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
 function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; }
 
+// ─── Share media ──────────────────────────────────────────
+async function shareMediaItem(item) {
+  try {
+    // Get data URL — from memory or Drive
+    let dataUrl = item.data;
+    if (!dataUrl && item.driveFileId) {
+      dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+    }
+    if (!dataUrl) { alert('No se pudo cargar el archivo para compartir.'); return; }
+
+    // Convert dataUrl to Blob/File
+    const res   = await fetch(dataUrl);
+    const blob  = await res.blob();
+    const file  = new File([blob], item.name, { type: blob.type });
+
+    // Use Web Share API if available
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: item.caption || item.name,
+      });
+    } else if (navigator.share) {
+      // Fallback: share without file (URL only)
+      await navigator.share({ title: item.caption || item.name, text: item.caption || '' });
+    } else {
+      // Last fallback: download
+      const url = URL.createObjectURL(blob);
+      const a   = document.createElement('a');
+      a.href = url; a.download = item.name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('No se pudo compartir: ' + e.message);
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────
 function updateDateHeader() {
   const disp = document.getElementById('date-display'); const lbl = document.getElementById('day-label');
@@ -1836,6 +1884,7 @@ document.getElementById('date-input').addEventListener('change', e => { if (dirt
 document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
 document.getElementById('lightbox-prev').addEventListener('click', () => lbNav(-1));
 document.getElementById('lightbox-next').addEventListener('click', () => lbNav(1));
+document.getElementById('lightbox-share').addEventListener('click', () => shareMediaItem(lbImages[lbIdx]));
 document.getElementById('lightbox').addEventListener('click', e => { if (e.target === e.currentTarget) closeLightbox(); });
 document.getElementById('lightbox').addEventListener('touchstart', e => { lbSwipeX = e.touches[0].clientX; }, { passive: true });
 document.getElementById('lightbox').addEventListener('touchend', e => { const diff = lbSwipeX - e.changedTouches[0].clientX; if (Math.abs(diff) > 50) lbNav(diff > 0 ? 1 : -1); });
