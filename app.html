@@ -1912,12 +1912,14 @@ let selectionMode = false;
 let selectedIdxs  = new Set();
 
 function enterSelectionMode() {
+  alert('enterSelectionMode llamado');
   selectionMode = true;
   selectedIdxs.clear();
   document.getElementById('selection-bar').classList.add('active');
   updateSelectionBar();
 
   const grid = document.getElementById('media-grid');
+  alert('grid: ' + (grid ? 'encontrado, cards: ' + grid.querySelectorAll('.media-card').length : 'NO encontrado'));
   if (!grid) return;
 
   // Show checkboxes, disable drag, disable lightbox
