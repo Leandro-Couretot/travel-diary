@@ -135,10 +135,10 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 - Imágenes cargan correctamente en PWA (via API autenticada con fallback)
 - Navegación interna sin abrir Safari
 - OAuth con re-auth automático si cambia el scope
+- **Modo selección múltiple**: checkbox con 2 estados (círculo vacío / tilde + marco dorado) funcionando correctamente. El bug era que `.selection-check` tenía `background`/`border` inline que pisaban la regla CSS `.media-card.selected .selection-check`, dejando el tilde blanco sobre blanco (invisible). Corregido quitando el inline y agregando el checkbox faltante en las cards de audio (v1.7).
+- **Menú ···**: hubo problemas con el overlay interceptando clicks. Solución actual: `document.addEventListener('click')` para cerrar en lugar de overlay. Todos los items del menú (Seleccionar, Carga masiva, Ver álbum, Ayuda) funcionan.
 
 ### Pendientes conocidos
-- **Modo selección múltiple**: implementado pero hay un bug visual con los estados del checkbox (3 estados en lugar de 2). El CSS fue corregido, verificar que funcione correctamente.
-- **Menú ···**: hubo problemas con el overlay interceptando clicks. Solución actual: `document.addEventListener('click')` para cerrar en lugar de overlay. Verificar que todos los items del menú (Seleccionar, Carga masiva, Ver álbum, Ayuda) funcionen.
 - **Verificación OAuth Google**: enviada. Mientras tanto la app está en modo Testing — solo usuarios en la lista de prueba pueden usarla.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
 
