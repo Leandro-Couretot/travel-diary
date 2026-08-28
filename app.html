@@ -1879,16 +1879,16 @@ function toggleDiaryMenu() {
   menu.className = 'diary-menu-dropdown';
   menu.id = 'diary-menu-dropdown';
   menu.innerHTML = `
-    <button class="diary-menu-item" onclick="closeDiaryMenu();enterSelectionMode()">
+    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(enterSelectionMode,50)">
       <span class="diary-menu-item-icon">☑</span> Seleccionar fotos
     </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();openBulkDiary()">
+    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">⬆</span> Carga masiva
     </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();openAlbum()">
+    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(openAlbum,50)">
       <span class="diary-menu-item-icon">▣</span> Ver álbum
     </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();openHelp()">
+    <button class="diary-menu-item" onclick="event.stopPropagation();closeDiaryMenu();setTimeout(openHelp,50)">
       <span class="diary-menu-item-icon">?</span> Ayuda
     </button>`;
   document.getElementById('app-header').appendChild(menu);
