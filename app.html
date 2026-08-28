@@ -396,15 +396,19 @@ audio { width: 100%; height: 32px; }
 /* ─── SELECTION MODE ─── */
 .media-card.selectable { cursor: pointer; }
 .media-card.selected { outline: 2.5px solid var(--accent); outline-offset: -2px; }
-.media-card .selection-check {
+.selection-check {
   position: absolute; top: 0.5rem; left: 0.5rem; z-index: 5;
   width: 22px; height: 22px; border-radius: 50%;
-  background: white; border: 2px solid var(--ink-faint);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.75rem; transition: all 0.15s;
+  background: rgba(255,255,255,0.85);
+  border: 2px solid rgba(255,255,255,0.9);
+  display: none; align-items: center; justify-content: center;
+  font-size: 0.75rem; color: transparent;
+  transition: all 0.15s;
 }
 .media-card.selected .selection-check {
-  background: var(--accent); border-color: var(--accent); color: white;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
 }
 .selection-bar {
   position: fixed; bottom: 0; left: 0; right: 0;
@@ -1917,28 +1921,23 @@ let selectionMode = false;
 let selectedIdxs  = new Set();
 
 function enterSelectionMode() {
-  alert('enterSelectionMode llamado');
   selectionMode = true;
   selectedIdxs.clear();
   document.getElementById('selection-bar').classList.add('active');
   updateSelectionBar();
 
   const grid = document.getElementById('media-grid');
-  alert('grid: ' + (grid ? 'encontrado, cards: ' + grid.querySelectorAll('.media-card').length : 'NO encontrado'));
   if (!grid) return;
 
-  // Show checkboxes, disable drag, disable lightbox
   grid.querySelectorAll('.media-card').forEach(card => {
     card.classList.add('selectable');
     card.draggable = false;
     const check = card.querySelector('.selection-check');
     if (check) check.style.display = 'flex';
-    // Hide action buttons
     const footer = card.querySelector('.media-footer-actions');
     if (footer) footer.style.display = 'none';
     const handle = card.querySelector('.drag-handle');
     if (handle) handle.style.display = 'none';
-
     card.addEventListener('click', onSelectionCardClick);
   });
 }
@@ -1960,8 +1959,7 @@ function onSelectionCardClick(e) {
   } else {
     selectedIdxs.add(idx);
     card.classList.add('selected');
-    const check = card.querySelector('.selection-check');
-    if (check) { check.style.background = 'var(--accent)'; check.style.borderColor = 'var(--accent)'; check.style.color = 'white'; }
+
   }
   updateSelectionBar();
 }
