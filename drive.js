@@ -221,7 +221,7 @@ async function getAlbumFolderId(albumId) {
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
 
-async function saveDayToDrive(albumFolderId, dateStr, day) {
+async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
   if (!albumFolderId) throw new Error('albumFolderId no disponible — esperá a que Drive termine de cargar');
   const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId);
   for (const item of day.media) {
@@ -242,6 +242,14 @@ async function saveDayToDrive(albumFolderId, dateStr, day) {
         delete item.data;
         delete item._file;
       }
+    }
+  }
+  if (previousIds) {
+    const currentIds = new Set(day.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+    const removedIds = [...previousIds].filter(id => !currentIds.has(id));
+    for (const id of removedIds) {
+      try { await driveReq('PATCH', `https://www.googleapis.com/drive/v3/files/${id}`, { trashed: true }); }
+      catch (e) { console.warn('No se pudo mover a la papelera:', id, e); }
     }
   }
   const dayJson = {

@@ -1192,6 +1192,7 @@ let albumMeta     = null;
 let currentDate   = new Date().toISOString().slice(0, 10);
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
+let currentDayOriginalIds = new Set();
 let currentTab    = 'day';
 let allDates      = [];
 let calDayData    = {};
@@ -1295,6 +1296,7 @@ async function loadDay(dateStr) {
     const day = await loadDayFromDrive(albumFolderId, dateStr);
     currentDay = day || emptyDay();
   } catch(e) { setStatus('error', 'Error al cargar'); currentDay = emptyDay(); }
+  currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
   const titleEl = document.getElementById('day-title');
   const notesEl = document.getElementById('day-notes');
   if (titleEl) { titleEl.value = currentDay.title || ''; autoResize(titleEl); }
@@ -1305,12 +1307,13 @@ async function loadDay(dateStr) {
 async function saveCurrentDay() {
   setStatus('', 'Guardando...');
   try {
-    currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay);
+    currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay, currentDayOriginalIds);
+    currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
     if (albumMeta && !albumMeta.coverFileId) {
       const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
       if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
     }
-    dirty = false; 
+    dirty = false;
     setStatus('saved', 'Guardado en Drive ✓');
     document.querySelector('.save-bar').style.display = 'none';
   } catch(e) { setStatus('error', 'Error: ' + e.message); }
