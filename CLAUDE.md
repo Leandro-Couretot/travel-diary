@@ -147,12 +147,12 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 - **Carga masiva concurrente**: sube hasta 5 archivos a la vez (antes uno por uno) y, si algo falla, guarda igual lo que sí se subió y ofrece "Reintentar los que faltan" (v1.9). Compartido por `confirmBulkUpload` (Home) y `confirmBulkDiary` (dentro de un álbum) vía el helper `runBulkUpload()`.
 - **Video/audio sin overhead de base64**: `fetchFileAsDataUrl()` devuelve blob URL en vez de base64 (v1.9) — con la revocación correspondiente para no acumular memoria en sesiones largas.
 - **Shell offline**: `sw.js` (service worker) precachea app.html/style.css/drive.js/exif.js/debug.js/manifest.json/íconos con stale-while-revalidate — la segunda visita en adelante carga al toque y sin conexión la PWA abre igual en vez de romperse (v1.10). Deliberadamente NO cache-first: no depende de acordarse de bumpear una versión en cada deploy.
+- **UI de solo lectura en álbumes compartidos**: al entrar a un álbum compartido, `bootstrapDiaryPage()` consulta `canEditFolder()` (drive.js, usa `capabilities.canEdit` de Drive) y guarda el resultado en `albumCanEdit`. Si es `false`, se ocultan/deshabilitan todos los controles de edición: drop-zone y grabador de audio, título/notas quedan `readonly`, no aparecen los botones eliminar/portada por foto ni el drag-handle para reordenar, "Carga masiva" desaparece del menú ···, y el botón Eliminar del modo selección se oculta. El banner de "Álbum compartido" suma "· Solo podés ver" (v1.11).
 
 ### Pendientes conocidos
 - **Verificación OAuth Google**: enviada. Mientras tanto la app está en modo Testing — solo usuarios en la lista de prueba pueden usarla.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
 - **Streaming real de video**: hoy el video se descarga entero (como blob URL) antes de reproducirse — no hay range requests. La solución de fondo (un service worker que intercepte el pedido a Drive, inyecte el header `Authorization` vía postMessage desde la página, y reenvíe Range/206) quedó deliberadamente afuera de la Fase 6 del plan de auditoría por su complejidad y riesgo (reescribe el pipeline de video) sin poder probarla en un dispositivo real. Retomar cuando se pueda testear en mobile.
-- **Rol al compartir álbum**: la app todavía no oculta los controles de editar/subir cuando alguien entra a un álbum compartido como "solo lectura" — Drive rechaza el guardado (403) pero la experiencia es confusa en vez de ocultar la UI directamente. Requeriría consultar `capabilities.canEdit` de Drive al abrir el álbum.
 
 ### Deuda técnica
 - `app.html` tiene ~2400 líneas — considerar dividir en módulos JS separados cuando crezca más

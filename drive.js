@@ -241,6 +241,21 @@ async function getAlbumFolderId(albumId) {
   return await getOrCreateFolder(albumId, rootFolderId);
 }
 
+// Consulta a Drive si el usuario actual puede editar esta carpeta
+// (rol writer) o solo verla (rol reader). Se usa para álbumes
+// compartidos, donde el rol puede ser cualquiera de los dos — para
+// álbumes propios no hace falta llamarla, siempre es true.
+async function canEditFolder(folderId) {
+  try {
+    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${folderId}?fields=capabilities(canEdit)`);
+    if (!res.ok) return true; // ante la duda, no romper la UI de quien sí puede editar
+    const data = await res.json();
+    return data.capabilities?.canEdit !== false;
+  } catch {
+    return true;
+  }
+}
+
 // ─── DAY OPERATIONS ──────────────────────────────────────
 
 async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {

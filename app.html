@@ -477,7 +477,7 @@ audio { width: 100%; height: 32px; }
   <div class="selection-count" id="selection-count">0 seleccionadas</div>
   <div class="selection-actions">
     <button class="selection-btn" onclick="shareSelected()">↗ Compartir</button>
-    <button class="selection-btn danger" onclick="deleteSelected()">✕ Eliminar</button>
+    <button class="selection-btn danger" id="selection-btn-delete" onclick="deleteSelected()">✕ Eliminar</button>
     <button class="selection-btn" onclick="exitSelectionMode()">Cancelar</button>
   </div>
 </div>
@@ -721,7 +721,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.10 ·
+      Versión 1.11 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -759,7 +759,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.10</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.11</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
@@ -1261,6 +1261,7 @@ let albumId       = null;
 let isSharedAlbum = false;
 let albumFolderId = null;
 let albumMeta     = null;
+let albumCanEdit  = true;
 let currentDate   = new Date().toISOString().slice(0, 10);
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
@@ -1286,6 +1287,9 @@ async function bootstrapDiaryPage() {
       const al = await loadAlbums();
       albumMeta = al.find(a => a.id === albumId) || { name: albumId };
       document.getElementById('header-subtitle').textContent = albumMeta.name;
+      albumCanEdit = true; // álbum propio: siempre editable
+    } else {
+      albumCanEdit = await canEditFolder(albumFolderId);
     }
     currentDate = await resolveStartDate();
     renderDiaryPage();
@@ -1327,16 +1331,16 @@ function switchTab(tab) {
 function renderDiaryPage() {
   const editor = document.getElementById('day-editor');
   editor.innerHTML = `
-    ${isSharedAlbum ? '<div class="shared-album-banner">Álbum compartido</div>' : ''}
+    ${isSharedAlbum ? `<div class="shared-album-banner">Álbum compartido${albumCanEdit ? '' : ' · Solo podés ver'}</div>` : ''}
     <div class="day-header">
       <div class="day-label" id="day-label">Hoy</div>
-      <textarea id="day-title" rows="1" placeholder="¿Cómo llamarías a este día?"></textarea>
+      <textarea id="day-title" rows="1" placeholder="¿Cómo llamarías a este día?" ${albumCanEdit ? '' : 'readonly'}></textarea>
     </div>
     <div style="margin-bottom:2rem;">
       <div class="section-label">Notas del día</div>
-      <textarea id="day-notes" placeholder="¿Qué pasó hoy? ¿Qué sentiste? ¿Qué querés recordar..."></textarea>
+      <textarea id="day-notes" placeholder="¿Qué pasó hoy? ¿Qué sentiste? ¿Qué querés recordar..." ${albumCanEdit ? '' : 'readonly'}></textarea>
     </div>
-    <div class="upload-section">
+    <div class="upload-section" style="${albumCanEdit ? '' : 'display:none;'}">
       <div class="drop-zone" id="drop-zone">
         <div class="drop-icon">📎</div>
         <div class="drop-text"><strong>Subí fotos, videos o audios</strong></div>
@@ -1404,20 +1408,24 @@ function renderMedia() {
   currentDay.media.forEach((item, idx) => {
     const card = document.createElement('div');
     card.className = 'media-card'; card.style.animationDelay = `${idx * 0.04}s`;
-    card.dataset.idx = idx; card.draggable = true;
+    card.dataset.idx = idx; card.draggable = albumCanEdit;
     const isCover = albumMeta && albumMeta.coverFileId && item.driveFileId === albumMeta.coverFileId;
+    const dragHandle = albumCanEdit ? `<div class="drag-handle">⠿⠿⠿</div>` : '';
+    const deleteBtn = albumCanEdit ? `<button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>` : '';
+    const captionAttrs = albumCanEdit ? '' : 'readonly';
 
     if (item.type === 'image') {
+      const coverBtn = albumCanEdit ? `<button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? 'Portada' : 'Establecer portada'}">${isCover ? '★' : '☆'}</button>` : '';
       card.innerHTML = `
-        <div class="drag-handle">⠿⠿⠿</div>
+        ${dragHandle}
         <div class="selection-check">✓</div>
         <img class="media-thumb" id="mt-${idx}" alt="${escHtml(item.name)}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;">
         <div class="media-footer">
-          <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${escHtml(item.caption || '')}</textarea>
+          <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2" ${captionAttrs}>${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions">
-            <button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>
+            ${deleteBtn}
             <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
-            <button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? 'Portada' : 'Establecer portada'}">${isCover ? '★' : '☆'}</button>
+            ${coverBtn}
           </div>
         </div>`;
       const imgEl = card.querySelector(`#mt-${idx}`);
@@ -1426,13 +1434,13 @@ function renderMedia() {
 
     } else if (item.type === 'video') {
       card.innerHTML = `
-        <div class="drag-handle">⠿⠿⠿</div>
+        ${dragHandle}
         <div class="selection-check">✓</div>
         <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">🎬</div><div class="audio-filename">${escHtml(item.name)}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
         <div class="media-footer">
-          <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2">${escHtml(item.caption || '')}</textarea>
+          <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2" ${captionAttrs}>${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions">
-            <button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>
+            ${deleteBtn}
             <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
           </div>
         </div>`;
@@ -1449,7 +1457,7 @@ function renderMedia() {
     } else {
       const audioSrc = item.data || '';
       card.innerHTML = `
-        <div class="drag-handle">⠿⠿⠿</div>
+        ${dragHandle}
         <div class="selection-check">✓</div>
         <div class="audio-thumb">
           <div class="audio-icon">🎙️</div>
@@ -1457,8 +1465,8 @@ function renderMedia() {
           ${audioSrc ? `<audio controls src="${audioSrc}"></audio>` : `<div id="al-${idx}" style="font-size:0.75rem;color:var(--ink-muted);padding:0.5rem 0;">Cargando audio...</div>`}
         </div>
         <div class="media-footer">
-          <textarea class="media-caption" placeholder="Comentario sobre este audio..." data-idx="${idx}" rows="2">${escHtml(item.caption || '')}</textarea>
-          <div class="media-footer-actions"><button class="media-delete" data-idx="${idx}">Eliminar</button></div>
+          <textarea class="media-caption" placeholder="Comentario sobre este audio..." data-idx="${idx}" rows="2" ${captionAttrs}>${escHtml(item.caption || '')}</textarea>
+          <div class="media-footer-actions">${deleteBtn}</div>
         </div>`;
       if (!audioSrc && item.driveFileId) {
         fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
@@ -1982,9 +1990,9 @@ function toggleDiaryMenu() {
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(enterSelectionMode,50)">
       <span class="diary-menu-item-icon">☑</span> Seleccionar fotos
     </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
+    ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">⬆</span> Carga masiva
-    </button>
+    </button>` : ''}
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
       <span class="diary-menu-item-icon">▣</span> Ver álbum
     </button>
@@ -2020,6 +2028,7 @@ function enterSelectionMode() {
   selectionMode = true;
   selectedIdxs.clear();
   document.getElementById('selection-bar').classList.add('active');
+  document.getElementById('selection-btn-delete').style.display = albumCanEdit ? '' : 'none';
   updateSelectionBar();
 
   const grid = document.getElementById('media-grid');
