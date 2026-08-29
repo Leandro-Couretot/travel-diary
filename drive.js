@@ -173,14 +173,16 @@ async function readJsonFile(fileId) {
   return await res.json();
 }
 
+// Pese al nombre (que mantenemos por compatibilidad con los callers),
+// devuelve un blob: URL en vez de un data: URL en base64 — mismo uso
+// (asignable a src de <video>/<audio>/<img>, o a fetch()), sin el ~33%
+// de overhead de base64 ni el bloqueo del hilo principal codificando.
+// Quien lo use debe revocarlo con URL.revokeObjectURL() cuando ya no
+// lo necesite.
 async function fetchFileAsDataUrl(fileId) {
   const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   const blob = await res.blob();
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.readAsDataURL(blob);
-  });
+  return URL.createObjectURL(blob);
 }
 
 function base64ToBlob(dataUrl) {

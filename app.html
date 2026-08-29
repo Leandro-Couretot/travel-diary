@@ -800,6 +800,13 @@ async function runWithConcurrency(items, limit, worker) {
   return results;
 }
 
+// fetchFileAsDataUrl() devuelve blob: URLs para video/audio — hay que
+// revocarlos al descartar el día para no acumular memoria en sesiones
+// largas navegando entre días.
+function revokeMediaBlobUrls(media) {
+  (media || []).forEach(m => { if (m.data && m.data.startsWith('blob:')) URL.revokeObjectURL(m.data); });
+}
+
 function formatDate(str) {
   const [y, m, d] = str.split('-');
   const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -1357,6 +1364,7 @@ function renderDiaryPage() {
 async function loadDay(dateStr) {
   currentDate = dateStr; dirty = false; updateDateHeader();
   setStatus('', 'Cargando...');
+  revokeMediaBlobUrls(currentDay.media);
   try {
     const day = await loadDayFromDrive(albumFolderId, dateStr);
     currentDay = day || emptyDay();
@@ -1467,7 +1475,7 @@ function renderMedia() {
     ta.addEventListener('input', e => { currentDay.media[parseInt(e.target.dataset.idx)].caption = e.target.value; autoResize(e.target); markDirty(); });
     autoResize(ta);
   });
-  grid.querySelectorAll('.media-delete').forEach(btn => btn.addEventListener('click', e => { currentDay.media.splice(parseInt(e.target.dataset.idx), 1); markDirty(); renderMedia(); }));
+  grid.querySelectorAll('.media-delete').forEach(btn => btn.addEventListener('click', e => { const [removed] = currentDay.media.splice(parseInt(e.target.dataset.idx), 1); revokeMediaBlobUrls([removed]); markDirty(); renderMedia(); }));
   grid.querySelectorAll('.media-set-cover').forEach(btn => btn.addEventListener('click', async e => {
     const item = currentDay.media[parseInt(e.target.dataset.idx)];
     if (!item.driveFileId) { alert('Guardá el día primero para poder establecer la portada.'); return; }
@@ -1940,6 +1948,7 @@ async function startSlideshow(album) {
 function showSsItem() {
   clearSsTimers(); if (ssIdx >= ssItems.length) { closeSlideshow(); return; }
   const item = ssItems[ssIdx]; const imgEl = document.getElementById('slideshow-img'); const videoEl = document.getElementById('slideshow-video'); const bar = document.getElementById('slideshow-progress-bar');
+  if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src);
   document.getElementById('slideshow-day-label').textContent = formatDate(item.date) + (item.dayTitle ? ` · ${item.dayTitle}` : '');
   document.getElementById('slideshow-caption').textContent = item.caption || '';
   bar.style.transition = 'none'; bar.style.width = '0%';
@@ -1957,7 +1966,7 @@ function showSsItem() {
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.textContent = ssPaused ? '▶' : '⏸'; if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
-function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; }
+function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
 let diaryMenuOpen = false;
@@ -2063,10 +2072,12 @@ async function shareSelected() {
   const files = [];
   for (const item of items) {
     let dataUrl = item.data;
-    if (!dataUrl && item.driveFileId) dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+    const fetchedFresh = !dataUrl && !!item.driveFileId;
+    if (fetchedFresh) dataUrl = await fetchFileAsDataUrl(item.driveFileId);
     if (!dataUrl) continue;
     const res  = await fetch(dataUrl);
     const blob = await res.blob();
+    if (fetchedFresh) URL.revokeObjectURL(dataUrl);
     files.push(new File([blob], item.name, { type: blob.type }));
   }
   if (!files.length) return;
@@ -2092,7 +2103,7 @@ async function deleteSelected() {
   const n = selectedIdxs.size;
   if (!confirm(`¿Eliminar ${n} archivo${n > 1 ? 's' : ''}?`)) return;
   const toDelete = [...selectedIdxs].sort((a, b) => b - a); // reverse to preserve indices
-  for (const idx of toDelete) currentDay.media.splice(idx, 1);
+  for (const idx of toDelete) { const [removed] = currentDay.media.splice(idx, 1); revokeMediaBlobUrls([removed]); }
   markDirty();
   exitSelectionMode();
 }
@@ -2102,8 +2113,10 @@ async function shareMediaItem(item) {
   try {
     // Get data URL — from memory or Drive
     let dataUrl = item.data;
+    let fetchedFresh = false;
     if (!dataUrl && item.driveFileId) {
       dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+      fetchedFresh = true;
     }
     if (!dataUrl) { alert('No se pudo cargar el archivo para compartir.'); return; }
 
@@ -2111,6 +2124,7 @@ async function shareMediaItem(item) {
     const res   = await fetch(dataUrl);
     const blob  = await res.blob();
     const file  = new File([blob], item.name, { type: blob.type });
+    if (fetchedFresh) URL.revokeObjectURL(dataUrl);
 
     // Use Web Share API if available
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
