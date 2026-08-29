@@ -74,6 +74,8 @@ function isDriveConnected() {
 }
 
 // ─── CORE REQUEST ────────────────────────────────────────
+const DRIVE_MAX_RETRIES = 3;
+
 async function driveReq(method, url, body) {
   const headers = { 'Authorization': `Bearer ${driveToken}` };
   const opts = { method, headers };
@@ -83,13 +85,20 @@ async function driveReq(method, url, body) {
     headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(url, opts);
-  if (res.status === 401) {
-    driveToken = null; rootFolderId = null;
-    localStorage.removeItem('drive_token');
-    throw new Error('Token expirado — reconectá Drive');
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+      driveToken = null; rootFolderId = null;
+      localStorage.removeItem('drive_token');
+      throw new Error('Token expirado — reconectá Drive');
+    }
+    const isRetryable = res.status === 429 || res.status >= 500;
+    if (!isRetryable || attempt >= DRIVE_MAX_RETRIES) return res;
+    const retryAfter = parseFloat(res.headers.get('Retry-After'));
+    const delay = !isNaN(retryAfter) ? retryAfter * 1000 : (2 ** attempt) * 500 + Math.random() * 250;
+    await new Promise(r => setTimeout(r, delay));
   }
-  return res;
 }
 
 // ─── FOLDER HELPERS ──────────────────────────────────────
