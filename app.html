@@ -783,6 +783,23 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Corre `worker` sobre cada item con un máximo de `limit` en simultáneo.
+// Nunca corta al primer error (como Promise.allSettled, pero limitando
+// concurrencia) — cada resultado queda en su índice con { status, value|reason }.
+async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function runner() {
+    while (next < items.length) {
+      const i = next++;
+      try { results[i] = { status: 'fulfilled', value: await worker(items[i], i) }; }
+      catch (e) { results[i] = { status: 'rejected', reason: e }; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
+  return results;
+}
+
 function formatDate(str) {
   const [y, m, d] = str.split('-');
   const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -1128,6 +1145,68 @@ function renderBulkReview() {
   document.getElementById('bulk-step-review').style.display = '';
 }
 
+// ─── Carga masiva: subida con concurrencia limitada ────────
+// Compartido por confirmBulkUpload (Home) y confirmBulkDiary (dentro
+// de un álbum). Sube varios archivos a la vez (en vez de uno por uno)
+// y, si algo falla a mitad de camino, guarda igual lo que sí se subió
+// y deja un botón para reintentar solo lo que faltó.
+const BULK_UPLOAD_CONCURRENCY = 5;
+let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
+
+async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess) {
+  const dates = Object.keys(groupsByDate).sort();
+  const dayFolderIds = {};
+  for (const date of dates) dayFolderIds[date] = await getOrCreateFolder(date, albumFolderId);
+
+  const tasks = [];
+  dates.forEach(date => groupsByDate[date].forEach(file => tasks.push({ date, file })));
+  const total = tasks.length;
+  let done = 0;
+  const newMediaByDate = {};
+
+  const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }) => {
+    const isImg = file.type.startsWith('image/');
+    let blob = file;
+    if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
+    const fileId = await uploadFile(blob, file.name, dayFolderIds[date]);
+    if (!newMediaByDate[date]) newMediaByDate[date] = [];
+    newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
+    done++; progressEl.textContent = `Subiendo... ${done}/${total}`;
+  });
+
+  const failedTasks = tasks.filter((t, i) => results[i].status === 'rejected');
+
+  for (const date of Object.keys(newMediaByDate)) {
+    const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
+    day.media.push(...newMediaByDate[date]);
+    await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderIds[date]);
+    invalidateDayCache(albumFolderId, date);
+  }
+
+  if (failedTasks.length) {
+    const okCount = total - failedTasks.length;
+    progressEl.innerHTML = `⚠ ${okCount}/${total} subidos. ${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir. <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
+    progressEl.className = 'bulk-progress error';
+    bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess };
+  } else {
+    progressEl.textContent = `✓ ${total} archivo${total > 1 ? 's' : ''} guardado${total > 1 ? 's' : ''} correctamente`;
+    progressEl.className = 'bulk-progress';
+    bulkRetryCtx = null;
+    onSuccess();
+  }
+}
+
+function retryFailedBulkUpload() {
+  if (!bulkRetryCtx) return;
+  const { albumFolderId, tasks, progressEl, onSuccess } = bulkRetryCtx;
+  const groups = {};
+  tasks.forEach(({ date, file }) => { if (!groups[date]) groups[date] = []; groups[date].push(file); });
+  progressEl.className = 'bulk-progress';
+  runBulkUpload(albumFolderId, groups, progressEl, onSuccess).catch(e => {
+    progressEl.textContent = 'Error: ' + e.message; progressEl.className = 'bulk-progress error';
+  });
+}
+
 async function confirmBulkUpload() {
   const albumId = document.getElementById('bulk-album-select').value;
   const album = albums.find(a => a.id === albumId);
@@ -1139,26 +1218,11 @@ async function confirmBulkUpload() {
     const albumFolderId = await getAlbumFolderId(albumId);
     const allGroups = { ...bulkGrouped.dated };
     bulkGrouped.undated.forEach(file => { const date = bulkUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
-    let total = 0, uploaded = 0;
-    Object.keys(allGroups).forEach(d => total += allGroups[d].length);
-    for (const date of Object.keys(allGroups).sort()) {
-      progress.textContent = `Guardando ${formatDate(date)}...`;
-      let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
-      const dayFolderId = await getOrCreateFolder(date, albumFolderId);
-      for (const file of allGroups[date]) {
-        const isImg = file.type.startsWith('image/');
-        let blob = file;
-        if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
-        const fileId = await uploadFile(blob, file.name, dayFolderId);
-        day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
-        uploaded++; progress.textContent = `Subiendo... ${uploaded}/${total}`;
-      }
-      await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
-      invalidateDayCache(albumFolderId, date);
-    }
-    progress.textContent = `✓ ${uploaded} archivo${uploaded > 1 ? 's' : ''} guardado${uploaded > 1 ? 's' : ''} correctamente`;
-    setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
-  } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; btn.disabled = false; }
+    await runBulkUpload(albumFolderId, allGroups, progress, () => {
+      setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
+    });
+  } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
+  btn.disabled = false;
 }
 
 function compressImageFile(file) {
@@ -1703,25 +1767,11 @@ async function confirmBulkDiary() {
   try {
     const allGroups = { ...bulkDiaryGrouped.dated };
     bulkDiaryGrouped.undated.forEach(file => { const date = bulkDiaryUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
-    let total = 0, uploaded = 0;
-    Object.keys(allGroups).forEach(d => total += allGroups[d].length);
-    for (const date of Object.keys(allGroups).sort()) {
-      progress.textContent = `Guardando ${formatDate(date)}...`;
-      let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
-      const dayFolderId = await getOrCreateFolder(date, albumFolderId);
-      for (const file of allGroups[date]) {
-        const isImg = file.type.startsWith('image/'); let blob = file;
-        if (isImg) { const data = await compressImage(file); blob = base64ToBlob(data); }
-        const fileId = await uploadFile(blob, file.name, dayFolderId);
-        day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
-        uploaded++; progress.textContent = `Subiendo... ${uploaded}/${total}`;
-      }
-      await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
-      invalidateDayCache(albumFolderId, date);
-    }
-    progress.textContent = `✓ ${uploaded} archivo${uploaded > 1 ? 's' : ''} guardado${uploaded > 1 ? 's' : ''} correctamente`;
-    setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);
-  } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; btn.disabled = false; }
+    await runBulkUpload(albumFolderId, allGroups, progress, () => {
+      setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);
+    });
+  } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
+  btn.disabled = false;
 }
 
 // ─── Album overlay ────────────────────────────────────────
