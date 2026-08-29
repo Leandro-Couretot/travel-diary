@@ -28,11 +28,13 @@ App web de diario de viaje personal. El usuario registra cada día con fotos, vi
 ```
 travel-diary/
 ├── app.html          ← SPA principal — TODO vive acá (home + diario)
-├── drive.js          ← Lógica Google Drive (auth, CRUD archivos/carpetas)
+├── drive.js          ← Lógica Google Drive (auth, CRUD archivos/carpetas, caché de días)
 ├── exif.js           ← Lector EXIF liviano para fechas de fotos
 ├── style.css         ← Design system compartido
 ├── debug.js          ← Overlay de errores para debug en mobile
-├── manifest.json     ← PWA manifest
+├── sw.js             ← Service worker: shell offline (stale-while-revalidate)
+├── manifest.json     ← PWA manifest (íconos + config)
+├── icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png ← íconos de instalación
 ├── privacy.html      ← Política de privacidad (requerida por Google OAuth)
 ├── terms.html        ← Términos de servicio
 ├── index.html        ← Redirige a app.html (legacy)
@@ -105,9 +107,9 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 
 ### Home (`#view-home`)
 - Grilla de álbumes propios + álbumes compartidos
-- Crear álbum, compartir álbum con otro usuario por email
+- Crear álbum, compartir álbum con otro usuario por email — con selector **Puede ver / Puede editar** (rol `reader`/`writer` de Drive; por defecto solo lectura)
 - Botón ▶ slideshow automático por álbum (fotos 3-7s random, videos completos)
-- Carga masiva ⬆ con detección EXIF de fecha
+- Carga masiva ⬆ con detección EXIF de fecha, subida con concurrencia limitada (5 en simultáneo) y botón "Reintentar los que faltan" si algo falla
 - Botón ? ayuda
 
 ### Diario (`#view-diary`)
@@ -123,28 +125,38 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 
 ### Drive helpers (`drive.js`)
 - `setAuthImg(imgEl, fileId, size)` — carga imágenes con fallback autenticado (resuelve el problema de PWA en iOS donde las thumbnail URLs de Drive no funcionan sin sesión)
-- `fetchFileAsDataUrl(fileId)` — descarga como blob URL
+- `fetchFileAsDataUrl(fileId)` — descarga y devuelve un **blob URL** (`URL.createObjectURL`, no base64). Quien lo use debe revocarlo con `URL.revokeObjectURL()` cuando el video/audio deja de estar en pantalla — ver los puntos de revocación en `app.html` (loadDay, showSsItem/closeSlideshow, deleteSelected, shareMediaItem/shareSelected)
 - `groupFilesByDate(files)` — agrupa archivos por fecha EXIF
+- `driveReq()` — reintenta con backoff exponencial ante 429/5xx (hasta 3 veces, respeta `Retry-After`)
+- **Caché de días** (`_dayCache` en `drive.js`): `loadDayFromDrive()` cachea folderId + contenido de `day.json` por `albumFolderId+fecha` (clave compuesta — dos álbumes pueden tener un día con el mismo nombre). Devuelve siempre un clon para que el editor pueda mutar `currentDay.media` sin corromper la caché. Se invalida en `saveDayToDrive()` y con `invalidateDayCache(albumFolderId, dateStr)` en los flujos de carga masiva. Lista/Mes/Libro comparten esta caché — cambiar de tab no vuelve a pedir lo mismo dos veces.
 
 ---
 
 ## Estado actual y pendientes
 
 ### Funcionando bien
-- PWA instalable en iOS y Android
+- PWA instalable en iOS y Android, con íconos propios (192/512/maskable + apple-touch-icon)
 - Imágenes cargan correctamente en PWA (via API autenticada con fallback)
 - Navegación interna sin abrir Safari
 - OAuth con re-auth automático si cambia el scope
 - **Modo selección múltiple**: checkbox con 2 estados (círculo vacío / tilde + marco dorado) funcionando correctamente. El bug era que `.selection-check` tenía `background`/`border` inline que pisaban la regla CSS `.media-card.selected .selection-check`, dejando el tilde blanco sobre blanco (invisible). Corregido quitando el inline y agregando el checkbox faltante en las cards de audio (v1.7).
 - **Menú ···**: hubo problemas con el overlay interceptando clicks. Solución actual: `document.addEventListener('click')` para cerrar en lugar de overlay. Todos los items del menú (Seleccionar, Carga masiva, Ver álbum, Ayuda) funcionan.
+- **Sanitización de HTML de usuario**: nombre de archivo, caption, título y notas pasan por `escHtml()` antes de insertarse en el DOM (v1.9) — antes se insertaban sin escapar en 7 puntos (cards de media, fotolibro, vista "Ver álbum"), lo que permitía HTML/script guardado ejecutándose para cualquiera que abriera el álbum.
+- **Eliminar borra de verdad**: sacar una foto/video/audio de un día y guardar ahora manda el archivo a la papelera de Drive (`trashed:true`, recuperable 30 días) en vez de dejarlo huérfano en la carpeta (v1.9). Ver `currentDayOriginalIds` en `app.html` y el parámetro `previousIds` de `saveDayToDrive()`.
+- **Caché de días + fotolibro en paralelo**: Lista, Mes y Libro comparten la caché de `day.json` (ver arriba); el fotolibro pasó de cargar los días secuencial a `Promise.all`. El layout de cada página del fotolibro ya no es `Math.random()` — sale de un hash estable de fecha+página, así que no cambia solo entre visitas (v1.9).
+- **Carga masiva concurrente**: sube hasta 5 archivos a la vez (antes uno por uno) y, si algo falla, guarda igual lo que sí se subió y ofrece "Reintentar los que faltan" (v1.9). Compartido por `confirmBulkUpload` (Home) y `confirmBulkDiary` (dentro de un álbum) vía el helper `runBulkUpload()`.
+- **Video/audio sin overhead de base64**: `fetchFileAsDataUrl()` devuelve blob URL en vez de base64 (v1.9) — con la revocación correspondiente para no acumular memoria en sesiones largas.
+- **Shell offline**: `sw.js` (service worker) precachea app.html/style.css/drive.js/exif.js/debug.js/manifest.json/íconos con stale-while-revalidate — la segunda visita en adelante carga al toque y sin conexión la PWA abre igual en vez de romperse (v1.10). Deliberadamente NO cache-first: no depende de acordarse de bumpear una versión en cada deploy.
 
 ### Pendientes conocidos
 - **Verificación OAuth Google**: enviada. Mientras tanto la app está en modo Testing — solo usuarios en la lista de prueba pueden usarla.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
+- **Streaming real de video**: hoy el video se descarga entero (como blob URL) antes de reproducirse — no hay range requests. La solución de fondo (un service worker que intercepte el pedido a Drive, inyecte el header `Authorization` vía postMessage desde la página, y reenvíe Range/206) quedó deliberadamente afuera de la Fase 6 del plan de auditoría por su complejidad y riesgo (reescribe el pipeline de video) sin poder probarla en un dispositivo real. Retomar cuando se pueda testear en mobile.
+- **Rol al compartir álbum**: la app todavía no oculta los controles de editar/subir cuando alguien entra a un álbum compartido como "solo lectura" — Drive rechaza el guardado (403) pero la experiencia es confusa en vez de ocultar la UI directamente. Requeriría consultar `capabilities.canEdit` de Drive al abrir el álbum.
 
 ### Deuda técnica
-- `app.html` tiene ~2200 líneas — considerar dividir en módulos JS separados cuando crezca más
-- El libro (tab Libro) elige layouts con `Math.random()` — mejorar con detección de orientación real de cada foto (ya se lee el EXIF de fecha, podría extenderse para leer dimensiones)
+- `app.html` tiene ~2400 líneas — considerar dividir en módulos JS separados cuando crezca más
+- `compressImage()` y `compressImageFile()` (`app.html`) son funciones idénticas duplicadas — unificar cuando se toque esa zona de nuevo
 
 ---
 
