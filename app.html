@@ -721,7 +721,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.11 ·
+      Versión 1.12 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -759,7 +759,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.11</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.12</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
@@ -2078,17 +2078,22 @@ function updateSelectionBar() {
 async function shareSelected() {
   if (!selectedIdxs.size) return;
   const items = [...selectedIdxs].map(i => currentDay.media[i]).filter(Boolean);
-  const files = [];
-  for (const item of items) {
-    let dataUrl = item.data;
-    const fetchedFresh = !dataUrl && !!item.driveFileId;
-    if (fetchedFresh) dataUrl = await fetchFileAsDataUrl(item.driveFileId);
-    if (!dataUrl) continue;
-    const res  = await fetch(dataUrl);
-    const blob = await res.blob();
-    if (fetchedFresh) URL.revokeObjectURL(dataUrl);
-    files.push(new File([blob], item.name, { type: blob.type }));
-  }
+  // Pedir todas las fotos en paralelo, no una por una: navigator.share()
+  // solo funciona dentro de una ventana cortita de "recién tocaste un
+  // botón" (user activation) — con varias fotos en fila esa ventana se
+  // cierra antes de terminar y el share sale con NotAllowedError.
+  const files = (await Promise.all(items.map(async item => {
+    try {
+      let dataUrl = item.data;
+      const fetchedFresh = !dataUrl && !!item.driveFileId;
+      if (fetchedFresh) dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+      if (!dataUrl) return null;
+      const res  = await fetch(dataUrl);
+      const blob = await res.blob();
+      if (fetchedFresh) URL.revokeObjectURL(dataUrl);
+      return new File([blob], item.name, { type: blob.type });
+    } catch { return null; }
+  }))).filter(Boolean);
   if (!files.length) return;
   try {
     if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
