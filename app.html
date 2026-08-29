@@ -1154,6 +1154,7 @@ async function confirmBulkUpload() {
         uploaded++; progress.textContent = `Subiendo... ${uploaded}/${total}`;
       }
       await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
+      invalidateDayCache(albumFolderId, date);
     }
     progress.textContent = `✓ ${uploaded} archivo${uploaded > 1 ? 's' : ''} guardado${uploaded > 1 ? 's' : ''} correctamente`;
     setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
@@ -1449,6 +1450,7 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
       day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
     }
     await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
+    invalidateDayCache(albumFolderId, date);
   }
   const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
   if (toCurrentDay.length) addFilesToCurrentDay(toCurrentDay);
@@ -1576,8 +1578,11 @@ async function renderBook() {
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto 0.5rem;"></div>Preparando libro...</div>';
   if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
   if (!allDates.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📖</div>Todavía no hay días guardados</div>'; return; }
-  const days = [];
-  for (const date of allDates) { const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] }; const images = (day.media || []).filter(m => m.type === 'image' && m.driveFileId); days.push({ date, title: day.title || '', notes: day.notes || '', images }); }
+  const days = await Promise.all(allDates.map(async date => {
+    const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
+    const images = (day.media || []).filter(m => m.type === 'image' && m.driveFileId);
+    return { date, title: day.title || '', notes: day.notes || '', images };
+  }));
   bookPages = [];
   for (const day of days) {
     if (!day.images.length) { bookPages.push({ ...day, pageImages: [], isFirst: true }); continue; }
@@ -1605,7 +1610,7 @@ function buildBookPage(page, idx) {
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
   if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos este día</div>`; }
   else {
-    const grid = document.createElement('div'); grid.className = pickLayout(imgs); grid.style.height = '100%';
+    const grid = document.createElement('div'); grid.className = pickLayout(imgs, `${page.date}-${page.pageNum || 0}`); grid.style.height = '100%';
     imgs.forEach(img => { const cell = document.createElement('div'); cell.className = 'bp'; const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, img.driveFileId, 'w800'); cell.appendChild(imgEl); grid.appendChild(cell); });
     photoArea.appendChild(grid);
   }
@@ -1614,12 +1619,21 @@ function buildBookPage(page, idx) {
   return el;
 }
 
-function pickLayout(imgs) {
+function pickLayout(imgs, seed) {
   const n = imgs.length;
   if (n === 1) return 'book-layout-1';
-  if (n === 2) return Math.random() > 0.5 ? 'book-layout-2v' : 'book-layout-2h';
-  if (n === 3) return Math.random() > 0.5 ? 'book-layout-3a' : 'book-layout-3b';
-  return Math.random() > 0.5 ? 'book-layout-4a' : 'book-layout-4b';
+  const pick = seededPick(seed);
+  if (n === 2) return pick ? 'book-layout-2v' : 'book-layout-2h';
+  if (n === 3) return pick ? 'book-layout-3a' : 'book-layout-3b';
+  return pick ? 'book-layout-4a' : 'book-layout-4b';
+}
+
+// Hash simple y estable (no criptográfico) para que el layout de cada
+// página del fotolibro sea siempre el mismo mientras no cambien las fotos.
+function seededPick(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  return (hash & 1) === 0;
 }
 
 function toggleBookText() {
@@ -1703,6 +1717,7 @@ async function confirmBulkDiary() {
         uploaded++; progress.textContent = `Subiendo... ${uploaded}/${total}`;
       }
       await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
+      invalidateDayCache(albumFolderId, date);
     }
     progress.textContent = `✓ ${uploaded} archivo${uploaded > 1 ? 's' : ''} guardado${uploaded > 1 ? 's' : ''} correctamente`;
     setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);

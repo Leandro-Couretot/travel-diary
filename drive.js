@@ -127,10 +127,30 @@ async function findFileInFolder(name, folderId) {
   return data.files && data.files.length ? data.files[0].id : null;
 }
 
+// ─── DAY CACHE ───────────────────────────────────────────
+// Cachea folderId + contenido de day.json por álbum+fecha para que
+// Lista, Mes y Libro no vuelvan a pedirle a Drive lo mismo una y otra
+// vez. Clave por albumFolderId además de la fecha: dos álbumes
+// distintos pueden tener un día con el mismo nombre (YYYY-MM-DD).
+const _dayCache = {};
+
+function _dayKey(albumFolderId, dateStr) { return `${albumFolderId}::${dateStr}`; }
+
+function invalidateDayCache(albumFolderId, dateStr) {
+  delete _dayCache[_dayKey(albumFolderId, dateStr)];
+}
+
 async function listDayFolders(albumFolderId) {
   const folders = await listFolders(albumFolderId);
   // Filter to date-shaped folders only (YYYY-MM-DD)
-  return folders.filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f.name)).map(f => f.name).sort();
+  const dayFolders = folders.filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f.name));
+  // Ya tenemos el id de cada carpeta acá — cachearlo para no tener
+  // que volver a buscarlo por nombre en loadDayFromDrive.
+  dayFolders.forEach(f => {
+    const key = _dayKey(albumFolderId, f.name);
+    _dayCache[key] = { ..._dayCache[key], folderId: f.id };
+  });
+  return dayFolders.map(f => f.name).sort();
 }
 
 // ─── FILE HELPERS ────────────────────────────────────────
@@ -261,20 +281,32 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
     }))
   };
   await writeJsonFile(dayJson, 'day.json', dayFolderId);
+  _dayCache[_dayKey(albumFolderId, dateStr)] = { folderId: dayFolderId, json: { title: dayJson.title, notes: dayJson.notes, media: dayJson.media } };
   return day;
+}
+
+function _cloneDay(day) {
+  return { title: day.title, notes: day.notes, media: day.media.map(m => ({ ...m })) };
 }
 
 async function loadDayFromDrive(albumFolderId, dateStr) {
   try {
-    const q = `name='${dateStr}' and mimeType='application/vnd.google-apps.folder' and '${albumFolderId}' in parents and trashed=false`;
-    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`);
-    const data = await res.json();
-    if (!data.files || !data.files.length) return null;
-    const dayFolderId = data.files[0].id;
+    const key = _dayKey(albumFolderId, dateStr);
+    const cached = _dayCache[key];
+    if (cached && cached.json) return _cloneDay(cached.json);
+
+    let dayFolderId = cached && cached.folderId;
+    if (!dayFolderId) {
+      const q = `name='${dateStr}' and mimeType='application/vnd.google-apps.folder' and '${albumFolderId}' in parents and trashed=false`;
+      const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`);
+      const data = await res.json();
+      if (!data.files || !data.files.length) return null;
+      dayFolderId = data.files[0].id;
+    }
     const jsonId = await findFileInFolder('day.json', dayFolderId);
     if (!jsonId) return null;
     const dayJson = await readJsonFile(jsonId);
-    return {
+    const result = {
       title: dayJson.title || '',
       notes: dayJson.notes || '',
       media: (dayJson.media || []).map(m => ({
@@ -283,6 +315,8 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
         caption: m.caption || ''
       }))
     };
+    _dayCache[key] = { folderId: dayFolderId, json: result };
+    return _cloneDay(result);
   } catch(e) {
     console.warn('Error cargando día desde Drive:', e);
     return null;
