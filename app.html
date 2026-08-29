@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="旅 Travel diary">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="google-site-verification" content="G10N0krZt4q1WQjXYiY7mPFfwOxXTLbGGI3ZU5sFL7A" />
 <title>旅 — Travel diary</title>
@@ -649,6 +651,13 @@ audio { width: 100%; height: 32px; }
     <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
     <div class="modal-body">
       <div class="form-field"><label class="form-label">Email de Google</label><input class="form-input" id="share-email" type="email" placeholder="lucia@gmail.com"></div>
+      <div class="form-field">
+        <label class="form-label">Permiso</label>
+        <div class="role-toggle" id="share-role-toggle">
+          <button type="button" class="role-toggle-btn active" data-role="reader" onclick="setShareRole('reader')">Puede ver</button>
+          <button type="button" class="role-toggle-btn" data-role="writer" onclick="setShareRole('writer')">Puede editar</button>
+        </div>
+      </div>
       <div id="share-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
       <div id="share-success" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;line-height:1.5;word-break:break-all;"></div>
       <button class="btn btn-primary" style="width:100%;" onclick="submitShare()">Compartir y copiar link</button>
@@ -712,7 +721,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.8 ·
+      Versión 1.9 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -750,7 +759,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.8</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.9</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
@@ -1028,12 +1037,20 @@ async function submitNewAlbum() {
 }
 function showAlbumError(msg) { const el = document.getElementById('album-error'); el.textContent = msg; el.style.display = 'block'; }
 
+let shareRole = 'reader';
+
+function setShareRole(role) {
+  shareRole = role;
+  document.querySelectorAll('#share-role-toggle .role-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
+}
+
 function openShareModal(event, album) {
   event.preventDefault(); event.stopPropagation();
   shareTargetAlbum = album;
   document.getElementById('share-email').value = '';
   document.getElementById('share-error').style.display = 'none';
   document.getElementById('share-success').style.display = 'none';
+  setShareRole('reader');
   document.getElementById('modal-share-album').classList.add('open');
   setTimeout(() => document.getElementById('share-email').focus(), 100);
 }
@@ -1049,10 +1066,11 @@ async function submitShare() {
   btn.textContent = 'Compartiendo...'; btn.disabled = true;
   try {
     const folderId = await getAlbumFolderId(shareTargetAlbum.id);
-    await shareAlbumWithUser(folderId, email);
+    await shareAlbumWithUser(folderId, email, shareRole);
     const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
-    try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email}. Link copiado al portapapeles.`; }
-    catch { okEl.textContent = `✓ Compartido con ${email}. Link: ${link}`; }
+    const roleLabel = shareRole === 'writer' ? 'edición' : 'lectura';
+    try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
+    catch { okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link: ${link}`; }
     okEl.style.display = 'block';
   } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   btn.textContent = 'Compartir y copiar link'; btn.disabled = false;
@@ -1317,9 +1335,9 @@ function renderMedia() {
       card.innerHTML = `
         <div class="drag-handle">⠿⠿⠿</div>
         <div class="selection-check">✓</div>
-        <img class="media-thumb" id="mt-${idx}" alt="${item.name}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;">
+        <img class="media-thumb" id="mt-${idx}" alt="${escHtml(item.name)}" loading="lazy" data-lightbox="${idx}" style="cursor:zoom-in;">
         <div class="media-footer">
-          <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
+          <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2">${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions">
             <button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>
             <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
@@ -1334,9 +1352,9 @@ function renderMedia() {
       card.innerHTML = `
         <div class="drag-handle">⠿⠿⠿</div>
         <div class="selection-check">✓</div>
-        <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">🎬</div><div class="audio-filename">${item.name}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
+        <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">🎬</div><div class="audio-filename">${escHtml(item.name)}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
         <div class="media-footer">
-          <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
+          <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2">${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions">
             <button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>
             <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
@@ -1359,11 +1377,11 @@ function renderMedia() {
         <div class="selection-check">✓</div>
         <div class="audio-thumb">
           <div class="audio-icon">🎙️</div>
-          <div class="audio-filename">${item.name}</div>
+          <div class="audio-filename">${escHtml(item.name)}</div>
           ${audioSrc ? `<audio controls src="${audioSrc}"></audio>` : `<div id="al-${idx}" style="font-size:0.75rem;color:var(--ink-muted);padding:0.5rem 0;">Cargando audio...</div>`}
         </div>
         <div class="media-footer">
-          <textarea class="media-caption" placeholder="Comentario sobre este audio..." data-idx="${idx}" rows="2">${item.caption || ''}</textarea>
+          <textarea class="media-caption" placeholder="Comentario sobre este audio..." data-idx="${idx}" rows="2">${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions"><button class="media-delete" data-idx="${idx}">Eliminar</button></div>
         </div>`;
       if (!audioSrc && item.driveFileId) {
@@ -1579,7 +1597,7 @@ function buildBookPage(page, idx) {
   const imgs = page.pageImages;
   if (page.isFirst) {
     const multi = page.totalPages > 1 ? ` (${page.pageNum + 1}/${page.totalPages})` : '';
-    el.innerHTML += `<div class="book-page-header book-text"><div class="book-page-date">${formatDate(page.date)}${multi}</div><div class="book-page-title">${page.title || '—'}</div></div>`;
+    el.innerHTML += `<div class="book-page-header book-text"><div class="book-page-date">${formatDate(page.date)}${multi}</div><div class="book-page-title">${page.title ? escHtml(page.title) : '—'}</div></div>`;
   }
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
   if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos este día</div>`; }
@@ -1589,7 +1607,7 @@ function buildBookPage(page, idx) {
     photoArea.appendChild(grid);
   }
   el.appendChild(photoArea);
-  if (page.notes && page.isFirst) el.innerHTML += `<div class="book-page-footer book-text">${page.notes.slice(0, 200)}${page.notes.length > 200 ? '…' : ''}</div>`;
+  if (page.notes && page.isFirst) el.innerHTML += `<div class="book-page-footer book-text">${escHtml(page.notes.slice(0, 200))}${page.notes.length > 200 ? '…' : ''}</div>`;
   return el;
 }
 
@@ -1710,7 +1728,7 @@ function renderAlbumPage() {
   document.getElementById('album-btn-next').disabled = albumIdx === albumDays.length - 1;
   const heroEl = document.getElementById('album-hero');
   if (photo) {
-    const caption = photo.caption ? `<div class="album-caption">${photo.caption}</div>` : '';
+    const caption = photo.caption ? `<div class="album-caption">${escHtml(photo.caption)}</div>` : '';
     const dots = images.length > 1 ? `<div class="album-dots">${images.map((_, i) => `<div class="album-dot${i === albumPhotoIdx ? ' active' : ''}"></div>`).join('')}</div>` : '';
     heroEl.innerHTML = `<img id="album-hero-img" alt=""><div class="album-photo-nav"><div class="album-photo-prev" onclick="albumPhotoNav(-1)"></div><div class="album-photo-next" onclick="albumPhotoNav(1)"></div></div>${caption}${dots}`;
     const heroImg = document.getElementById('album-hero-img');

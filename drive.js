@@ -283,10 +283,10 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
 
 // ─── SHARING ──────────────────────────────────────────────
 
-async function shareAlbumWithUser(albumFolderId, guestEmail) {
+async function shareAlbumWithUser(albumFolderId, guestEmail, role = 'reader') {
   const res = await driveReq('POST',
     `https://www.googleapis.com/drive/v3/files/${albumFolderId}/permissions`,
-    { role: 'writer', type: 'user', emailAddress: guestEmail, sendNotificationEmail: false }
+    { role, type: 'user', emailAddress: guestEmail, sendNotificationEmail: false }
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

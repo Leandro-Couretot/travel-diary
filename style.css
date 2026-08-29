@@ -231,6 +231,22 @@ body {
 .form-input:focus { border-color: var(--accent); }
 .form-input::placeholder { color: var(--ink-faint); }
 
+.role-toggle { display: flex; gap: 0.5rem; }
+.role-toggle-btn {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--ink-faint);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.role-toggle-btn:hover { border-color: var(--accent); }
+.role-toggle-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+
 /* ─── SAVE BAR ─── */
 .save-bar {
   position: fixed;
