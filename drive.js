@@ -1,8 +1,8 @@
 // ─── DRIVE CONFIG ────────────────────────────────────────
 const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
-const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
 const ROOT_FOLDER     = 'travel-diary';
-const SCOPE_VERSION   = 3; // bumped: drive → drive.file
+const SCOPE_VERSION   = 4; // bumped: + userinfo.email (identidad estable para suscripciones)
 
 // ─── STATE ───────────────────────────────────────────────
 let driveToken       = null;

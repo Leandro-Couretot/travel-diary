@@ -16,6 +16,7 @@
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="drive.js"></script>
 <script src="exif.js"></script>
+<script src="billing.js"></script>
 <style>
 
 /* ─── SPA ROUTER ─── */
@@ -665,6 +666,18 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-subscribe">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Suscribirme</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
+    <div class="modal-body">
+      <p style="margin-bottom:1.25rem;color:var(--ink-muted);font-size:0.9rem;">Elegí cómo pagar. Vas a terminar de cargar tu tarjeta en Mercado Pago.</p>
+      <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
+      <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual — $14.000/mes</button>
+      <button class="btn btn-primary" style="width:100%;" onclick="startCheckout('annual')">Anual — $134.400/año (20% off)</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-bulk-upload">
   <div class="modal" style="max-width:480px;">
     <div class="modal-header"><div class="modal-title">Carga masiva</div><button class="modal-close" onclick="closeBulkUpload()">×</button></div>
@@ -721,7 +734,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.14 ·
+      Versión 1.15 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -759,11 +772,15 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.14</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.15</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
+    <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
 }
+
+function openSubscribeModal() { document.getElementById('modal-subscribe').classList.add('open'); }
+function closeSubscribeModal() { document.getElementById('modal-subscribe').classList.remove('open'); }
 
 function renderDiaryHeader() {
   document.getElementById('header-actions').innerHTML = `
@@ -840,6 +857,7 @@ async function initGoogleAuth() {
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
+        establishSession(driveToken); // en paralelo, no bloquea el flujo de Drive
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
         if (_onConnected) { await _onConnected(); return; }
         const sp2 = new URLSearchParams(location.search);
@@ -855,6 +873,7 @@ async function initGoogleAuth() {
   }
 
   initDrive(async () => {
+    if (sessionToken) refreshSubscriptionStatus(); else establishSession(driveToken); // en paralelo
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
     updateDriveBtn(); await renderAlbums(); await checkMigratable();
   }, () => {
@@ -2227,6 +2246,7 @@ document.getElementById('slideshow-close').addEventListener('click', closeSlides
 document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
 document.getElementById('modal-new-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewAlbumModal(); });
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
+document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
 document.getElementById('modal-help').addEventListener('click', e => { if (e.target === e.currentTarget) closeHelp(); });
@@ -2344,6 +2364,9 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed:', e));
   });
 }
+
+// ─── Vuelta desde el checkout de Mercado Pago ────────────
+handleMercadoPagoReturn();
 </script>
 </body>
 </html>

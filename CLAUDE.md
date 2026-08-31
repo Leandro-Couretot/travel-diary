@@ -6,19 +6,23 @@ Contexto para Claude Code. Leer antes de tocar cualquier archivo.
 
 ## Qué es
 
-App web de diario de viaje personal. El usuario registra cada día con fotos, videos, audios y notas. Todo se almacena en Google Drive del usuario. Hosteada en GitHub Pages como PWA.
+App web de diario de viaje personal. El usuario registra cada día con fotos, videos, audios y notas. Todo se almacena en Google Drive del usuario. PWA instalable.
 
-**URL producción:** `https://leandro-couretot.github.io/travel-diary/app.html`
+**En transición de "app familiar" a producto con suscripción** (freemium + pago mensual/anual vía Mercado Pago) — ver la sección "Suscripciones" más abajo. Mientras dura la migración, **la app sigue viva en GitHub Pages** con el `start_url` viejo; el corte a Firebase Hosting es un paso manual explícito, no automático (ver "Pendientes conocidos").
+
+**URL producción actual (GitHub Pages):** `https://leandro-couretot.github.io/travel-diary/app.html`
+**URL futura (Firebase, todavía no cortada):** `https://family-fotos-491610.web.app/app.html`
 **Repo:** `https://github.com/Leandro-Couretot/travel-diary`
 
 ---
 
 ## Stack
 
-- HTML + CSS + JS vanilla, sin frameworks ni bundler
-- Google Drive API v3 para persistencia
-- Google Identity Services (GSI) para OAuth
-- GitHub Pages para hosting estático
+- HTML + CSS + JS vanilla en el frontend, sin frameworks ni bundler
+- Google Drive API v3 para persistencia de fotos/videos/notas (sigue siendo la única "base de datos" del contenido del diario — eso no cambia con la suscripción)
+- Google Identity Services (GSI) para OAuth, con `userinfo.email` sumado al scope para tener una identidad estable (ver "Suscripciones")
+- **Backend nuevo** (`functions/`): Node.js sobre Firebase Cloud Functions — antes la app no tenía backend propio, esto es exclusivamente para la lógica de suscripciones/pagos, no para el contenido del diario
+- Firebase Hosting (reemplaza a GitHub Pages una vez cortada la migración) + Supabase (Postgres, estado de suscripciones) + Mercado Pago (cobros)
 - PWA instalable (manifest.json)
 
 ---
@@ -29,6 +33,7 @@ App web de diario de viaje personal. El usuario registra cada día con fotos, vi
 travel-diary/
 ├── app.html          ← SPA principal — TODO vive acá (home + diario)
 ├── drive.js          ← Lógica Google Drive (auth, CRUD archivos/carpetas, caché de días)
+├── billing.js        ← Frontend de suscripciones: habla con /api/* (Cloud Functions), nunca directo con Supabase/Mercado Pago
 ├── exif.js           ← Lector EXIF liviano para fechas de fotos
 ├── style.css         ← Design system compartido
 ├── debug.js          ← Overlay de errores para debug en mobile
@@ -39,10 +44,13 @@ travel-diary/
 ├── terms.html        ← Términos de servicio
 ├── index.html        ← Redirige a app.html (legacy)
 ├── diary.html        ← Redirige a app.html (legacy)
+├── firebase.json     ← Config de Firebase Hosting (rewrites /api/** → Cloud Functions) + de dónde salen las functions
+├── .firebaserc       ← Proyecto de Firebase/GCP de este repo (family-fotos-491610)
+├── functions/        ← Backend de suscripciones (Node.js, Cloud Functions) — ver "Suscripciones"
 └── CLAUDE.md         ← Este archivo
 ```
 
-**Archivo principal: `app.html`** (~2200 líneas). Contiene todo el HTML, CSS y JS en un solo archivo. Es una SPA — no hay navegación entre páginas, todo se maneja con JS mostrando/ocultando vistas.
+**Archivo principal: `app.html`** (~2400 líneas). Contiene todo el HTML, CSS y JS del frontend en un solo archivo. Es una SPA — no hay navegación entre páginas, todo se maneja con JS mostrando/ocultando vistas.
 
 ---
 
@@ -93,15 +101,47 @@ Google Drive/
 ```js
 // en drive.js
 const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
-const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file'; // mínimo necesario
-const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
+const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+const SCOPE_VERSION   = 4; // incrementar si cambia el scope para forzar re-auth
 ```
 
 - Scope `drive.file`: solo accede a archivos que la app creó. **No tocar sin revisar el proceso de verificación OAuth.**
-- El token se guarda en `localStorage` como `drive_token`
-- La app está en modo **Testing** en Google Cloud Console (proyecto: `family-photos`). Enviada a verificación para pasar a producción.
+- Scope `userinfo.email` (sumado en v1.15): scope no sensible, no debería requerir una nueva revisión de verificación — se usa exclusivamente para tener una identidad estable (`sub`/`email` de Google) con la que trackear suscripciones. No se usa para nada del diario en sí.
+- El token de Drive se guarda en `localStorage` como `drive_token`; el JWT propio de sesión de suscripción (ver "Suscripciones") como `td_session` — mismo patrón, mismo mecanismo de storage.
+- La app **ya pasó la verificación de OAuth de Google** — cualquier cuenta de Google puede autenticarse, no hace falta estar en una lista de prueba (proyecto de Google Cloud: `family-fotos-491610`).
 - El `tokenClient` (`google.accounts.oauth2.initTokenClient`) y el botón "Conectar Drive" viven en **`app.html`** (`initGoogleAuth()` / `handleDriveBtn()`), no en `drive.js` — drive.js solo restaura una sesión ya guardada (`initDrive()`). Había una segunda copia de `initGoogleAuth`/`tokenClient` en `drive.js` que nunca se ejecutaba (quedaba tapada por la de `app.html`, que se carga después) — se sacó en v1.14 para que no vuelva a confundir.
 - Cada pedido de acceso manda un `state` aleatorio (`pendingAuthState`, declarado en drive.js) y el callback lo valida contra lo que Google devuelve antes de aceptar el token — mitiga que se cuele una respuesta que la app no pidió (recomendación de Google Cloud Console → "Use secure flows").
+
+---
+
+## Suscripciones (Mercado Pago + Supabase + Firebase Functions)
+
+Freemium + suscripción mensual/anual. **Todavía no se decidió qué funciones puntuales quedan detrás del pago** (candidatas: fotolibro, video, compartir) — esta capa es solo la infraestructura para saber "¿esta cuenta pagó?"; el gateo feature por feature se agrega después, cuando se decida.
+
+Arquitectura:
+```
+app.html (Drive OAuth ampliado con email) → billing.js → /api/** (Firebase Hosting rewrite)
+                                                        → Cloud Functions → Supabase (estado) + Mercado Pago (cobro)
+```
+
+- **Nunca** se habla directo con Supabase ni Mercado Pago desde el navegador — todo pasa por Cloud Functions, las únicas que tienen los secretos.
+- La identidad se valida del lado del servidor: el frontend manda el `access_token` de Google en bruto; `functions/auth-session.js` lo valida contra `tokeninfo`/`userinfo` de Google antes de confiar en el `sub`/`email`.
+- Fuente de verdad de "¿es usuario pago?" = `status === 'authorized'` en la tabla `subscriptions` de Supabase, que a su vez refleja el estado real del `preapproval` en Mercado Pago (consultado en vivo cuando hace falta, nunca confiando ciegamente en el cuerpo de un webhook individual).
+
+### `functions/` (Cloud Functions, Node.js, región `southamerica-east1`)
+- `auth-session.js` — valida el access_token de Google, crea/actualiza la fila en Supabase, devuelve un JWT propio de sesión.
+- `checkout-create.js` — crea el `preapproval` (suscripción) en Mercado Pago con `status: "pending"`, devuelve el `init_point` (URL de checkout de MP) para redirigir. **Precios en `PRECIOS_ARS` al principio del archivo** — hoy $14.000/mes, 20% off anual, todavía no cerrado como modelo de negocio, cambiar ahí nomás.
+- `subscription-status.js` — estado actual; si sigue `pending` con un `preapproval` ya creado, re-consulta Mercado Pago en vivo antes de responder (cubre el margen mientras el webhook no llegó todavía).
+- `webhook-mercadopago.js` — Mercado Pago llama acá en cada evento. Valida la firma `x-signature` (HMAC-SHA256, ver el código para el detalle exacto del manifest) antes de procesar nada. Guarda cada notificación cruda en `subscription_events` para poder auditar pagos después.
+
+### `billing.js` (frontend)
+`isPaidUser()`, `establishSession()`, `refreshSubscriptionStatus()`, `startCheckout(planType)`. `establishSession()` se llama con el mismo `access_token` de Drive apenas se conecta (en `app.html`, dentro del callback de `initTokenClient` y en la rama de sesión restaurada de `initGoogleAuth()`) — no hay un segundo login. El botón "✨" del header de Home abre `#modal-subscribe`.
+
+### Variables de entorno (Firebase Functions Secret Manager — `firebase functions:secrets:set NOMBRE`)
+`GOOGLE_CLIENT_ID`, `SESSION_JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` — más `APP_BASE_URL` como parámetro no-secreto (`defineString`).
+
+### Tabla en Supabase
+`subscriptions` (una fila por `google_sub`: `plan`, `status`, `mp_preapproval_id`, etc.) y `subscription_events` (log crudo de webhooks, para auditoría). SQL completo en el plan original de esta feature; RLS activado sin policies — solo la `service_role_key` (usada por las Cloud Functions) puede leer/escribir, nunca el cliente.
 
 ---
 
@@ -152,7 +192,8 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 - **UI de solo lectura en álbumes compartidos**: al entrar a un álbum compartido, `bootstrapDiaryPage()` consulta `canEditFolder()` (drive.js, usa `capabilities.canEdit` de Drive) y guarda el resultado en `albumCanEdit`. Si es `false`, se ocultan/deshabilitan todos los controles de edición: drop-zone y grabador de audio, título/notas quedan `readonly`, no aparecen los botones eliminar/portada por foto ni el drag-handle para reordenar, "Carga masiva" desaparece del menú ···, y el botón Eliminar del modo selección se oculta. El banner de "Álbum compartido" suma "· Solo podés ver" (v1.11).
 
 ### Pendientes conocidos
-- **Verificación OAuth Google**: enviada. Mientras tanto la app está en modo Testing — solo usuarios en la lista de prueba pueden usarla.
+- **Corte a Firebase Hosting (EN CURSO, no completado)**: el código de `billing.js`/`functions/`/`firebase.json` y los cambios de `manifest.json`/`drive.js` para la suscripción están escritos, pero **no se pusheó a `main` todavía** — ver "Convenciones importantes" antes de tocar esto. Faltan, todos manuales, del lado del usuario: activar el plan Blaze en Firebase, correr el SQL de Supabase, cargar los secrets (`firebase functions:secrets:set`), configurar el webhook en Mercado Pago Developers, agregar la URL de Firebase a "Authorized JavaScript origins" en Google Cloud Console, y recién después `firebase deploy`. Mientras tanto la app sigue funcionando normal en GitHub Pages, sin nada de esto activo.
+- **Qué funciones quedan detrás del pago**: sin decidir todavía (ver "Suscripciones").
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
 - **Streaming real de video**: hoy el video se descarga entero (como blob URL) antes de reproducirse — no hay range requests. La solución de fondo (un service worker que intercepte el pedido a Drive, inyecte el header `Authorization` vía postMessage desde la página, y reenvíe Range/206) quedó deliberadamente afuera de la Fase 6 del plan de auditoría por su complejidad y riesgo (reescribe el pipeline de video) sin poder probarla en un dispositivo real. Retomar cuando se pueda testear en mobile.
 
@@ -168,17 +209,24 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 2. **No usar `localStorage` para datos** — solo para el token OAuth (`drive_token`) y preferencias menores. Todo el contenido va a Drive.
 3. **Imágenes siempre con `setAuthImg()`** — nunca hardcodear URLs de `drive.google.com/thumbnail` directamente, no funcionan en PWA.
 4. **Versión en dos lugares** — al cambiar features, actualizar la versión en el header de `#view-home` y en el modal de ayuda `#modal-help`.
-5. **Push directo a main** — el usuario prefiere mergear directo sin PRs.
+5. **Push directo a main** — el usuario prefiere mergear directo sin PRs, **salvo para cambios que dependan de infraestructura externa todavía no configurada** (como el corte a Firebase: `SCOPE_VERSION` fuerza re-consentimiento de OAuth a toda la familia ya mismo, y `manifest.json` con `start_url: /app.html` rompe instalaciones nuevas de la PWA en GitHub Pages hasta que Firebase esté realmente sirviendo desde la raíz). Para esos casos: commitear en la rama de trabajo, avisar explícitamente qué falta configurar del lado de las cuentas externas, y esperar confirmación antes de mergear a `main`.
 
 ---
 
 ## Cómo hacer deploy
 
+**Frontend + fixes normales (GitHub Pages, hoy en producción):**
 ```bash
 git add .
 git commit -m "feat/fix: descripción"
 git push origin main
 ```
-
 GitHub Pages despliega automáticamente en ~1 minuto. Verificar en:
 `https://leandro-couretot.github.io/travel-diary/app.html`
+
+**Backend de suscripciones (Firebase, todavía no cortado a producción):**
+```bash
+cd functions && npm install   # una vez, o cuando cambien las dependencias
+firebase deploy               # Hosting + Functions juntos
+```
+Requiere `firebase login` y el plan Blaze activado en el proyecto. Ver "Suscripciones" para las variables de entorno que hacen falta cargar antes del primer deploy.
