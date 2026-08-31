@@ -721,7 +721,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.13 ·
+      Versión 1.14 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -759,7 +759,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.13</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.14</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
@@ -835,6 +835,8 @@ async function initGoogleAuth() {
       client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE,
       callback: async (response) => {
         if (response.error) return;
+        if (response.state !== pendingAuthState) { console.warn('Drive auth: state no coincide, se descarta la respuesta'); return; }
+        pendingAuthState = null;
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
@@ -863,9 +865,11 @@ async function initGoogleAuth() {
 function handleDriveBtn() {
   if (isDriveConnected()) {
     if (confirm('¿Desconectar Google Drive?')) { disconnectDrive(); updateDriveBtn(); renderDisconnected(); }
+  } else if (window._tokenClient) {
+    pendingAuthState = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    window._tokenClient.requestAccessToken({ state: pendingAuthState });
   } else {
-    if (window._tokenClient) window._tokenClient.requestAccessToken();
-    else alert('Google Drive no está disponible.');
+    alert('Google Drive no está disponible.');
   }
 }
 

@@ -5,13 +5,16 @@ const ROOT_FOLDER     = 'travel-diary';
 const SCOPE_VERSION   = 3; // bumped: drive → drive.file
 
 // ─── STATE ───────────────────────────────────────────────
-let driveToken    = null;
-let rootFolderId  = null;
-let tokenClient   = null;
-let _onConnected  = null;
-let _onFailure    = null;
+let driveToken       = null;
+let rootFolderId     = null;
+let _onConnected     = null;
+let _onFailure       = null;
+let pendingAuthState = null; // anti-CSRF: state mandado en el último pedido de acceso (ver app.html)
 
 // ─── INIT ────────────────────────────────────────────────
+// El armado de tokenClient (google.accounts.oauth2.initTokenClient) y el
+// botón "Conectar Drive" viven en app.html (initGoogleAuth/handleDriveBtn) —
+// initDrive() solo se encarga de restaurar una sesión ya guardada.
 function initDrive(onConnectedCallback, onFailureCallback) {
   _onConnected = onConnectedCallback;
   _onFailure   = onFailureCallback || null;
@@ -24,29 +27,6 @@ function initDrive(onConnectedCallback, onFailureCallback) {
   if (saved) { driveToken = saved; _bootstrapDrive(); }
 }
 
-function initGoogleAuth() {
-  try {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: DRIVE_CLIENT_ID,
-      scope: DRIVE_SCOPE,
-      callback: async (response) => {
-        if (response.error) { console.warn('Drive auth error:', response.error); return; }
-        driveToken = response.access_token;
-        localStorage.setItem('drive_token', driveToken);
-        localStorage.setItem('scope_version', String(SCOPE_VERSION));
-        await _bootstrapDrive();
-      }
-    });
-    // Solo llama a _bootstrapDrive si initDrive() no lo hizo ya
-    if (!_onConnected) {
-      const saved = localStorage.getItem('drive_token');
-      if (saved) { driveToken = saved; _bootstrapDrive(); }
-    }
-  } catch(e) {
-    console.warn('Google Auth no disponible:', e);
-  }
-}
-
 async function _bootstrapDrive() {
   try {
     rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
@@ -57,11 +37,6 @@ async function _bootstrapDrive() {
     localStorage.removeItem('drive_token');
     if (_onFailure) _onFailure();
   }
-}
-
-function requestDriveAccess() {
-  if (tokenClient) tokenClient.requestAccessToken();
-  else alert('Google Drive no está disponible. Chequeá tu conexión.');
 }
 
 function disconnectDrive() {

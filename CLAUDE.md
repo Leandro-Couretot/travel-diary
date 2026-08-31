@@ -100,6 +100,8 @@ const SCOPE_VERSION   = 3; // incrementar si cambia el scope para forzar re-auth
 - Scope `drive.file`: solo accede a archivos que la app creó. **No tocar sin revisar el proceso de verificación OAuth.**
 - El token se guarda en `localStorage` como `drive_token`
 - La app está en modo **Testing** en Google Cloud Console (proyecto: `family-photos`). Enviada a verificación para pasar a producción.
+- El `tokenClient` (`google.accounts.oauth2.initTokenClient`) y el botón "Conectar Drive" viven en **`app.html`** (`initGoogleAuth()` / `handleDriveBtn()`), no en `drive.js` — drive.js solo restaura una sesión ya guardada (`initDrive()`). Había una segunda copia de `initGoogleAuth`/`tokenClient` en `drive.js` que nunca se ejecutaba (quedaba tapada por la de `app.html`, que se carga después) — se sacó en v1.14 para que no vuelva a confundir.
+- Cada pedido de acceso manda un `state` aleatorio (`pendingAuthState`, declarado en drive.js) y el callback lo valida contra lo que Google devuelve antes de aceptar el token — mitiga que se cuele una respuesta que la app no pidió (recomendación de Google Cloud Console → "Use secure flows").
 
 ---
 
