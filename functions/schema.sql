@@ -13,12 +13,15 @@
 --   - Todo escrito de forma idempotente (`if not exists`) para poder
 --     volver a correr el archivo completo sin romper nada.
 --
--- PASO EXTRA QUE NO ES SQL (fácil de olvidar): crear el schema acá no
--- alcanza para que las Cloud Functions lo puedan usar. Por default,
--- Supabase (PostgREST) solo expone el schema `public` a través de su API
--- — hay que agregar `travel_diary` a mano en Dashboard → Settings →
--- Data API → "Exposed schemas" (queda `public, travel_diary`). Sin este
--- paso, cualquier query de `functions/lib/supabase.js` falla en
+-- PASOS EXTRA QUE NO SON SQL (fáciles de olvidar): crear el schema y las
+-- tablas acá no alcanza para que las Cloud Functions las puedan usar.
+-- Por default, Supabase (PostgREST) solo expone `public` a través de su
+-- API — en Dashboard → Settings → Data API hay que:
+--   1. "Exposed schemas": agregar `travel_diary`.
+--   2. "Exposed tables": activar `travel_diary.subscriptions` y
+--      `travel_diary.subscription_events` (el schema expuesto no alcanza
+--      solo, cada tabla se activa aparte).
+-- Sin esto, cualquier query de `functions/lib/supabase.js` falla en
 -- silencio del lado del servidor aunque el schema y las tablas existan
 -- perfectamente bien.
 
