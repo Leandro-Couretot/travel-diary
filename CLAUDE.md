@@ -22,7 +22,7 @@ App web de diario de viaje personal. El usuario registra cada día con fotos, vi
 - Google Drive API v3 para persistencia de fotos/videos/notas (sigue siendo la única "base de datos" del contenido del diario — eso no cambia con la suscripción)
 - Google Identity Services (GSI) para OAuth, con `userinfo.email` sumado al scope para tener una identidad estable (ver "Suscripciones")
 - **Backend nuevo** (`functions/`): Node.js sobre Firebase Cloud Functions — antes la app no tenía backend propio, esto es exclusivamente para la lógica de suscripciones/pagos, no para el contenido del diario
-- Firebase Hosting (reemplaza a GitHub Pages una vez cortada la migración) + Supabase (Postgres, estado de suscripciones) + Mercado Pago (cobros)
+- Firebase Hosting (reemplaza a GitHub Pages una vez cortada la migración) + Supabase (Postgres, estado de suscripciones — proyecto compartido `pluxow-clients`, schema propio `travel_diary`, ver "Suscripciones") + Mercado Pago (cobros)
 - PWA instalable (manifest.json)
 
 ---
@@ -140,8 +140,13 @@ app.html (Drive OAuth ampliado con email) → billing.js → /api/** (Firebase H
 ### Variables de entorno (Firebase Functions Secret Manager — `firebase functions:secrets:set NOMBRE`)
 `GOOGLE_CLIENT_ID`, `SESSION_JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` — más `APP_BASE_URL` como parámetro no-secreto (`defineString`).
 
-### Tabla en Supabase
-`subscriptions` (una fila por `google_sub`: `plan`, `status`, `mp_preapproval_id`, etc.) y `subscription_events` (log crudo de webhooks, para auditoría). SQL completo en el plan original de esta feature; RLS activado sin policies — solo la `service_role_key` (usada por las Cloud Functions) puede leer/escribir, nunca el cliente.
+### Supabase: proyecto compartido `pluxow-clients`, schema `travel_diary`
+Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, el mismo proyecto compartido entre todos los clientes de la agencia (Pluxow), siguiendo la convención de esa arquitectura: un schema aislado por cliente en vez de un proyecto nuevo por cada uno. El schema de esta app es **`travel_diary`** (nunca `public` — ahí viven los schemas de otros clientes como `kinesicpro`, sin relación con este producto).
+
+- `functions/lib/supabase.js` fija `db: { schema: 'travel_diary' }` al crear el cliente — con eso alcanza, ninguna query (`.from('subscriptions')`, etc.) necesita mencionar el schema explícitamente.
+- Tablas: `subscriptions` (una fila por `google_sub`: `plan`, `status`, `mp_preapproval_id`, etc.) y `subscription_events` (log crudo de webhooks, para auditoría). SQL completo en el plan original de esta feature.
+- RLS activado en ambas tablas sin policies — solo la `service_role_key` (usada por las Cloud Functions) puede leer/escribir, nunca el cliente.
+- Travel Diary no usa las tablas base de esa convención (`conversaciones`/`mensajes`, pensadas para bots de WhatsApp) — no aplican acá.
 
 ---
 
