@@ -12,6 +12,15 @@
 --     que el repo siempre refleje el estado real de la base.
 --   - Todo escrito de forma idempotente (`if not exists`) para poder
 --     volver a correr el archivo completo sin romper nada.
+--
+-- PASO EXTRA QUE NO ES SQL (fácil de olvidar): crear el schema acá no
+-- alcanza para que las Cloud Functions lo puedan usar. Por default,
+-- Supabase (PostgREST) solo expone el schema `public` a través de su API
+-- — hay que agregar `travel_diary` a mano en Dashboard → Settings →
+-- Data API → "Exposed schemas" (queda `public, travel_diary`). Sin este
+-- paso, cualquier query de `functions/lib/supabase.js` falla en
+-- silencio del lado del servidor aunque el schema y las tablas existan
+-- perfectamente bien.
 
 create schema if not exists travel_diary;
 
