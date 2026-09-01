@@ -47,6 +47,7 @@ travel-diary/
 ├── firebase.json     ← Config de Firebase Hosting (rewrites /api/** → Cloud Functions) + de dónde salen las functions
 ├── .firebaserc       ← Proyecto de Firebase/GCP de este repo (family-fotos-491610)
 ├── functions/        ← Backend de suscripciones (Node.js, Cloud Functions) — ver "Suscripciones"
+│   └── schema.sql    ← Fuente de verdad del schema `travel_diary` en Supabase (pluxow-clients)
 └── CLAUDE.md         ← Este archivo
 ```
 
@@ -144,7 +145,7 @@ app.html (Drive OAuth ampliado con email) → billing.js → /api/** (Firebase H
 Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, el mismo proyecto compartido entre todos los clientes de la agencia (Pluxow), siguiendo la convención de esa arquitectura: un schema aislado por cliente en vez de un proyecto nuevo por cada uno. El schema de esta app es **`travel_diary`** (nunca `public` — ahí viven los schemas de otros clientes como `kinesicpro`, sin relación con este producto).
 
 - `functions/lib/supabase.js` fija `db: { schema: 'travel_diary' }` al crear el cliente — con eso alcanza, ninguna query (`.from('subscriptions')`, etc.) necesita mencionar el schema explícitamente.
-- Tablas: `subscriptions` (una fila por `google_sub`: `plan`, `status`, `mp_preapproval_id`, etc.) y `subscription_events` (log crudo de webhooks, para auditoría). SQL completo en el plan original de esta feature.
+- **`functions/schema.sql` es la fuente de verdad del schema** — no un SQL de una sola vez. Tablas: `subscriptions` (una fila por `google_sub`: `plan`, `status`, `mp_preapproval_id`, etc.) y `subscription_events` (log crudo de webhooks, para auditoría). **Cuando se agregue una tabla/columna/índice nuevo, se agrega ahí (con `if not exists`) y se commitea junto con el código que lo usa** — no alcanza con correrlo a mano en el SQL Editor de Supabase, el repo tiene que reflejar siempre el estado real de la base.
 - RLS activado en ambas tablas sin policies — solo la `service_role_key` (usada por las Cloud Functions) puede leer/escribir, nunca el cliente.
 - Travel Diary no usa las tablas base de esa convención (`conversaciones`/`mensajes`, pensadas para bots de WhatsApp) — no aplican acá.
 
