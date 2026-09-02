@@ -1,8 +1,9 @@
 # Plan de manejo de errores (Google Drive)
 
-**Estado: PLAN A FUTURO, NO EJECUTADO.** Nada de lo descripto acá está
-implementado — se guarda en el repo para poder retomarlo y ejecutarlo
-cuando se decida, revisando primero si sigue vigente.
+**Estado: IMPLEMENTADO en v1.17.** Los tres casos de abajo ya están
+resueltos en `drive.js`/`app.html` — ver el resumen en CLAUDE.md →
+"Funcionando bien". Este documento queda como referencia del diseño y el
+razonamiento detrás de cada decisión.
 
 ---
 

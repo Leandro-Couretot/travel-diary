@@ -48,6 +48,28 @@ function isDriveConnected() {
   return !!(driveToken && rootFolderId);
 }
 
+// ─── ERROR HANDLING (ver ERROR_HANDLING_PLAN.md) ─────────
+// Errores de Drive que la UI necesita distinguir de un fallo genérico
+// (chequeado contra el shape real: error.code=403, error.errors[].reason
+// = 'storageQuotaExceeded'; se agrega un chequeo por substring del
+// mensaje como red de contención por si Google cambia el formato).
+class DriveQuotaExceededError extends Error {
+  constructor() {
+    super('Tu Google Drive se quedó sin espacio. Liberá lugar o ampliá tu almacenamiento en Google, y volvé a intentar.');
+    this.name = 'DriveQuotaExceededError';
+  }
+}
+
+async function _driveErrorBody(res) {
+  try { return (await res.clone().json()).error || null; } catch { return null; }
+}
+
+function _isQuotaExceeded(errorInfo) {
+  if (!errorInfo) return false;
+  if (errorInfo.errors?.some(e => e.reason === 'storageQuotaExceeded')) return true;
+  return /storage quota/i.test(errorInfo.message || '');
+}
+
 // ─── CORE REQUEST ────────────────────────────────────────
 const DRIVE_MAX_RETRIES = 3;
 
@@ -91,6 +113,16 @@ async function getOrCreateFolder(name, parentId) {
 async function listFolders(parentId) {
   const q = `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
   const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name`);
+  const data = await res.json();
+  return data.files || [];
+}
+
+// Archivos (no carpetas) dentro de una carpeta — usado para reconstruir
+// un día cuando su day.json se borró pero las fotos/videos siguen ahí
+// (ver ERROR_HANDLING_PLAN.md Caso 3).
+async function listFilesInFolder(folderId) {
+  const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)`);
   const data = await res.json();
   return data.files || [];
 }
@@ -139,6 +171,11 @@ async function uploadFile(blob, name, folderId, existingId = null) {
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
   const res = await driveReq(existingId ? 'PATCH' : 'POST', url, form);
+  if (!res.ok) {
+    const errInfo = await _driveErrorBody(res);
+    if (_isQuotaExceeded(errInfo)) throw new DriveQuotaExceededError();
+    throw new Error(errInfo?.message || 'No se pudo subir el archivo a Drive');
+  }
   const file = await res.json();
   return file.id;
 }
@@ -156,6 +193,7 @@ async function readJsonFile(fileId) {
 // lo necesite.
 async function fetchFileAsDataUrl(fileId) {
   const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  if (!res.ok) throw new Error('Este archivo ya no está disponible en Drive');
   const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
@@ -278,7 +316,9 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
 }
 
 function _cloneDay(day) {
-  return { title: day.title, notes: day.notes, media: day.media.map(m => ({ ...m })) };
+  const clone = { title: day.title, notes: day.notes, media: day.media.map(m => ({ ...m })) };
+  if (day._reconstructed) clone._reconstructed = true;
+  return clone;
 }
 
 async function loadDayFromDrive(albumFolderId, dateStr) {
@@ -296,17 +336,36 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
       dayFolderId = data.files[0].id;
     }
     const jsonId = await findFileInFolder('day.json', dayFolderId);
-    if (!jsonId) return null;
-    const dayJson = await readJsonFile(jsonId);
-    const result = {
-      title: dayJson.title || '',
-      notes: dayJson.notes || '',
-      media: (dayJson.media || []).map(m => ({
-        type: m.type, name: m.name,
-        driveFileId: m.driveFileId,
-        caption: m.caption || ''
-      }))
-    };
+    let result;
+    if (!jsonId) {
+      // day.json no existe pero la carpeta puede seguir teniendo archivos
+      // (alguien lo borró a mano desde Drive sin borrar las fotos) —
+      // reconstruir lo que se pueda en vez de hacer desaparecer el día
+      // entero. Título y notas no son recuperables (ver
+      // ERROR_HANDLING_PLAN.md Caso 3).
+      const files = await listFilesInFolder(dayFolderId);
+      const media = files
+        .map(f => {
+          const type = f.mimeType.startsWith('image/') ? 'image'
+            : f.mimeType.startsWith('video/') ? 'video'
+            : f.mimeType.startsWith('audio/') ? 'audio' : null;
+          return type ? { type, name: f.name, driveFileId: f.id, caption: '' } : null;
+        })
+        .filter(Boolean);
+      if (!media.length) return null; // carpeta vacía de verdad: no hay día que mostrar
+      result = { title: '', notes: '', media, _reconstructed: true };
+    } else {
+      const dayJson = await readJsonFile(jsonId);
+      result = {
+        title: dayJson.title || '',
+        notes: dayJson.notes || '',
+        media: (dayJson.media || []).map(m => ({
+          type: m.type, name: m.name,
+          driveFileId: m.driveFileId,
+          caption: m.caption || ''
+        }))
+      };
+    }
     _dayCache[key] = { folderId: dayFolderId, json: result };
     return _cloneDay(result);
   } catch(e) {
@@ -406,6 +465,7 @@ async function fetchAuthImgUrl(fileId) {
   if (_imgCache[cacheKey]) return _imgCache[cacheKey];
   try {
     const res  = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    if (!res.ok) return ''; // borrado o sin acceso — no es un blob válido, no intentar renderizarlo
     const blob = await res.blob();
     const url  = URL.createObjectURL(blob);
     _imgCache[cacheKey] = url;
@@ -416,7 +476,21 @@ async function fetchAuthImgUrl(fileId) {
   }
 }
 
-// Helper para img elements: intenta thumbnail, si falla usa API auth
+// Placeholder visual para cuando un archivo referenciado en day.json ya no
+// existe en Drive (borrado a mano por el usuario, fuera de la app — ver
+// ERROR_HANDLING_PLAN.md Caso 2). Mejor que dejar el ícono roto nativo del
+// navegador, que no explica qué pasó.
+const MEDIA_UNAVAILABLE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">' +
+  '<rect width="200" height="200" fill="#e8e4db"/>' +
+  '<text x="100" y="92" font-family="sans-serif" font-size="36" text-anchor="middle">🖼️</text>' +
+  '<text x="100" y="126" font-family="sans-serif" font-size="13" text-anchor="middle" fill="#8a8172">No disponible</text>' +
+  '</svg>'
+);
+
+// Helper para img elements: intenta thumbnail, si falla usa API auth, y si
+// tampoco eso funciona (el archivo ya no existe en Drive) muestra un
+// placeholder en vez del ícono roto del navegador.
 function setAuthImg(imgEl, fileId, size = 'w800') {
   if (!fileId || !imgEl) return;
   const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
@@ -424,7 +498,13 @@ function setAuthImg(imgEl, fileId, size = 'w800') {
   imgEl.onerror = async () => {
     imgEl.onerror = null; // evitar loop
     const authUrl = await fetchAuthImgUrl(fileId);
-    if (authUrl) imgEl.src = authUrl;
+    if (authUrl) {
+      imgEl.src = authUrl;
+    } else {
+      imgEl.src = MEDIA_UNAVAILABLE_SVG;
+      imgEl.title = 'Este archivo ya no está disponible en Drive';
+      imgEl.classList.add('media-unavailable');
+    }
   };
 }
 

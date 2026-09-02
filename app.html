@@ -734,7 +734,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.16 ·
+      Versión 1.17 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -772,7 +772,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.16</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.17</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1205,6 +1205,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
   });
 
   const failedTasks = tasks.filter((t, i) => results[i].status === 'rejected');
+  const quotaExceeded = results.some(r => r.status === 'rejected' && r.reason instanceof DriveQuotaExceededError);
 
   for (const date of Object.keys(newMediaByDate)) {
     const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
@@ -1215,7 +1216,10 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
 
   if (failedTasks.length) {
     const okCount = total - failedTasks.length;
-    progressEl.innerHTML = `⚠ ${okCount}/${total} subidos. ${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir. <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
+    const reasonMsg = quotaExceeded
+      ? 'Tu Google Drive se quedó sin espacio — liberá lugar o ampliá tu almacenamiento en Google.'
+      : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
+    progressEl.innerHTML = `⚠ ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
     bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess };
   } else {
@@ -1406,7 +1410,12 @@ async function loadDay(dateStr) {
   const notesEl = document.getElementById('day-notes');
   if (titleEl) { titleEl.value = currentDay.title || ''; autoResize(titleEl); }
   if (notesEl) { notesEl.value = currentDay.notes || ''; autoResize(notesEl); }
-  renderMedia(); setStatus('', 'Sin cambios');
+  renderMedia();
+  if (currentDay._reconstructed) {
+    setStatus('unsaved', 'Día reconstruido desde archivos en Drive — no se encontró título ni notas guardados');
+  } else {
+    setStatus('', 'Sin cambios');
+  }
 }
 
 async function saveCurrentDay() {
@@ -1479,7 +1488,10 @@ function renderMedia() {
           item.data = dataUrl;
           const el = card.querySelector(`#vt-${idx}`);
           if (el) { const v = document.createElement('video'); v.className = 'video-thumb'; v.controls = true; v.playsinline = true; v.preload = 'metadata'; v.src = dataUrl; el.replaceWith(v); }
-        }).catch(() => {});
+        }).catch(() => {
+          const el = card.querySelector(`#vt-${idx}`);
+          if (el && el.lastElementChild) el.lastElementChild.textContent = 'Video no disponible';
+        });
       }
 
     } else {
@@ -1501,7 +1513,10 @@ function renderMedia() {
           item.data = dataUrl;
           const el = card.querySelector(`#al-${idx}`);
           if (el) { const a = document.createElement('audio'); a.controls = true; a.src = dataUrl; el.replaceWith(a); }
-        }).catch(() => {});
+        }).catch(() => {
+          const el = card.querySelector(`#al-${idx}`);
+          if (el) el.textContent = 'Audio no disponible';
+        });
       }
     }
     grid.appendChild(card);
