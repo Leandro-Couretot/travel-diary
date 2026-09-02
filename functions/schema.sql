@@ -57,3 +57,16 @@ alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 -- Sin policies = solo la service_role key (usada por las Cloud Functions)
 -- puede leer/escribir. Igual que en cualquier otro cliente de la agencia.
+
+-- Un schema creado a mano por SQL (a diferencia de uno creado con el botón
+-- de la interfaz de Supabase) no le hereda estos GRANT a ningún rol —
+-- "exponer" el schema en Settings > Data API solo le dice a PostgREST que
+-- lo rutee, pero Postgres igual devuelve "permission denied for schema"
+-- hasta que el rol tenga USAGE explícito. anon/authenticated no lo
+-- necesitan (nunca tocan esta tabla, y RLS sin policies ya los bloquea
+-- igual) — solo service_role, que es el que usan las Cloud Functions.
+grant usage on schema travel_diary to service_role;
+grant all on all tables in schema travel_diary to service_role;
+grant all on all sequences in schema travel_diary to service_role;
+alter default privileges in schema travel_diary grant all on tables to service_role;
+alter default privileges in schema travel_diary grant all on sequences to service_role;
