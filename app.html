@@ -320,6 +320,14 @@ audio { width: 100%; height: 32px; }
 .slideshow-progress-wrap { width: 100%; height: 2px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
 .slideshow-progress-bar { height: 100%; background: white; border-radius: 2px; width: 0%; transition: width linear; }
 .slideshow-day-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.4); text-align: center; margin-bottom: 0.4rem; }
+.slideshow-loader { display: none; position: absolute; inset: 0; background: #000; flex-direction: column; align-items: center; justify-content: center; gap: 1.1rem; }
+.slideshow-loader.open { display: flex; }
+.slideshow-loader-rings { position: relative; width: 60px; height: 60px; }
+.slideshow-loader-rings span { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0; animation: ss-ripple 2.4s cubic-bezier(0.25,0.6,0.4,1) infinite; }
+.slideshow-loader-rings span:nth-child(2) { animation-delay: 0.8s; }
+.slideshow-loader-rings span:nth-child(3) { animation-delay: 1.6s; }
+@keyframes ss-ripple { 0% { transform: scale(0.25); opacity: 0.9; } 70% { opacity: 0.15; } 100% { transform: scale(1.7); opacity: 0; } }
+.slideshow-loader-text { font-size: 0.75rem; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); }
 
 /* Help modal */
 .help-modal { max-width: 520px; max-height: 80vh; }
@@ -607,6 +615,10 @@ audio { width: 100%; height: 32px; }
 <div class="slideshow-overlay" id="slideshow-overlay">
   <img class="slideshow-media" id="slideshow-img" src="" alt="" style="display:none;">
   <video class="slideshow-video" id="slideshow-video" playsinline style="display:none;" muted></video>
+  <div class="slideshow-loader" id="slideshow-loader">
+    <div class="slideshow-loader-rings"><span></span><span></span><span></span></div>
+    <div class="slideshow-loader-text" id="slideshow-loader-text">Preparando tus recuerdos...</div>
+  </div>
   <div class="slideshow-ui">
     <div class="slideshow-top">
       <button class="slideshow-btn" id="slideshow-pause" title="Pausar">⏸</button>
@@ -734,7 +746,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.17 ·
+      Versión 1.18 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -772,7 +784,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.17</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.18</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1982,22 +1994,58 @@ function initTouchReorder(grid) {
 }
 
 // ─── Slideshow ────────────────────────────────────────────
-let ssItems = [], ssIdx = 0, ssPaused = false, ssTimer = null;
+// Los días del álbum se piden de a lotes (no todos de una, no uno por
+// uno) — el show arranca apenas el primer lote trae alguna foto/video,
+// y el resto se sigue pidiendo de fondo mientras el usuario ya está
+// mirando. Si el show alcanza a lo ya cargado antes de que termine de
+// llegar el resto, se muestra el loader en vez de cerrar de golpe.
+const SLIDESHOW_BATCH_SIZE = 10;
+let ssItems = [], ssIdx = 0, ssPaused = false, ssTimer = null, ssLoadingMore = false;
+
+function setSsLoaderVisible(visible, text) {
+  document.getElementById('slideshow-loader').classList.toggle('open', visible);
+  if (text) document.getElementById('slideshow-loader-text').textContent = text;
+}
+
 async function startSlideshow(album) {
   const overlay = document.getElementById('slideshow-overlay'); overlay.classList.add('open');
-  document.getElementById('slideshow-day-label').textContent = 'Cargando...';
+  document.getElementById('slideshow-day-label').textContent = '';
   document.getElementById('slideshow-caption').textContent = '';
   document.getElementById('slideshow-progress-bar').style.width = '0%';
+  ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = true;
+  document.getElementById('slideshow-pause').textContent = '⏸';
+  setSsLoaderVisible(true, 'Preparando tus recuerdos...');
   try {
     const albumFolderIdSS = album._shared ? album._folderId : await getAlbumFolderId(album.id);
-    const dates = await listDayFolders(albumFolderIdSS); const items = [];
-    for (const date of dates) { const day = await loadDayFromDrive(albumFolderIdSS, date); if (!day) continue; for (const m of (day.media || [])) { if (m.type === 'image' || m.type === 'video') items.push({ ...m, date, dayTitle: day.title || '' }); } }
-    if (!items.length) { closeSlideshow(); alert('Este álbum no tiene fotos ni videos aún.'); return; }
-    ssItems = items; ssIdx = 0; ssPaused = false; document.getElementById('slideshow-pause').textContent = '⏸'; showSsItem();
+    const dates = await listDayFolders(albumFolderIdSS);
+    let started = false;
+    for (let i = 0; i < dates.length; i += SLIDESHOW_BATCH_SIZE) {
+      if (!overlay.classList.contains('open')) return; // el usuario cerró el slideshow mientras cargaba
+      const batch = dates.slice(i, i + SLIDESHOW_BATCH_SIZE);
+      const wasWaitingAt = ssItems.length; // hasta dónde había llegado el show antes de este lote
+      const results = await Promise.all(batch.map(async date => ({ date, day: await loadDayFromDrive(albumFolderIdSS, date) })));
+      for (const { date, day } of results) {
+        if (!day) continue;
+        for (const m of (day.media || [])) { if (m.type === 'image' || m.type === 'video') ssItems.push({ ...m, date, dayTitle: day.title || '' }); }
+      }
+      ssLoadingMore = (i + SLIDESHOW_BATCH_SIZE) < dates.length;
+      if (!started && ssItems.length) {
+        started = true;
+        showSsItem();
+      } else if (started && ssIdx === wasWaitingAt && ssItems.length > wasWaitingAt) {
+        showSsItem(); // el show se había quedado esperando justo acá — retomar
+      }
+    }
+    if (!started) { closeSlideshow(); alert('Este álbum no tiene fotos ni videos aún.'); return; }
   } catch(e) { closeSlideshow(); alert('Error al cargar el álbum: ' + e.message); }
 }
 function showSsItem() {
-  clearSsTimers(); if (ssIdx >= ssItems.length) { closeSlideshow(); return; }
+  clearSsTimers();
+  if (ssIdx >= ssItems.length) {
+    if (ssLoadingMore) { setSsLoaderVisible(true, 'Cargando más fotos...'); return; }
+    closeSlideshow(); return;
+  }
+  setSsLoaderVisible(false);
   const item = ssItems[ssIdx]; const imgEl = document.getElementById('slideshow-img'); const videoEl = document.getElementById('slideshow-video'); const bar = document.getElementById('slideshow-progress-bar');
   if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src);
   document.getElementById('slideshow-day-label').textContent = formatDate(item.date) + (item.dayTitle ? ` · ${item.dayTitle}` : '');
@@ -2017,7 +2065,7 @@ function showSsItem() {
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.textContent = ssPaused ? '▶' : '⏸'; if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
-function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; }
+function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
 let diaryMenuOpen = false;
