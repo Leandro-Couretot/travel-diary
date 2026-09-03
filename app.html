@@ -362,6 +362,7 @@ audio { width: 100%; height: 32px; }
 .bulk-album-select select:focus { border-color: var(--accent); }
 .bulk-progress { margin-top: 0.75rem; font-size: 0.82rem; color: var(--ink-muted); text-align: center; min-height: 1.4em; }
 .bulk-progress.error { color: var(--red); }
+.bulk-upload-hint { margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
 /* Page loading */
 .page-loading { display: flex; align-items: center; justify-content: center; min-height: 60vh; gap: 0.75rem; color: var(--ink-muted); font-size: 0.875rem; }
@@ -702,6 +703,7 @@ audio { width: 100%; height: 32px; }
         <div class="bulk-album-select"><div class="form-label" style="margin-bottom:0.4rem;">Álbum de destino</div><select id="bulk-album-select"></select></div>
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-dated-list"></div><div id="bulk-undated-list"></div></div>
         <button class="btn btn-primary" style="width:100%;" id="bulk-confirm-btn" onclick="confirmBulkUpload()">Guardar todo en Drive</button>
+        <div class="bulk-upload-hint" id="bulk-upload-hint" style="display:none;">💡 No minimices la app ni bloquees el celular hasta que termine de subir.</div>
         <div class="bulk-progress" id="bulk-progress"></div>
       </div>
     </div>
@@ -719,6 +721,7 @@ audio { width: 100%; height: 32px; }
       <div id="bulk-diary-step-review" style="display:none;">
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-diary-dated-list"></div><div id="bulk-diary-undated-list"></div></div>
         <button class="btn btn-primary" style="width:100%;" id="bulk-diary-confirm-btn" onclick="confirmBulkDiary()">Guardar en este álbum</button>
+        <div class="bulk-upload-hint" id="bulk-diary-upload-hint" style="display:none;">💡 No minimices la app ni bloquees el celular hasta que termine de subir.</div>
         <div class="bulk-progress" id="bulk-diary-progress"></div>
       </div>
     </div>
@@ -746,7 +749,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.20 ·
+      Versión 1.21 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -785,7 +788,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.20</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.21</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1250,6 +1253,10 @@ const BULK_UPLOAD_CONCURRENCY = 5;
 let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
 
 async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess) {
+  // Aviso mientras dura la subida — minimizar la app o bloquear el
+  // celular puede cortarla a mitad de camino (ver ERROR_HANDLING_PLAN.md).
+  const hintEl = document.getElementById(progressEl.id.replace('-progress', '-upload-hint'));
+  if (hintEl) hintEl.style.display = '';
   const dates = Object.keys(groupsByDate).sort();
   const dayFolderIds = {};
   for (const date of dates) dayFolderIds[date] = await getOrCreateFolder(date, albumFolderId);
@@ -1294,6 +1301,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
     bulkRetryCtx = null;
     onSuccess();
   }
+  if (hintEl) hintEl.style.display = 'none';
 }
 
 function retryFailedBulkUpload() {
@@ -1496,7 +1504,19 @@ async function saveCurrentDay() {
     dirty = false;
     setStatus('saved', 'Guardado en Drive ✓');
     document.querySelector('.save-bar').style.display = 'none';
-  } catch(e) { setStatus('error', 'Error: ' + e.message); }
+  } catch(e) {
+    if (e.driveSaveFailedCount) {
+      // Guardado parcial: lo que sí subió ya quedó en Drive (saveDayToDrive
+      // mutó currentDay.media in-place); currentDayOriginalIds se actualiza
+      // igual para que el próximo guardado no intente volver a mover a la
+      // papelera lo que ya está bien. El mensaje ya viene completo, sin
+      // prefijo "Error:" — es un guardado parcial, no una falla total.
+      currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+      setStatus('error', e.message);
+    } else {
+      setStatus('error', 'Error: ' + e.message);
+    }
+  }
 }
 
 // ─── Media render ──────────────────────────────────────────

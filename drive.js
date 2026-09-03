@@ -274,6 +274,11 @@ async function canEditFolder(folderId) {
 async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
   if (!albumFolderId) throw new Error('albumFolderId no disponible — esperá a que Drive termine de cargar');
   const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId);
+  // Si un archivo falla (cuota excedida, se minimizó la app a mitad de
+  // subida, etc.) no se aborta todo el guardado — se sigue con el resto
+  // y al final se persiste igual lo que sí llegó a Drive (mismo criterio
+  // que runBulkUpload en app.html; ver ERROR_HANDLING_PLAN.md).
+  const failedItems = [];
   for (const item of day.media) {
     if (!item.driveFileId) {
       let blob;
@@ -285,12 +290,16 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
       } else {
         continue; // blob URL or no data — skip
       }
-      item.driveFileId = await uploadFile(blob, item.name, dayFolderId);
-      if (item._file) {
-        // Replace blob URL with Drive thumbnail reference, free memory
-        URL.revokeObjectURL(item.data);
-        delete item.data;
-        delete item._file;
+      try {
+        item.driveFileId = await uploadFile(blob, item.name, dayFolderId);
+        if (item._file) {
+          // Replace blob URL with Drive thumbnail reference, free memory
+          URL.revokeObjectURL(item.data);
+          delete item.data;
+          delete item._file;
+        }
+      } catch (e) {
+        failedItems.push(e); // item.data/_file quedan intactos para poder reintentar
       }
     }
   }
@@ -304,14 +313,26 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
   }
   const dayJson = {
     version: 2, title: day.title, notes: day.notes,
-    media: day.media.map(m => ({
+    // Los que fallaron no se incluyen acá (quedarían con driveFileId
+    // null, un item "fantasma" que no se puede volver a renderizar
+    // después de recargar la página) — siguen en day.media en memoria
+    // para poder reintentarlos, solo no se persisten todavía.
+    media: day.media.filter(m => m.driveFileId).map(m => ({
       type: m.type, name: m.name,
-      driveFileId: m.driveFileId || null,
+      driveFileId: m.driveFileId,
       caption: m.caption || ''
     }))
   };
   await writeJsonFile(dayJson, 'day.json', dayFolderId);
   _dayCache[_dayKey(albumFolderId, dateStr)] = { folderId: dayFolderId, json: { title: dayJson.title, notes: dayJson.notes, media: dayJson.media } };
+  if (failedItems.length) {
+    const isQuota = failedItems.some(e => e instanceof DriveQuotaExceededError);
+    const err = new Error(isQuota
+      ? 'Tu Google Drive se quedó sin espacio — se guardó lo que sí entró. Liberá lugar y tocá "Guardar" para reintentar el resto.'
+      : `Se guardó lo que se pudo, pero ${failedItems.length} archivo${failedItems.length > 1 ? 's' : ''} no se pudo${failedItems.length > 1 ? 'n' : ''} subir. Tocá "Guardar" para reintentar.`);
+    err.driveSaveFailedCount = failedItems.length;
+    throw err;
+  }
   return day;
 }
 
