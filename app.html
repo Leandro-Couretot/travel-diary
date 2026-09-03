@@ -746,7 +746,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.19 ·
+      Versión 1.20 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -785,7 +785,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.19</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.20</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -850,6 +850,52 @@ function formatDateLong(str) {
 // ═══════════════════════════════════════════════════════════
 // ─── DRIVE AUTH ─────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
+// El access_token de Google vence a la hora, siempre, y este flujo
+// (initTokenClient) nunca da refresh_token — la única forma de evitar
+// que el usuario tenga que reconectarse a mano es pedir uno nuevo EN
+// SILENCIO (prompt:'') un rato antes de que venza. No está garantizado
+// que funcione siempre — Google recomienda llamar requestAccessToken()
+// desde un evento iniciado por el usuario, y llamarlo desde un timer o
+// al volver a la pestaña no lo es del todo (Safari/iOS es más estricto
+// con esto que Chrome). Si falla, no rompe nada: response.error hace
+// que no se haga nada y el usuario ve el flujo de reconexión normal,
+// igual que hoy.
+const SILENT_REFRESH_BUFFER_MS = 5 * 60 * 1000; // refrescar 5 min antes de vencer
+let _silentRefreshTimer = null;
+
+function newAuthState() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
+function saveTokenExpiry(expiresInSeconds) {
+  const secs = parseInt(expiresInSeconds, 10) || 3600;
+  localStorage.setItem('drive_token_expires_at', String(Date.now() + secs * 1000));
+  scheduleSilentRefresh();
+}
+
+function scheduleSilentRefresh() {
+  if (_silentRefreshTimer) clearTimeout(_silentRefreshTimer);
+  const expiresAt = parseInt(localStorage.getItem('drive_token_expires_at') || '0', 10);
+  const delay = Math.max(0, expiresAt - SILENT_REFRESH_BUFFER_MS - Date.now());
+  _silentRefreshTimer = setTimeout(trySilentRefresh, delay);
+}
+
+function trySilentRefresh() {
+  if (!window._tokenClient || !isDriveConnected()) return;
+  pendingAuthState = newAuthState();
+  window._tokenClient.requestAccessToken({ state: pendingAuthState, prompt: '' });
+}
+
+// Los timers de setTimeout se pausan/retrasan cuando la pestaña está
+// oculta (sobre todo en mobile) — si el usuario vuelve a la app (PWA
+// reabierta, pestaña que estuvo en segundo plano) y el token ya está
+// por vencer, probar refrescarlo ya en vez de esperar al timer.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !isDriveConnected()) return;
+  const expiresAt = parseInt(localStorage.getItem('drive_token_expires_at') || '0', 10);
+  if (Date.now() > expiresAt - SILENT_REFRESH_BUFFER_MS) trySilentRefresh();
+});
+
 async function initGoogleAuth() {
   const sp     = new URLSearchParams(location.search);
   const joinId = sp.get('join');
@@ -870,6 +916,7 @@ async function initGoogleAuth() {
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
+        saveTokenExpiry(response.expires_in);
         establishSession(driveToken); // en paralelo, no bloquea el flujo de Drive
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
         if (_onConnected) { await _onConnected(); return; }
@@ -886,6 +933,7 @@ async function initGoogleAuth() {
   }
 
   initDrive(async () => {
+    scheduleSilentRefresh(); // por si el token guardado ya está por vencer
     if (sessionToken) refreshSubscriptionStatus(); else establishSession(driveToken); // en paralelo
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
     updateDriveBtn(); await renderAlbums(); await checkMigratable();
@@ -896,9 +944,14 @@ async function initGoogleAuth() {
 
 function handleDriveBtn() {
   if (isDriveConnected()) {
-    if (confirm('¿Desconectar Google Drive?')) { disconnectDrive(); updateDriveBtn(); renderDisconnected(); }
+    if (confirm('¿Desconectar Google Drive?')) {
+      disconnectDrive();
+      if (_silentRefreshTimer) { clearTimeout(_silentRefreshTimer); _silentRefreshTimer = null; }
+      localStorage.removeItem('drive_token_expires_at');
+      updateDriveBtn(); renderDisconnected();
+    }
   } else if (window._tokenClient) {
-    pendingAuthState = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    pendingAuthState = newAuthState();
     window._tokenClient.requestAccessToken({ state: pendingAuthState });
   } else {
     alert('Google Drive no está disponible.');
