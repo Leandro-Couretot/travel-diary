@@ -350,7 +350,7 @@ audio { width: 100%; height: 32px; }
 .bulk-drop-sub { font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.25rem; }
 .bulk-summary { margin-bottom: 1.25rem; }
 .bulk-summary-title { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 0.75rem; }
-.bulk-day-group { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--ink-faint); font-size: 0.875rem; }
+.bulk-day-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--ink-faint); font-size: 0.875rem; }
 .bulk-day-group:last-child { border-bottom: none; }
 .bulk-day-date { font-family: 'DM Serif Display', serif; font-size: 0.95rem; min-width: 100px; }
 .bulk-day-count { color: var(--ink-muted); font-size: 0.8rem; flex: 1; }
@@ -362,6 +362,9 @@ audio { width: 100%; height: 32px; }
 .bulk-album-select select:focus { border-color: var(--accent); }
 .bulk-progress { margin-top: 0.75rem; font-size: 0.82rem; color: var(--ink-muted); text-align: center; min-height: 1.4em; }
 .bulk-progress.error { color: var(--red); }
+.bulk-day-dupes { flex-basis: 100%; margin-top: 0.4rem; padding: 0.5rem 0.6rem; background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); }
+.bulk-dupe-warning { font-size: 0.75rem; color: var(--red); margin-bottom: 0.35rem; }
+.bulk-dupe-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--ink-muted); padding: 0.15rem 0; cursor: pointer; }
 .bulk-upload-hint { margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
 /* Page loading */
@@ -749,7 +752,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.21 ·
+      Versión 1.22 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -788,7 +791,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.21</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.22</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1203,28 +1206,77 @@ function openBulkUpload() {
 }
 function closeBulkUpload() { document.getElementById('modal-bulk-upload').classList.remove('open'); }
 
+// ─── Carga masiva: aviso de posibles duplicados ────────────
+// Compara por nombre de archivo contra lo que ya está guardado en el
+// day.json de cada fecha (no por contenido — ver conversación en
+// CLAUDE.md). Marca cada File con _dup/_excluded; excluido por default
+// cuando hay coincidencia, el usuario puede re-tildarlo si de verdad
+// quiere subirlo igual.
+async function markBulkDuplicates(grouped, albumFolderId) {
+  const dates = Object.keys(grouped.dated);
+  await Promise.all(dates.map(async date => {
+    let existingNames;
+    try { existingNames = await getExistingNamesForDate(albumFolderId, date); }
+    catch { existingNames = new Set(); }
+    grouped.dated[date].forEach(file => {
+      file._dup = existingNames.has(file.name);
+      file._excluded = file._dup;
+    });
+  }));
+}
+
+// Compartido por la revisión de Home y la de dentro de un álbum.
+function renderBulkDatedList(datedList, grouped) {
+  datedList.innerHTML = '';
+  Object.keys(grouped.dated).sort().forEach(date => {
+    const files = grouped.dated[date];
+    const imgs = files.filter(f => f.type.startsWith('image/')).length;
+    const vids = files.filter(f => f.type.startsWith('video/')).length;
+    const parts = []; if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`); if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
+    const row = document.createElement('div'); row.className = 'bulk-day-group';
+    row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
+    const dupes = files.filter(f => f._dup);
+    if (dupes.length) {
+      const warnText = dupes.length === 1
+        ? '⚠ Este archivo ya podría estar subido (destildado por default):'
+        : '⚠ Estos archivos ya podrían estar subidos (destildados por default):';
+      const dupBox = document.createElement('div'); dupBox.className = 'bulk-day-dupes';
+      dupBox.innerHTML = `<div class="bulk-dupe-warning">${warnText}</div>` +
+        dupes.map(f => `<label class="bulk-dupe-item"><input type="checkbox" data-date="${date}" data-filename="${escHtml(f.name)}" ${f._excluded ? '' : 'checked'}> ${escHtml(f.name)}</label>`).join('');
+      row.appendChild(dupBox);
+    }
+    datedList.appendChild(row);
+  });
+  datedList.querySelectorAll('.bulk-dupe-item input').forEach(cb => cb.addEventListener('change', e => {
+    const { date, filename } = e.target.dataset;
+    const file = grouped.dated[date]?.find(f => f.name === filename);
+    if (file) file._excluded = !e.target.checked;
+  }));
+}
+
 async function processBulkFiles(fileList) {
   const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
   if (!files.length) return;
   document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
   bulkGrouped = await groupFilesByDate(files);
   renderBulkReview();
+  refreshBulkDuplicates(); // en paralelo — la revisión ya se ve, esto solo agrega los avisos cuando terminen de llegar
+}
+
+// Vuelve a chequear duplicados cuando cambia el álbum de destino elegido
+// en el <select> (cada álbum tiene contenido distinto en Drive).
+async function refreshBulkDuplicates() {
+  const albumId = document.getElementById('bulk-album-select').value;
+  if (!albumId || !bulkGrouped) return;
+  const albumFolderId = await getAlbumFolderId(albumId);
+  await markBulkDuplicates(bulkGrouped, albumFolderId);
+  renderBulkDatedList(document.getElementById('bulk-dated-list'), bulkGrouped);
 }
 
 function renderBulkReview() {
   const sel = document.getElementById('bulk-album-select');
   sel.innerHTML = albums.map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('');
-  const datedList = document.getElementById('bulk-dated-list');
-  datedList.innerHTML = '';
-  Object.keys(bulkGrouped.dated).sort().forEach(date => {
-    const files = bulkGrouped.dated[date];
-    const imgs = files.filter(f => f.type.startsWith('image/')).length;
-    const vids = files.filter(f => f.type.startsWith('video/')).length;
-    const parts = []; if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`); if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
-    const row = document.createElement('div'); row.className = 'bulk-day-group';
-    row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
-    datedList.appendChild(row);
-  });
+  renderBulkDatedList(document.getElementById('bulk-dated-list'), bulkGrouped);
   const undatedList = document.getElementById('bulk-undated-list');
   undatedList.innerHTML = '';
   if (bulkGrouped.undated.length) {
@@ -1324,8 +1376,13 @@ async function confirmBulkUpload() {
   btn.disabled = true;
   try {
     const albumFolderId = await getAlbumFolderId(albumId);
-    const allGroups = { ...bulkGrouped.dated };
+    const allGroups = {};
+    Object.keys(bulkGrouped.dated).forEach(date => {
+      const kept = bulkGrouped.dated[date].filter(f => !f._excluded); // sin los duplicados destildados
+      if (kept.length) allGroups[date] = kept;
+    });
     bulkGrouped.undated.forEach(file => { const date = bulkUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir (quedaron todos destildados).'; btn.disabled = false; return; }
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
     });
@@ -1879,17 +1936,11 @@ async function processBulkDiaryFiles(fileList) {
   document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
   bulkDiaryGrouped = await groupFilesByDate(files);
   renderBulkDiaryReview();
+  markBulkDuplicates(bulkDiaryGrouped, albumFolderId).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
 }
 
 function renderBulkDiaryReview() {
-  const datedList = document.getElementById('bulk-diary-dated-list'); datedList.innerHTML = '';
-  Object.keys(bulkDiaryGrouped.dated).sort().forEach(date => {
-    const files = bulkDiaryGrouped.dated[date]; const imgs = files.filter(f => f.type.startsWith('image/')).length; const vids = files.filter(f => f.type.startsWith('video/')).length;
-    const parts = []; if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`); if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
-    const row = document.createElement('div'); row.className = 'bulk-day-group';
-    row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
-    datedList.appendChild(row);
-  });
+  renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped);
   const undatedList = document.getElementById('bulk-diary-undated-list'); undatedList.innerHTML = '';
   if (bulkDiaryGrouped.undated.length) {
     const header = document.createElement('div'); header.className = 'bulk-undated-label'; header.textContent = `⚠ ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
@@ -1910,8 +1961,13 @@ async function confirmBulkDiary() {
   const btn = document.getElementById('bulk-diary-confirm-btn'); const progress = document.getElementById('bulk-diary-progress');
   btn.disabled = true;
   try {
-    const allGroups = { ...bulkDiaryGrouped.dated };
+    const allGroups = {};
+    Object.keys(bulkDiaryGrouped.dated).forEach(date => {
+      const kept = bulkDiaryGrouped.dated[date].filter(f => !f._excluded); // sin los duplicados destildados
+      if (kept.length) allGroups[date] = kept;
+    });
     bulkDiaryGrouped.undated.forEach(file => { const date = bulkDiaryUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir (quedaron todos destildados).'; btn.disabled = false; return; }
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);
     });
@@ -2392,6 +2448,7 @@ document.getElementById('bulk-drop-zone').addEventListener('dragover', e => { e.
 document.getElementById('bulk-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
 document.getElementById('bulk-drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); processBulkFiles(e.dataTransfer.files); });
 document.getElementById('bulk-file-input').addEventListener('change', e => { if (e.target.files.length) processBulkFiles(e.target.files); e.target.value = ''; });
+document.getElementById('bulk-album-select').addEventListener('change', refreshBulkDuplicates);
 document.getElementById('bulk-diary-drop-zone').addEventListener('click', () => document.getElementById('bulk-diary-file-input').click());
 document.getElementById('bulk-diary-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
 document.getElementById('bulk-diary-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));

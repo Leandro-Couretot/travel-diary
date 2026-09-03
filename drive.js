@@ -269,6 +269,15 @@ async function canEditFolder(folderId) {
   }
 }
 
+// Nombres de archivo ya guardados en el day.json de una fecha — usado
+// por la carga masiva para avisar de posibles duplicados antes de subir
+// (comparación por nombre, no por contenido; ver CLAUDE.md →
+// "Aviso de posibles duplicados en carga masiva").
+async function getExistingNamesForDate(albumFolderId, dateStr) {
+  const day = await loadDayFromDrive(albumFolderId, dateStr);
+  return new Set((day?.media || []).map(m => m.name));
+}
+
 // ─── DAY OPERATIONS ──────────────────────────────────────
 
 async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
