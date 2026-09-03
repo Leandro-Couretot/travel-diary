@@ -278,6 +278,23 @@ async function getExistingNamesForDate(albumFolderId, dateStr) {
   return new Set((day?.media || []).map(m => m.name));
 }
 
+// ─── FOTOLIBRO: orden manual ─────────────────────────────
+// book.json vive en la raíz de la carpeta del álbum (no en un día
+// puntual) y guarda solo el orden de las fotos por driveFileId — el
+// resto de los datos (fecha, caption) se resuelve contra los day.json
+// de siempre. Así el orden del fotolibro queda independiente de la
+// fecha de cada foto (ver CLAUDE.md → "Orden manual del fotolibro").
+async function loadBookOrder(albumFolderId) {
+  const fileId = await findFileInFolder('book.json', albumFolderId);
+  if (!fileId) return null;
+  const data = await readJsonFile(fileId);
+  return Array.isArray(data?.order) ? data.order : null;
+}
+
+async function saveBookOrder(albumFolderId, order) {
+  await writeJsonFile({ version: 1, order }, 'book.json', albumFolderId);
+}
+
 // ─── DAY OPERATIONS ──────────────────────────────────────
 
 async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {

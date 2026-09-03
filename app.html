@@ -242,12 +242,7 @@ audio { width: 100%; height: 32px; }
 .book-pages { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .book-pages::-webkit-scrollbar { display: none; }
 .book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: flex; flex-direction: column; background: white; position: relative; overflow: hidden; }
-.book-page-header { padding: 1rem 1.25rem 0.6rem; flex-shrink: 0; border-bottom: 1px solid #f0ece4; transition: opacity 0.3s; }
-.book-page-date { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 0.2rem; }
-.book-page-title { font-family: 'DM Serif Display', serif; font-size: 1.2rem; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink); }
 .book-photo-area { flex: 1; overflow: hidden; position: relative; }
-.book-page-footer { padding: 0.6rem 1.25rem 0.75rem; flex-shrink: 0; border-top: 1px solid #f0ece4; font-size: 0.78rem; color: var(--ink-muted); line-height: 1.5; max-height: 5rem; overflow: hidden; transition: opacity 0.3s, max-height 0.3s; }
-.book-page-footer.hidden { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-top-color: transparent; }
 .book-layout-1 { display: grid; grid-template-rows: 1fr; height: 100%; }
 .book-layout-2h { display: grid; grid-template-rows: 1fr 1fr; height: 100%; gap: 2px; }
 .book-layout-2v { display: grid; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
@@ -260,7 +255,12 @@ audio { width: 100%; height: 32px; }
 .book-layout-4b .bp:first-child { grid-row: 1 / -1; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
-.book-page-sep { flex-shrink: 0; width: 12px; height: 100%; background: #e8e4dc; scroll-snap-align: none; }
+.bp.dragging { opacity: 0.35; }
+.bp.drag-over { outline: 3px solid var(--accent); outline-offset: -3px; }
+.bp-chip { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.5rem 0.6rem 0.4rem; background: linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0)); color: white; line-height: 1.3; transition: opacity 0.3s; pointer-events: none; }
+.bp-chip-date { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85; }
+.bp-chip-caption { display: block; font-size: 0.72rem; margin-top: 0.1rem; }
+.bp-drag-handle { position: absolute; top: 0.4rem; right: 0.4rem; width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: grab; z-index: 5; }
 .book-page-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #c0bab0; font-size: 0.875rem; gap: 0.5rem; }
 .book-empty-icon { font-size: 2.5rem; opacity: 0.3; }
 
@@ -752,7 +752,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.22 ·
+      Versión 1.23 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -791,7 +791,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.22</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.23</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1431,6 +1431,8 @@ let calYear       = new Date().getFullYear();
 let calMonth      = new Date().getMonth();
 let bookShowText  = true;
 let bookPages     = [];
+let bookOrder     = [];          // orden manual del fotolibro (driveFileId), independiente de la fecha
+let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
@@ -1438,7 +1440,7 @@ function isToday(s)  { return s === todayStr(); }
 
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
-  allDates = []; calDayData = {};
+  allDates = []; calDayData = {}; bookOrder = []; bookPhotoByFileId = new Map();
   try {
     if (!isSharedAlbum) {
       albumFolderId = await getAlbumFolderId(albumId);
@@ -1844,44 +1846,75 @@ async function renderBook() {
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto 0.5rem;"></div>Preparando libro...</div>';
   if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
   if (!allDates.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📖</div>Todavía no hay días guardados</div>'; return; }
-  const days = await Promise.all(allDates.map(async date => {
-    const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
-    const images = (day.media || []).filter(m => m.type === 'image' && m.driveFileId);
-    return { date, title: day.title || '', notes: day.notes || '', images };
+
+  const perDay = await Promise.all(allDates.map(async date => {
+    const day = await loadDayFromDrive(albumFolderId, date) || { media: [] };
+    return (day.media || [])
+      .filter(m => m.type === 'image' && m.driveFileId)
+      .map(m => ({ driveFileId: m.driveFileId, date, caption: m.caption || '' }));
   }));
-  bookPages = [];
-  for (const day of days) {
-    if (!day.images.length) { bookPages.push({ ...day, pageImages: [], isFirst: true }); continue; }
-    const chunks = chunkArray(day.images, 4);
-    chunks.forEach((chunk, i) => bookPages.push({ ...day, pageImages: chunk, isFirst: i === 0, pageNum: i, totalPages: chunks.length }));
+  const allPhotos = perDay.flat();
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📷</div>Todavía no hay fotos en este álbum</div>'; return; }
+  bookPhotoByFileId = new Map(allPhotos.map(p => [p.driveFileId, p]));
+
+  // El orden del libro es independiente de la fecha: se guarda en
+  // book.json (solo driveFileId) y se sincroniza acá con las fotos
+  // reales del álbum — las nuevas se agregan al final (cronológico),
+  // las borradas se sacan. Si todavía no existe book.json, se arma el
+  // orden cronológico por defecto sin persistirlo (recién se guarda
+  // cuando el usuario reordena algo por primera vez).
+  const currentIds = allPhotos.map(p => p.driveFileId);
+  let savedOrder = null;
+  try { savedOrder = await loadBookOrder(albumFolderId); } catch(e) { savedOrder = null; }
+  if (!savedOrder) {
+    bookOrder = currentIds;
+  } else {
+    const currentSet = new Set(currentIds);
+    const savedSet = new Set(savedOrder);
+    const kept = savedOrder.filter(id => currentSet.has(id));
+    const added = currentIds.filter(id => !savedSet.has(id));
+    bookOrder = [...kept, ...added];
+    if (albumCanEdit && (kept.length !== savedOrder.length || added.length)) {
+      saveBookOrder(albumFolderId, bookOrder).catch(e => console.warn('No se pudo sincronizar el orden del libro:', e));
+    }
   }
+
   wrap.innerHTML = `<div class="book-controls"><button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-page-counter" id="book-page-counter"></div>`;
-  const container = document.getElementById('book-pages-container');
-  bookPages.forEach((page, idx) => {
-    if (idx > 0 && page.isFirst) { const sep = document.createElement('div'); sep.className = 'book-page-sep'; container.appendChild(sep); }
-    container.appendChild(buildBookPage(page, idx));
-  });
-  const pagesEl = document.getElementById('book-pages-container');
-  pagesEl.addEventListener('scroll', updateBookCounter, { passive: true });
+  renderBookPages();
+  document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
 }
 
-function buildBookPage(page, idx) {
+// Re-arma las páginas a partir de bookOrder (sin volver a pedirle nada
+// a Drive) — se usa en el render inicial y después de cada reorder.
+function renderBookPages() {
+  const container = document.getElementById('book-pages-container');
+  if (!container) return;
+  bookPages = chunkArray(bookOrder.map(id => bookPhotoByFileId.get(id)).filter(Boolean), 4);
+  container.innerHTML = '';
+  bookPages.forEach((imgs, idx) => container.appendChild(buildBookPage(imgs, idx)));
+  if (albumCanEdit) { initBookDragReorder(container); initBookTouchReorder(container); }
+  applyBookTextVisibility();
+  updateBookCounter();
+}
+
+function buildBookPage(imgs, idx) {
   const el = document.createElement('div'); el.className = 'book-page'; el.dataset.idx = idx;
-  const imgs = page.pageImages;
-  if (page.isFirst) {
-    const multi = page.totalPages > 1 ? ` (${page.pageNum + 1}/${page.totalPages})` : '';
-    el.innerHTML += `<div class="book-page-header book-text"><div class="book-page-date">${formatDate(page.date)}${multi}</div><div class="book-page-title">${page.title ? escHtml(page.title) : '—'}</div></div>`;
-  }
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
-  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos este día</div>`; }
-  else {
-    const grid = document.createElement('div'); grid.className = pickLayout(imgs, `${page.date}-${page.pageNum || 0}`); grid.style.height = '100%';
-    imgs.forEach(img => { const cell = document.createElement('div'); cell.className = 'bp'; const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, img.driveFileId, 'w800'); cell.appendChild(imgEl); grid.appendChild(cell); });
-    photoArea.appendChild(grid);
-  }
+  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; el.appendChild(photoArea); return el; }
+  const grid = document.createElement('div'); grid.className = pickLayout(imgs, imgs.map(p => p.driveFileId).join('-')); grid.style.height = '100%';
+  imgs.forEach(photo => {
+    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
+    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
+    cell.appendChild(imgEl);
+    const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
+    chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
+    cell.appendChild(chip);
+    if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
+    grid.appendChild(cell);
+  });
+  photoArea.appendChild(grid);
   el.appendChild(photoArea);
-  if (page.notes && page.isFirst) el.innerHTML += `<div class="book-page-footer book-text">${escHtml(page.notes.slice(0, 200))}${page.notes.length > 200 ? '…' : ''}</div>`;
   return el;
 }
 
@@ -1905,7 +1938,82 @@ function seededPick(str) {
 function toggleBookText() {
   bookShowText = !bookShowText;
   document.getElementById('book-text-btn').classList.toggle('active', bookShowText);
-  document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; el.style.maxHeight = bookShowText ? '' : '0'; el.style.padding = bookShowText ? '' : '0'; el.style.borderColor = bookShowText ? '' : 'transparent'; });
+  applyBookTextVisibility();
+}
+
+// Se llama también después de cada reorder (renderBookPages) para que
+// el estado del toggle sobreviva a un re-render de las páginas.
+function applyBookTextVisibility() {
+  document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; });
+}
+
+// ─── Fotolibro: reordenar arrastrando (independiente de la fecha) ──
+// Mismo mecanismo que initDragReorder/initTouchReorder de la pestaña
+// Día (dragstart/dragover/drop para desktop, touch manual con clon
+// para mobile), pero operando sobre bookOrder (todas las páginas del
+// libro) en vez de un único día — así se puede arrastrar una foto de
+// una página a otra sin importar de qué fecha sea cada una.
+let bookDragSrcId = null;
+function initBookDragReorder(container) {
+  container.querySelectorAll('.bp').forEach(cell => {
+    cell.addEventListener('dragstart', e => { bookDragSrcId = cell.dataset.fileId; cell.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    cell.addEventListener('dragend', () => { cell.classList.remove('dragging'); container.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over')); });
+    cell.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; container.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over')); cell.classList.add('drag-over'); });
+    cell.addEventListener('drop', e => {
+      e.preventDefault();
+      const targetId = cell.dataset.fileId;
+      if (!bookDragSrcId || bookDragSrcId === targetId) return;
+      moveBookPhoto(bookDragSrcId, targetId);
+      bookDragSrcId = null;
+    });
+  });
+}
+
+function initBookTouchReorder(container) {
+  let touchSrcId = null, touchClone = null, touchOffX = 0, touchOffY = 0;
+  container.querySelectorAll('.bp-drag-handle').forEach(handle => {
+    handle.addEventListener('touchstart', e => {
+      const cell = handle.closest('.bp'); touchSrcId = cell.dataset.fileId;
+      const rect = cell.getBoundingClientRect(); touchOffX = e.touches[0].clientX - rect.left; touchOffY = e.touches[0].clientY - rect.top;
+      touchClone = cell.cloneNode(true);
+      touchClone.style.cssText = `position:fixed;width:${rect.width}px;height:${rect.height}px;opacity:0.85;pointer-events:none;z-index:999;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.35);transition:none;`;
+      touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px'; touchClone.style.top = (e.touches[0].clientY - touchOffY) + 'px';
+      document.body.appendChild(touchClone); cell.style.opacity = '0.3'; e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchmove', e => {
+      if (!touchClone) return;
+      touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px'; touchClone.style.top = (e.touches[0].clientY - touchOffY) + 'px';
+      touchClone.style.display = 'none'; const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY); touchClone.style.display = '';
+      const targetCell = el && el.closest('.bp');
+      container.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
+      if (targetCell && targetCell.dataset.fileId !== touchSrcId) targetCell.classList.add('drag-over');
+      e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchend', e => {
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      container.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
+      const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      const targetCell = el && el.closest('.bp');
+      if (targetCell && touchSrcId && targetCell.dataset.fileId !== touchSrcId) moveBookPhoto(touchSrcId, targetCell.dataset.fileId);
+      touchSrcId = null;
+    });
+  });
+}
+
+// Mueve una foto a la posición de otra dentro de bookOrder, guarda
+// book.json (en segundo plano, sin bloquear la UI) y vuelve a armar
+// las páginas manteniendo el scroll donde estaba el usuario.
+function moveBookPhoto(srcId, targetId) {
+  const srcIdx = bookOrder.indexOf(srcId), targetIdx = bookOrder.indexOf(targetId);
+  if (srcIdx === -1 || targetIdx === -1) return;
+  const container = document.getElementById('book-pages-container');
+  const scrollLeft = container ? container.scrollLeft : 0;
+  const [moved] = bookOrder.splice(srcIdx, 1);
+  bookOrder.splice(targetIdx, 0, moved);
+  saveBookOrder(albumFolderId, bookOrder).catch(e => console.warn('No se pudo guardar el orden del libro:', e));
+  renderBookPages();
+  const newContainer = document.getElementById('book-pages-container');
+  if (newContainer) newContainer.scrollLeft = scrollLeft;
 }
 
 function updateBookCounter() {
