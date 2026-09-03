@@ -8,10 +8,12 @@ Contexto para Claude Code. Leer antes de tocar cualquier archivo.
 
 App web de diario de viaje personal. El usuario registra cada día con fotos, videos, audios y notas. Todo se almacena en Google Drive del usuario. PWA instalable.
 
-**En transición de "app familiar" a producto con suscripción** (freemium + pago mensual/anual vía Mercado Pago) — ver la sección "Suscripciones" más abajo. Mientras dura la migración, **la app sigue viva en GitHub Pages** con el `start_url` viejo; el corte a Firebase Hosting es un paso manual explícito, no automático (ver "Pendientes conocidos").
+**Ya migrada de "app familiar" a producto con suscripción** (freemium + pago mensual/anual vía Mercado Pago) — ver la sección "Suscripciones" más abajo. **El corte a Firebase ya se hizo**: Firebase Hosting es la producción real (Blaze activado, SQL de Supabase corrido, secrets cargados, webhook de Mercado Pago configurado). GitHub Pages sigue existiendo y sigue actualizándose sola en cada push a `main` (GitHub Pages sirve directo desde el repo, no hay forma de "apagarla" sin borrar el sitio), pero **es una URL vieja que ya nadie usa como app real** — no confundirla con producción.
 
-**URL producción actual (GitHub Pages):** `https://leandro-couretot.github.io/travel-diary/app.html`
-**URL futura (Firebase, todavía no cortada):** `https://family-fotos-491610.web.app/app.html`
+**Deploy no es automático como en GitHub Pages**: pushear a `main` no alcanza para que los cambios lleguen a Firebase. Hay que correr `firebase deploy` a mano desde una máquina con `firebase login` ya hecho (ver "Cómo hacer deploy" más abajo) — típicamente parado en la rama de trabajo donde se hizo el fix, sin esperar a que esa rama se mergee a `main` primero.
+
+**URL de producción (Firebase):** `https://family-fotos-491610.web.app/app.html`
+**URL vieja, sin uso real (GitHub Pages):** `https://leandro-couretot.github.io/travel-diary/app.html`
 **Repo:** `https://github.com/Leandro-Couretot/travel-diary`
 
 ---
@@ -208,7 +210,7 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 - **Aviso de posibles duplicados en carga masiva** (v1.22): antes de subir, la carga masiva (tanto desde Home como desde dentro de un álbum) compara por **nombre de archivo** contra lo que ya figura en el `day.json` de cada fecha destino (`getExistingNamesForDate()` en `drive.js`, que reutiliza `loadDayFromDrive()` y por lo tanto su caché) — no por contenido/tamaño, para no requerir cambios de schema ni descargar los archivos ya subidos. Los que coinciden se marcan (`markBulkDuplicates()`) y aparecen destildados por default dentro de un aviso ⚠ en su fecha (`renderBulkDatedList()`, compartido entre ambos flujos de carga masiva) — el usuario puede re-tildarlos igual si de verdad quiere subirlos de nuevo (decisión explícita del usuario: marcar pero dejar elegir, no auto-descartar). `confirmBulkUpload()`/`confirmBulkDiary()` excluyen los que quedaron destildados al armar los grupos a subir; si una fecha se queda sin ningún archivo tras el filtro, se salta esa fecha entera, y si no queda ningún archivo en toda la carga se avisa en vez de llamar a `runBulkUpload()` con un grupo vacío. En la carga desde Home, cambiar el álbum de destino en el selector vuelve a chequear duplicados contra el álbum nuevo (`refreshBulkDuplicates()`, listener en el `change` de `#bulk-album-select`), ya que cada álbum tiene contenido distinto en Drive.
 
 ### Pendientes conocidos
-- **Corte a Firebase Hosting (EN CURSO, no completado)**: el código de `billing.js`/`functions/`/`firebase.json` y los cambios de `manifest.json`/`drive.js` para la suscripción están escritos, pero **no se pusheó a `main` todavía** — ver "Convenciones importantes" antes de tocar esto. Faltan, todos manuales, del lado del usuario: activar el plan Blaze en Firebase, correr el SQL de Supabase, cargar los secrets (`firebase functions:secrets:set`), configurar el webhook en Mercado Pago Developers, agregar la URL de Firebase a "Authorized JavaScript origins" en Google Cloud Console, y recién después `firebase deploy`. Mientras tanto la app sigue funcionando normal en GitHub Pages, sin nada de esto activo.
+- **`main` quedó atrás de lo que hay realmente en producción**: como el deploy a Firebase se hace corriendo `firebase deploy` a mano desde la rama de trabajo (no depende de mergear a `main`), el repo terminó con `main` congelado en v1.14 mientras Firebase (la producción real) ya sirve versiones más nuevas. `main` sigue siendo lo único que ve GitHub Pages, así que **no reflejan lo mismo** — no asumir que `main` = "lo que está en producción" en este repo, hay que mirar qué se deployó a Firebase específicamente. Sería bueno en algún momento mergear las ramas de trabajo pendientes a `main` para que el historial de git no siga divergiendo, pero no es urgente porque no afecta el funcionamiento de la app real (Firebase).
 - **Qué funciones quedan detrás del pago**: sin decidir todavía (ver "Suscripciones").
 - **Medición/analytics de producto**: hay un plan completo pero **sin ejecutar** en `ANALYTICS_PLAN.md` (tabla `usage_events`, función `track-event.js`, puntos de instrumentación en el frontend) — logins por período, fotos por álbum, uso de títulos/notas, álbumes compartidos, tracking de errores. Deliberadamente no implementado todavía: con 1-2 usuarios de prueba cualquier dato ahí sería ruido. Retomar cuando haya una decena de usuarios reales o una pregunta de negocio concreta.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
@@ -226,24 +228,26 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 2. **No usar `localStorage` para datos** — solo para el token OAuth (`drive_token`) y preferencias menores. Todo el contenido va a Drive.
 3. **Imágenes siempre con `setAuthImg()`** — nunca hardcodear URLs de `drive.google.com/thumbnail` directamente, no funcionan en PWA.
 4. **Versión en dos lugares** — al cambiar features, actualizar la versión en el header de `#view-home` y en el modal de ayuda `#modal-help`.
-5. **Push directo a main** — el usuario prefiere mergear directo sin PRs, **salvo para cambios que dependan de infraestructura externa todavía no configurada** (como el corte a Firebase: `SCOPE_VERSION` fuerza re-consentimiento de OAuth a toda la familia ya mismo, y `manifest.json` con `start_url: /app.html` rompe instalaciones nuevas de la PWA en GitHub Pages hasta que Firebase esté realmente sirviendo desde la raíz). Para esos casos: commitear en la rama de trabajo, avisar explícitamente qué falta configurar del lado de las cuentas externas, y esperar confirmación antes de mergear a `main`.
+5. **Push directo a main** — el usuario prefiere mergear directo sin PRs, **salvo para cambios que dependan de infraestructura externa todavía no configurada**. Para esos casos: commitear en la rama de trabajo, avisar explícitamente qué falta configurar del lado de las cuentas externas, y esperar confirmación antes de mergear a `main`.
+6. **Deployar a Firebase (la producción real) no depende de `main`** — es `firebase deploy`, corrido a mano por el usuario desde su máquina, parado en la rama que tenga el código que quiere publicar. Terminar de commitear/pushear a la rama de trabajo no implica que ya esté en producción: avisar siempre que falta ese paso manual (ver "Cómo hacer deploy"), no asumir que el usuario ya lo corrió.
 
 ---
 
 ## Cómo hacer deploy
 
-**Frontend + fixes normales (GitHub Pages, hoy en producción):**
+**Firebase (producción real — Hosting + Functions juntos):**
+```bash
+cd functions && npm install   # una vez, o cuando cambien las dependencias
+cd ..
+firebase deploy
+```
+Se corre a mano, desde la máquina del usuario (`firebase login` ya hecho, plan Blaze activado), parado en la rama que tenga el código a publicar — **no hace falta mergear a `main` primero**, `firebase deploy` no mira ramas de git, solo el estado de los archivos en el momento en que se ejecuta. Verificar en:
+`https://family-fotos-491610.web.app/app.html`
+
+**GitHub Pages (URL vieja, sin uso real como producción):**
 ```bash
 git add .
 git commit -m "feat/fix: descripción"
 git push origin main
 ```
-GitHub Pages despliega automáticamente en ~1 minuto. Verificar en:
-`https://leandro-couretot.github.io/travel-diary/app.html`
-
-**Backend de suscripciones (Firebase, todavía no cortado a producción):**
-```bash
-cd functions && npm install   # una vez, o cuando cambien las dependencias
-firebase deploy               # Hosting + Functions juntos
-```
-Requiere `firebase login` y el plan Blaze activado en el proyecto. Ver "Suscripciones" para las variables de entorno que hacen falta cargar antes del primer deploy.
+Despliega automáticamente en ~1 minuto en `https://leandro-couretot.github.io/travel-diary/app.html` apenas se pushea a `main` — pero como nadie usa esa URL como app real, esto es más que nada higiene del repo (mantener `main` al día), no una entrega a usuarios.
