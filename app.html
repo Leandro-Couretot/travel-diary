@@ -2222,26 +2222,19 @@ function moveBookPhoto(srcId, target) {
   const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
 
   if (target.type === 'cell') {
-    const srcLoc = locateBookPhoto(srcId);
-    const targetLoc = locateBookPhoto(target.fileId);
-    if (srcLoc && targetLoc && srcLoc.pageIdx === targetLoc.pageIdx) {
-      const page = bookPages[srcLoc.pageIdx];
-      const srcSlot = page.images.indexOf(srcId);
-      const targetSlot = page.images.indexOf(target.fileId);
-      page.images.splice(srcSlot, 1);
-      page.images.splice(targetSlot, 0, srcId);
+    // Misma regla siempre, sin importar si la foto pisada estaba en la
+    // misma página, en otra, o si la arrastrada venía del drawer: la
+    // pisada se va al drawer, la arrastrada toma su lugar exacto.
+    removeBookPhotoFromCurrentSpot(srcId);
+    const loc = locateBookPhoto(target.fileId);
+    if (loc) {
+      const page = bookPages[loc.pageIdx];
+      const slot = page.images.indexOf(target.fileId);
+      page.images.splice(slot, 1, srcId);
+      if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+      bookDrawer.push(target.fileId);
     } else {
-      removeBookPhotoFromCurrentSpot(srcId);
-      const loc = locateBookPhoto(target.fileId);
-      if (loc) {
-        const page = bookPages[loc.pageIdx];
-        const slot = page.images.indexOf(target.fileId);
-        page.images.splice(slot, 1, srcId);
-        if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
-        bookDrawer.push(target.fileId);
-      } else {
-        bookDrawer.push(srcId); // el target vivía en el drawer — nada que desplazar
-      }
+      bookDrawer.push(srcId); // el target vivía en el drawer — nada que desplazar
     }
   } else if (target.type === 'page') {
     removeBookPhotoFromCurrentSpot(srcId);
