@@ -3,12 +3,15 @@
 //  1) la segunda visita en adelante cargue al toque, sin esperar red.
 //  2) sin conexión, la PWA abra igual en vez de romperse.
 //
-// Estrategia: stale-while-revalidate. Nunca cache-first puro — así no
-// hace falta acordarse de bumpear una versión en cada deploy: cada
-// visita sirve lo que ya tenía cacheado (rápido) y en paralelo pide la
-// versión nueva a la red para la PRÓXIMA visita. Un usuario que ya
-// instaló la PWA queda, como mucho, una visita atrás — nunca se le
-// esconde un fix para siempre.
+// Estrategia mixta (v1.25): el documento principal (app.html, el que
+// dice qué versión es) va a la red primero — así un usuario con señal
+// ve el último deploy ya en la primera apertura, sin tener que abrir la
+// app dos veces para que se actualice. El resto del shell (CSS/JS/
+// íconos) sigue con stale-while-revalidate: sirve lo cacheado al toque
+// y en paralelo pide la versión nueva para la PRÓXIMA visita — no hace
+// falta acordarse de bumpear una versión en cada deploy. Sin conexión,
+// todo cae al caché (o al aviso de sin conexión si no hay nada guardado
+// todavía) — eso no cambia.
 //
 // Solo toca pedidos al propio origen (el shell). Todo lo demás — la
 // API de Drive, Google Identity Services, Google Fonts — es de otro
@@ -63,8 +66,25 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // solo el propio origen
 
-  event.respondWith(staleWhileRevalidate(req));
+  // El documento principal (app.html, pedido con mode:'navigate' al abrir
+  // la PWA o recargar) va siempre a la red primero — es el que dice qué
+  // versión es, así que no puede quedar un paso atrás como el resto del
+  // shell (ver v1.25 en CLAUDE.md). Si no hay conexión, cae al caché.
+  event.respondWith(req.mode === 'navigate' ? networkFirst(req) : staleWhileRevalidate(req));
 });
+
+async function networkFirst(req) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const fresh = await fetch(req);
+    if (fresh && fresh.ok) cache.put(req, fresh.clone());
+    return fresh;
+  } catch {
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    return new Response(OFFLINE_FALLBACK, { headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+  }
+}
 
 async function staleWhileRevalidate(req) {
   const cache = await caches.open(CACHE_NAME);
@@ -80,8 +100,5 @@ async function staleWhileRevalidate(req) {
   const fresh = await networkFetch;
   if (fresh) return fresh;
 
-  if (req.mode === 'navigate') {
-    return new Response(OFFLINE_FALLBACK, { headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
-  }
   return new Response('', { status: 504, statusText: 'Sin conexión' });
 }
