@@ -263,11 +263,16 @@ audio { width: 100%; height: 32px; }
 .bp-drag-handle { position: absolute; top: 0.4rem; right: 0.4rem; width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: grab; z-index: 5; }
 .book-page-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #c0bab0; font-size: 0.875rem; gap: 0.5rem; }
 .book-empty-icon { font-size: 2.5rem; opacity: 0.3; }
-.book-reorder-grid { display: flex; gap: 0.75rem; height: 100%; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
+.book-reorder-area { display: flex; flex-direction: column; height: 100%; }
+.book-reorder-grid { flex: 1; min-height: 0; display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
 .book-reorder-grid::-webkit-scrollbar { display: none; }
 .book-reorder-tile { flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
 .book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .book-reorder-tile-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 2px; aspect-ratio: 1; }
+.book-drawer { flex: 0 0 auto; max-height: 34%; overflow-y: auto; border-top: 1px solid rgba(0,0,0,0.08); padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom)); background: rgba(255,255,255,0.55); }
+.book-drawer-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin-bottom: 0.5rem; }
+.book-drawer-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 64px; }
+.book-drawer-cell { width: 64px; height: 64px; flex: 0 0 auto; border-radius: 8px; }
 
 /* Lightbox */
 .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 400; flex-direction: column; align-items: center; justify-content: center; touch-action: none; }
@@ -757,7 +762,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.25 ·
+      Versión 1.26 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -796,7 +801,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.25</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.26</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1435,10 +1440,10 @@ let calDayData    = {};
 let calYear       = new Date().getFullYear();
 let calMonth      = new Date().getMonth();
 let bookShowText  = true;
-let bookPages     = [];
-let bookOrder     = [];          // orden manual del fotolibro (driveFileId), independiente de la fecha
+let bookPages     = [];          // [{ images: [driveFileId,...], layout: string|null }]
+let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
 let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
-let bookReorderMode = false;     // true = grilla de páginas en miniatura para reordenar
+let bookReorderMode = false;     // true = grilla de páginas en miniatura + drawer, para reordenar
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
@@ -1446,7 +1451,7 @@ function isToday(s)  { return s === todayStr(); }
 
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
-  allDates = []; calDayData = {}; bookOrder = []; bookPhotoByFileId = new Map();
+  allDates = []; calDayData = {}; bookPages = []; bookDrawer = []; bookPhotoByFileId = new Map();
   try {
     if (!isSharedAlbum) {
       albumFolderId = await getAlbumFolderId(albumId);
@@ -1863,71 +1868,111 @@ async function renderBook() {
   if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📷</div>Todavía no hay fotos en este álbum</div>'; return; }
   bookPhotoByFileId = new Map(allPhotos.map(p => [p.driveFileId, p]));
 
-  // El orden del libro es independiente de la fecha: se guarda en
-  // book.json (solo driveFileId) y se sincroniza acá con las fotos
-  // reales del álbum — las nuevas se agregan al final (cronológico),
-  // las borradas se sacan. Si todavía no existe book.json, se arma el
-  // orden cronológico por defecto sin persistirlo (recién se guarda
-  // cuando el usuario reordena algo por primera vez).
+  // El libro es independiente de la fecha: book.json guarda páginas
+  // explícitas (cada una con sus fotos y un layout opcional forzado)
+  // más un "drawer" de fotos sin ubicar todavía. Se reconcilia acá
+  // contra las fotos reales del álbum en cada apertura — fotos nuevas
+  // van al drawer (nunca se auto-asignan a una página), fotos borradas
+  // se sacan de donde estén. Si todavía no existe book.json, se arma
+  // el orden cronológico por defecto sin persistirlo (recién se guarda
+  // cuando el usuario toca algo por primera vez) — ver CLAUDE.md →
+  // "Fotolibro: páginas explícitas + drawer".
   const currentIds = allPhotos.map(p => p.driveFileId);
-  let savedOrder = null;
-  try { savedOrder = await loadBookOrder(albumFolderId); } catch(e) { savedOrder = null; }
-  if (!savedOrder) {
-    bookOrder = currentIds;
+  let saved = null;
+  try { saved = await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
+
+  if (!saved) {
+    bookPages = chunkArray(currentIds, 4).map(images => ({ images, layout: null }));
+    bookDrawer = [];
   } else {
     const currentSet = new Set(currentIds);
-    const savedSet = new Set(savedOrder);
-    const kept = savedOrder.filter(id => currentSet.has(id));
-    const added = currentIds.filter(id => !savedSet.has(id));
-    bookOrder = [...kept, ...added];
-    if (albumCanEdit && (kept.length !== savedOrder.length || added.length)) {
-      saveBookOrder(albumFolderId, bookOrder).catch(e => console.warn('No se pudo sincronizar el orden del libro:', e));
+    let changed = !!saved._migrated;
+    const cleanedPages = [];
+    for (const page of saved.pages) {
+      const images = page.images.filter(id => currentSet.has(id));
+      if (images.length !== page.images.length) changed = true;
+      if (!images.length) { changed = true; continue; } // página que quedó sin fotos desaparece
+      let layout = page.layout;
+      if (layout && !isValidBookLayout(layout, images.length)) { layout = null; changed = true; }
+      cleanedPages.push({ images, layout });
+    }
+    const cleanedDrawer = saved.drawer.filter(id => currentSet.has(id));
+    if (cleanedDrawer.length !== saved.drawer.length) changed = true;
+    const placedSet = new Set([...cleanedPages.flatMap(p => p.images), ...cleanedDrawer]);
+    const added = currentIds.filter(id => !placedSet.has(id)); // fotos nuevas -> al drawer, nunca a una página sola
+    if (added.length) changed = true;
+
+    bookPages = cleanedPages;
+    bookDrawer = [...cleanedDrawer, ...added];
+    if (albumCanEdit && changed) {
+      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
     }
   }
 
   bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-grid" id="book-reorder-container" style="display:none;"></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
   renderBookPages();
   document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
 }
 
+// Layouts CSS válidos por cantidad de fotos — usado tanto para elegir
+// el automático (pickLayout) como para validar uno forzado guardado en
+// una página (si la cantidad de fotos cambió y ya no corresponde, se
+// vuelve a automático en vez de quedar inconsistente).
+const BOOK_LAYOUTS_BY_COUNT = {
+  1: ['book-layout-1'],
+  2: ['book-layout-2h', 'book-layout-2v'],
+  3: ['book-layout-3a', 'book-layout-3b'],
+  4: ['book-layout-4a', 'book-layout-4b'],
+};
+function isValidBookLayout(layout, count) {
+  return (BOOK_LAYOUTS_BY_COUNT[count] || []).includes(layout);
+}
+
 // Alterna entre la vista inmersiva (una página a pantalla completa) y
-// una grilla de páginas en miniatura pensada para reordenar arrastrando
-// entre páginas que no entrarían juntas en la vista inmersiva (ver
-// CLAUDE.md → "Modo reordenar del fotolibro").
+// una grilla de páginas en miniatura + el drawer de fotos sin ubicar,
+// pensada para reordenar y mover fotos entre páginas que no entrarían
+// juntas en la vista inmersiva (ver CLAUDE.md → "Modo reordenar del
+// fotolibro" y "Fotolibro: páginas explícitas + drawer").
 function toggleBookReorderMode() {
   bookReorderMode = !bookReorderMode;
   const btn = document.getElementById('book-reorder-btn');
   btn.classList.toggle('active', bookReorderMode);
   btn.textContent = bookReorderMode ? 'Listo' : 'Reordenar';
   document.getElementById('book-pages-container').style.display = bookReorderMode ? 'none' : '';
-  document.getElementById('book-reorder-container').style.display = bookReorderMode ? '' : 'none';
+  document.getElementById('book-reorder-area').style.display = bookReorderMode ? 'flex' : 'none';
   document.getElementById('book-page-counter').style.display = bookReorderMode ? 'none' : '';
   if (bookReorderMode) renderBookReorderGrid();
   else { renderBookPages(); updateBookCounter(); }
 }
 
-// Grilla de páginas en miniatura (varias visibles a la vez, a diferencia
-// de la vista inmersiva) — mismo bookOrder/bookPages, mismo mecanismo de
-// arrastre (initBookDragReorder/initBookTouchReorder), solo cambia cómo
-// se dibuja cada página.
+// Grilla de páginas en miniatura + drawer (varias páginas visibles a
+// la vez, a diferencia de la vista inmersiva) — mismo bookPages/
+// bookDrawer, mismo mecanismo de arrastre (initBookDragReorder/
+// initBookTouchReorder), solo cambia cómo se dibuja cada página.
 function renderBookReorderGrid() {
   const container = document.getElementById('book-reorder-container');
-  if (!container) return;
-  bookPages = chunkArray(bookOrder.map(id => bookPhotoByFileId.get(id)).filter(Boolean), 4);
+  const drawerEl = document.getElementById('book-drawer-container');
+  const area = document.getElementById('book-reorder-area');
+  if (!container || !drawerEl || !area) return;
   container.innerHTML = '';
-  bookPages.forEach((imgs, idx) => container.appendChild(buildBookReorderTile(imgs, idx)));
-  initBookDragReorder(container);
-  initBookTouchReorder(container);
+  bookPages.forEach((page, idx) => container.appendChild(buildBookReorderTile(page, idx)));
+  drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
+  const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
+  bookDrawer.forEach(id => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo)); });
+  drawerEl.appendChild(drawerGrid);
+  initBookDragReorder(area);
+  initBookTouchReorder(area);
 }
 
-function buildBookReorderTile(imgs, idx) {
-  const tile = document.createElement('div'); tile.className = 'book-reorder-tile';
+function buildBookReorderTile(page, idx) {
+  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
   const label = document.createElement('div'); label.className = 'book-reorder-tile-label'; label.textContent = `Página ${idx + 1}`;
   tile.appendChild(label);
   const grid = document.createElement('div'); grid.className = 'book-reorder-tile-grid';
-  imgs.forEach(photo => {
+  page.images.forEach(id => {
+    const photo = bookPhotoByFileId.get(id); if (!photo) return;
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
     cell.appendChild(imgEl);
@@ -1939,24 +1984,34 @@ function buildBookReorderTile(imgs, idx) {
   return tile;
 }
 
-// Re-arma las páginas a partir de bookOrder (sin volver a pedirle nada
+function buildBookDrawerCell(photo) {
+  const cell = document.createElement('div'); cell.className = 'bp book-drawer-cell'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
+  const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
+  cell.appendChild(imgEl);
+  const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
+  cell.appendChild(handle);
+  return cell;
+}
+
+// Re-arma las páginas a partir de bookPages (sin volver a pedirle nada
 // a Drive) — se usa en el render inicial y después de cada reorder.
 function renderBookPages() {
   const container = document.getElementById('book-pages-container');
   if (!container) return;
-  bookPages = chunkArray(bookOrder.map(id => bookPhotoByFileId.get(id)).filter(Boolean), 4);
   container.innerHTML = '';
-  bookPages.forEach((imgs, idx) => container.appendChild(buildBookPage(imgs, idx)));
+  bookPages.forEach((page, idx) => container.appendChild(buildBookPage(page, idx)));
   if (albumCanEdit) { initBookDragReorder(container); initBookTouchReorder(container); }
   applyBookTextVisibility();
   updateBookCounter();
 }
 
-function buildBookPage(imgs, idx) {
-  const el = document.createElement('div'); el.className = 'book-page'; el.dataset.idx = idx;
+function buildBookPage(page, idx) {
+  const el = document.createElement('div'); el.className = 'book-page'; el.dataset.pageIdx = idx;
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
+  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
   if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; el.appendChild(photoArea); return el; }
-  const grid = document.createElement('div'); grid.className = pickLayout(imgs, imgs.map(p => p.driveFileId).join('-')); grid.style.height = '100%';
+  const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+  const grid = document.createElement('div'); grid.className = layoutClass; grid.style.height = '100%';
   imgs.forEach(photo => {
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
@@ -2004,36 +2059,64 @@ function applyBookTextVisibility() {
 // ─── Fotolibro: reordenar arrastrando (independiente de la fecha) ──
 // Mismo mecanismo que initDragReorder/initTouchReorder de la pestaña
 // Día (dragstart/dragover/drop para desktop, touch manual con clon
-// para mobile), pero operando sobre bookOrder (todas las páginas del
-// libro) en vez de un único día — así se puede arrastrar una foto de
-// una página a otra sin importar de qué fecha sea cada una. Sirve tanto
-// para la vista inmersiva (una página completa) como para la grilla en
-// miniatura del modo reordenar — ambas comparten estas mismas funciones.
+// para mobile), pero operando sobre bookPages/bookDrawer en vez de un
+// único día — así se puede arrastrar una foto de una página a otra (o
+// al drawer) sin importar de qué fecha sea cada una. Sirve tanto para
+// la vista inmersiva (una página completa) como para la grilla en
+// miniatura + drawer del modo reordenar — ambas comparten estas mismas
+// funciones. Usa delegación de eventos (un solo listener en la raíz)
+// en vez de uno por celda, para poder resolver también drops sobre el
+// fondo de una página o del drawer, no solo sobre otra foto puntual.
 let bookDragSrcId = null;
-function initBookDragReorder(container) {
-  container.querySelectorAll('.bp').forEach(cell => {
-    cell.addEventListener('dragstart', e => { bookDragSrcId = cell.dataset.fileId; cell.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
-    cell.addEventListener('dragend', () => { cell.classList.remove('dragging'); container.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over')); clearBookEdgeScroll(); });
-    cell.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; container.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over')); cell.classList.add('drag-over'); });
-    cell.addEventListener('drop', e => {
-      e.preventDefault();
-      const targetId = cell.dataset.fileId;
-      if (!bookDragSrcId || bookDragSrcId === targetId) return;
-      moveBookPhoto(bookDragSrcId, targetId);
-      bookDragSrcId = null;
-    });
-  });
-  // Listener a nivel contenedor (dragover burbujea desde cualquier celda
-  // o desde el espacio entre ellas): detecta cercanía al borde para
-  // avanzar de página sola mientras se sostiene el arrastre ahí — la
-  // única forma de soltar una foto en una página que no era visible al
-  // empezar a arrastrar.
-  container.addEventListener('dragover', e => checkBookEdgeScroll(container, e.clientX));
+
+// Encuentra el elemento scrolleable real dentro de (o igual a) `root`
+// — necesario porque en modo reordenar `root` es el área completa
+// (grilla + drawer), pero solo la grilla de páginas hace scroll.
+function bookScrollTarget(root) {
+  if (root.classList && (root.classList.contains('book-pages') || root.classList.contains('book-reorder-grid'))) return root;
+  return root.querySelector('.book-pages, .book-reorder-grid') || root;
 }
 
-function initBookTouchReorder(container) {
+// Interpreta sobre qué se soltó una foto: otra foto puntual (`cell`),
+// el fondo de una página (`page`, por su índice) o el drawer (`drawer`).
+function resolveBookDropTarget(el) {
+  if (!el) return null;
+  const cell = el.closest('.bp');
+  if (cell) return { type: 'cell', fileId: cell.dataset.fileId };
+  if (el.closest('.book-drawer')) return { type: 'drawer' };
+  const pageEl = el.closest('.book-reorder-tile, .book-page');
+  if (pageEl && pageEl.dataset.pageIdx !== undefined) return { type: 'page', pageIdx: parseInt(pageEl.dataset.pageIdx, 10) };
+  return null;
+}
+
+function initBookDragReorder(root) {
+  root.querySelectorAll('.bp').forEach(cell => {
+    cell.addEventListener('dragstart', e => { bookDragSrcId = cell.dataset.fileId; cell.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    cell.addEventListener('dragend', () => { cell.classList.remove('dragging'); root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over')); clearBookEdgeScroll(); });
+  });
+  const scrollTarget = bookScrollTarget(root);
+  root.addEventListener('dragover', e => {
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
+    const target = resolveBookDropTarget(e.target);
+    if (target && target.type === 'cell' && target.fileId !== bookDragSrcId) {
+      const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
+      if (cellEl) cellEl.classList.add('drag-over');
+    }
+    checkBookEdgeScroll(scrollTarget, e.clientX);
+  });
+  root.addEventListener('drop', e => {
+    e.preventDefault();
+    const target = resolveBookDropTarget(e.target);
+    if (bookDragSrcId && target) moveBookPhoto(bookDragSrcId, target);
+    bookDragSrcId = null;
+  });
+}
+
+function initBookTouchReorder(root) {
   let touchSrcId = null, touchClone = null, touchOffX = 0, touchOffY = 0;
-  container.querySelectorAll('.bp-drag-handle').forEach(handle => {
+  const scrollTarget = bookScrollTarget(root);
+  root.querySelectorAll('.bp-drag-handle').forEach(handle => {
     handle.addEventListener('touchstart', e => {
       const cell = handle.closest('.bp'); touchSrcId = cell.dataset.fileId;
       const rect = cell.getBoundingClientRect(); touchOffX = e.touches[0].clientX - rect.left; touchOffY = e.touches[0].clientY - rect.top;
@@ -2046,19 +2129,22 @@ function initBookTouchReorder(container) {
       if (!touchClone) return;
       touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px'; touchClone.style.top = (e.touches[0].clientY - touchOffY) + 'px';
       touchClone.style.display = 'none'; const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY); touchClone.style.display = '';
-      const targetCell = el && el.closest('.bp');
-      container.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
-      if (targetCell && targetCell.dataset.fileId !== touchSrcId) targetCell.classList.add('drag-over');
-      checkBookEdgeScroll(container, e.touches[0].clientX);
+      root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
+      const target = resolveBookDropTarget(el);
+      if (target && target.type === 'cell' && target.fileId !== touchSrcId) {
+        const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
+        if (cellEl) cellEl.classList.add('drag-over');
+      }
+      checkBookEdgeScroll(scrollTarget, e.touches[0].clientX);
       e.preventDefault();
     }, { passive: false });
     handle.addEventListener('touchend', e => {
       if (touchClone) { touchClone.remove(); touchClone = null; }
-      container.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
+      root.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
       clearBookEdgeScroll();
       const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-      const targetCell = el && el.closest('.bp');
-      if (targetCell && touchSrcId && targetCell.dataset.fileId !== touchSrcId) moveBookPhoto(touchSrcId, targetCell.dataset.fileId);
+      const target = resolveBookDropTarget(el);
+      if (touchSrcId && target) moveBookPhoto(touchSrcId, target);
       touchSrcId = null;
     });
   });
@@ -2093,22 +2179,88 @@ function clearBookEdgeScroll() {
   bookEdgeTimer = null; bookEdgeDir = null;
 }
 
-// Mueve una foto a la posición de otra dentro de bookOrder, guarda
-// book.json (en segundo plano, sin bloquear la UI) y vuelve a armar la
-// vista activa (inmersiva o grilla de reordenar) manteniendo el scroll
-// donde estaba el usuario.
-function moveBookPhoto(srcId, targetId) {
-  const srcIdx = bookOrder.indexOf(srcId), targetIdx = bookOrder.indexOf(targetId);
-  if (srcIdx === -1 || targetIdx === -1) return;
-  const containerId = bookReorderMode ? 'book-reorder-container' : 'book-pages-container';
-  const container = document.getElementById(containerId);
-  const scrollLeft = container ? container.scrollLeft : 0;
-  const [moved] = bookOrder.splice(srcIdx, 1);
-  bookOrder.splice(targetIdx, 0, moved);
-  saveBookOrder(albumFolderId, bookOrder).catch(e => console.warn('No se pudo guardar el orden del libro:', e));
+// Saca una foto de donde esté (una página o el drawer). Si una página
+// queda sin fotos, desaparece. Si el layout forzado de la página ya no
+// corresponde a la nueva cantidad de fotos, vuelve a automático.
+function removeBookPhotoFromCurrentSpot(fileId) {
+  const drawerIdx = bookDrawer.indexOf(fileId);
+  if (drawerIdx !== -1) { bookDrawer.splice(drawerIdx, 1); return; }
+  for (let i = bookPages.length - 1; i >= 0; i--) {
+    const page = bookPages[i];
+    const slot = page.images.indexOf(fileId);
+    if (slot !== -1) {
+      page.images.splice(slot, 1);
+      if (!page.images.length) bookPages.splice(i, 1);
+      else if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+      return;
+    }
+  }
+}
+
+function locateBookPhoto(fileId) {
+  for (let i = 0; i < bookPages.length; i++) if (bookPages[i].images.includes(fileId)) return { pageIdx: i };
+  return null;
+}
+
+// Mueve una foto según dónde se soltó (`target`, de resolveBookDropTarget):
+// - Sobre otra foto de la MISMA página: solo cambia el orden entre las
+//   dos, nadie se desplaza (igual que reordenar dentro de un día).
+// - Sobre otra foto de una página DISTINTA (o del drawer): la foto
+//   pisada se manda al drawer, la arrastrada toma su lugar exacto.
+// - Sobre el fondo de una página con lugar (menos de 4 fotos): se
+//   agrega ahí, sin desplazar nada.
+// - Sobre el drawer: se saca del libro, sin reemplazo.
+// Guarda book.json en segundo plano y vuelve a armar la vista activa
+// manteniendo el scroll donde estaba el usuario.
+function moveBookPhoto(srcId, target) {
+  if (!target) return;
+  if (target.type === 'cell' && target.fileId === srcId) return;
+
+  const containerId = bookReorderMode ? 'book-reorder-area' : 'book-pages-container';
+  const containerEl = document.getElementById(containerId);
+  const scrollEl = containerEl ? bookScrollTarget(containerEl) : null;
+  const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
+
+  if (target.type === 'cell') {
+    const srcLoc = locateBookPhoto(srcId);
+    const targetLoc = locateBookPhoto(target.fileId);
+    if (srcLoc && targetLoc && srcLoc.pageIdx === targetLoc.pageIdx) {
+      const page = bookPages[srcLoc.pageIdx];
+      const srcSlot = page.images.indexOf(srcId);
+      const targetSlot = page.images.indexOf(target.fileId);
+      page.images.splice(srcSlot, 1);
+      page.images.splice(targetSlot, 0, srcId);
+    } else {
+      removeBookPhotoFromCurrentSpot(srcId);
+      const loc = locateBookPhoto(target.fileId);
+      if (loc) {
+        const page = bookPages[loc.pageIdx];
+        const slot = page.images.indexOf(target.fileId);
+        page.images.splice(slot, 1, srcId);
+        if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+        bookDrawer.push(target.fileId);
+      } else {
+        bookDrawer.push(srcId); // el target vivía en el drawer — nada que desplazar
+      }
+    }
+  } else if (target.type === 'page') {
+    removeBookPhotoFromCurrentSpot(srcId);
+    const page = bookPages[target.pageIdx];
+    if (page.images.length >= 4) { bookDrawer.push(srcId); }
+    else {
+      page.images.push(srcId);
+      if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+    }
+  } else if (target.type === 'drawer') {
+    removeBookPhotoFromCurrentSpot(srcId);
+    bookDrawer.push(srcId);
+  }
+
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo guardar el libro:', e));
   if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
-  const newContainer = document.getElementById(containerId);
-  if (newContainer) newContainer.scrollLeft = scrollLeft;
+  const newContainerEl = document.getElementById(containerId);
+  const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
+  if (newScrollEl) newScrollEl.scrollLeft = scrollLeft;
 }
 
 function updateBookCounter() {

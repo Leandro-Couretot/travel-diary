@@ -278,21 +278,37 @@ async function getExistingNamesForDate(albumFolderId, dateStr) {
   return new Set((day?.media || []).map(m => m.name));
 }
 
-// ─── FOTOLIBRO: orden manual ─────────────────────────────
+// ─── FOTOLIBRO: páginas explícitas + drawer ──────────────
 // book.json vive en la raíz de la carpeta del álbum (no en un día
-// puntual) y guarda solo el orden de las fotos por driveFileId — el
-// resto de los datos (fecha, caption) se resuelve contra los day.json
-// de siempre. Así el orden del fotolibro queda independiente de la
-// fecha de cada foto (ver CLAUDE.md → "Orden manual del fotolibro").
-async function loadBookOrder(albumFolderId) {
+// puntual). v2 guarda páginas explícitas — cada una con su lista de
+// fotos (por driveFileId) y un layout opcional forzado — más un
+// "drawer" de fotos sin ubicar todavía (no entran al libro final,
+// pero tampoco se pierden: el usuario decide después qué hacer con
+// ellas). El resto de los datos (fecha, caption) se resuelve contra
+// los day.json de siempre — así el fotolibro queda independiente de
+// la fecha de cada foto (ver CLAUDE.md → "Fotolibro: páginas
+// explícitas + drawer").
+//
+// Migra sola desde el v1 (array plano `order`, de versiones
+// anteriores): se agrupa de a 4 en el mismo orden que ya se veía,
+// drawer vacío — no se pierde ni se reordena nada existente.
+async function loadBookLayout(albumFolderId) {
   const fileId = await findFileInFolder('book.json', albumFolderId);
   if (!fileId) return null;
   const data = await readJsonFile(fileId);
-  return Array.isArray(data?.order) ? data.order : null;
+  if (Array.isArray(data?.pages)) {
+    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [] };
+  }
+  if (Array.isArray(data?.order)) {
+    const pages = [];
+    for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
+    return { pages, drawer: [], _migrated: true };
+  }
+  return null;
 }
 
-async function saveBookOrder(albumFolderId, order) {
-  await writeJsonFile({ version: 1, order }, 'book.json', albumFolderId);
+async function saveBookLayout(albumFolderId, { pages, drawer }) {
+  await writeJsonFile({ version: 2, pages, drawer }, 'book.json', albumFolderId);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
