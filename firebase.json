@@ -15,6 +15,14 @@
       { "source": "/api/checkout/create", "function": "checkoutCreate" },
       { "source": "/api/subscription/status", "function": "subscriptionStatus" },
       { "source": "/api/webhooks/mercadopago", "function": "webhookMercadopago" }
+    ],
+    "headers": [
+      {
+        "source": "/sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache" }
+        ]
+      }
     ]
   },
   "functions": [
