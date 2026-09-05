@@ -561,7 +561,19 @@ function setAuthImg(imgEl, fileId, size = 'w800') {
   // de Drive (o su fallback) termine de llegar — se saca solo con onload, sea
   // cual sea la rama que termine resolviendo el src (ver v1.27 en CLAUDE.md).
   imgEl.classList.add('auth-img-loading');
-  imgEl.onload = () => imgEl.classList.remove('auth-img-loading');
+  let revealed = false;
+  const reveal = () => {
+    if (revealed) return;
+    revealed = true;
+    clearTimeout(stuckTimer);
+    imgEl.classList.remove('auth-img-loading');
+  };
+  imgEl.onload = reveal;
+  // Red de seguridad (v1.29): en una conexión inestable el pedido puede quedar
+  // colgado sin disparar load NI error nunca — sin esto la foto quedaba
+  // invisible para siempre en vez de mostrar aunque sea el ícono roto (ver
+  // CLAUDE.md). Si no resolvió en 8s, se muestra igual.
+  const stuckTimer = setTimeout(reveal, 8000);
   const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
   imgEl.src = thumbUrl;
   imgEl.onerror = async () => {
