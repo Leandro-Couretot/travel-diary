@@ -121,7 +121,9 @@ const SCOPE_VERSION   = 4; // incrementar si cambia el scope para forzar re-auth
 
 ## Suscripciones (Mercado Pago + Supabase + Firebase Functions)
 
-Freemium + suscripción mensual/anual. **Todavía no se decidió qué funciones puntuales quedan detrás del pago** (candidatas: fotolibro, video, compartir) — esta capa es solo la infraestructura para saber "¿esta cuenta pagó?"; el gateo feature por feature se agrega después, cuando se decida.
+Freemium + suscripción mensual/anual. **Todavía no se decidió qué funciones puntuales quedan detrás del pago** (candidatas: fotolibro, video, compartir, borrado de objetos con IA — ver "Pendientes conocidos") — esta capa es solo la infraestructura para saber "¿esta cuenta pagó?"; el gateo feature por feature se agrega después, cuando se decida.
+
+**Criterio de gateo, todavía en discusión (no 100% definido)**: la decisión original de esta migración fue gatear "por funciones", no por cantidad de álbumes/fotos (ver plan original). El usuario está evaluando en paralelo, charlando con Meta AI sobre competencia, sumar además un límite de **álbumes gratis** (ej. "gratis hasta el 4to álbum, de ahí para adelante hay que suscribirse") — no es contradictorio con lo anterior, podrían combinarse (algunas funciones premium + un tope de álbumes gratis), pero ninguno de los dos ejes está cerrado todavía. No implementar ningún límite de álbumes hasta que esto se defina explícitamente.
 
 Arquitectura:
 ```
