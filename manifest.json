@@ -1,7 +1,7 @@
 {
   "name": "旅 — Travel diary",
   "short_name": "旅 Travel diary",
-  "start_url": "/travel-diary/app.html",
+  "start_url": "/app.html",
   "display": "standalone",
   "background_color": "#f7f5f0",
   "theme_color": "#f7f5f0",

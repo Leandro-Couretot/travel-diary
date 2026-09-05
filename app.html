@@ -16,6 +16,7 @@
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="drive.js"></script>
 <script src="exif.js"></script>
+<script src="billing.js"></script>
 <style>
 
 /* ─── SPA ROUTER ─── */
@@ -241,12 +242,7 @@ audio { width: 100%; height: 32px; }
 .book-pages { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .book-pages::-webkit-scrollbar { display: none; }
 .book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: flex; flex-direction: column; background: white; position: relative; overflow: hidden; }
-.book-page-header { padding: 1rem 1.25rem 0.6rem; flex-shrink: 0; border-bottom: 1px solid #f0ece4; transition: opacity 0.3s; }
-.book-page-date { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 0.2rem; }
-.book-page-title { font-family: 'DM Serif Display', serif; font-size: 1.2rem; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink); }
 .book-photo-area { flex: 1; overflow: hidden; position: relative; }
-.book-page-footer { padding: 0.6rem 1.25rem 0.75rem; flex-shrink: 0; border-top: 1px solid #f0ece4; font-size: 0.78rem; color: var(--ink-muted); line-height: 1.5; max-height: 5rem; overflow: hidden; transition: opacity 0.3s, max-height 0.3s; }
-.book-page-footer.hidden { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-top-color: transparent; }
 .book-layout-1 { display: grid; grid-template-rows: 1fr; height: 100%; }
 .book-layout-2h { display: grid; grid-template-rows: 1fr 1fr; height: 100%; gap: 2px; }
 .book-layout-2v { display: grid; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
@@ -259,9 +255,24 @@ audio { width: 100%; height: 32px; }
 .book-layout-4b .bp:first-child { grid-row: 1 / -1; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
-.book-page-sep { flex-shrink: 0; width: 12px; height: 100%; background: #e8e4dc; scroll-snap-align: none; }
+.bp.dragging { opacity: 0.35; }
+.bp.drag-over { outline: 3px solid var(--accent); outline-offset: -3px; }
+.bp-chip { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.5rem 0.6rem 0.4rem; background: linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0)); color: white; line-height: 1.3; transition: opacity 0.3s; pointer-events: none; }
+.bp-chip-date { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85; }
+.bp-chip-caption { display: block; font-size: 0.72rem; margin-top: 0.1rem; }
+.bp-drag-handle { position: absolute; top: 0.4rem; right: 0.4rem; width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: grab; z-index: 5; }
 .book-page-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #c0bab0; font-size: 0.875rem; gap: 0.5rem; }
 .book-empty-icon { font-size: 2.5rem; opacity: 0.3; }
+.book-reorder-area { display: flex; flex-direction: column; height: 100%; }
+.book-reorder-grid { flex: 1; min-height: 0; display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
+.book-reorder-grid::-webkit-scrollbar { display: none; }
+.book-reorder-tile { flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+.book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.book-reorder-tile-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 2px; aspect-ratio: 1; }
+.book-drawer { flex: 0 0 auto; max-height: 34%; overflow-y: auto; border-top: 1px solid rgba(0,0,0,0.08); padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom)); background: rgba(255,255,255,0.55); }
+.book-drawer-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin-bottom: 0.5rem; }
+.book-drawer-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 64px; }
+.book-drawer-cell { width: 64px; height: 64px; flex: 0 0 auto; border-radius: 8px; }
 
 /* Lightbox */
 .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 400; flex-direction: column; align-items: center; justify-content: center; touch-action: none; }
@@ -319,6 +330,14 @@ audio { width: 100%; height: 32px; }
 .slideshow-progress-wrap { width: 100%; height: 2px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
 .slideshow-progress-bar { height: 100%; background: white; border-radius: 2px; width: 0%; transition: width linear; }
 .slideshow-day-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.4); text-align: center; margin-bottom: 0.4rem; }
+.slideshow-loader { display: none; position: absolute; inset: 0; background: #000; flex-direction: column; align-items: center; justify-content: center; gap: 1.1rem; }
+.slideshow-loader.open { display: flex; }
+.slideshow-loader-rings { position: relative; width: 60px; height: 60px; }
+.slideshow-loader-rings span { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0; animation: ss-ripple 2.4s cubic-bezier(0.25,0.6,0.4,1) infinite; }
+.slideshow-loader-rings span:nth-child(2) { animation-delay: 0.8s; }
+.slideshow-loader-rings span:nth-child(3) { animation-delay: 1.6s; }
+@keyframes ss-ripple { 0% { transform: scale(0.25); opacity: 0.9; } 70% { opacity: 0.15; } 100% { transform: scale(1.7); opacity: 0; } }
+.slideshow-loader-text { font-size: 0.75rem; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); }
 
 /* Help modal */
 .help-modal { max-width: 520px; max-height: 80vh; }
@@ -341,7 +360,7 @@ audio { width: 100%; height: 32px; }
 .bulk-drop-sub { font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.25rem; }
 .bulk-summary { margin-bottom: 1.25rem; }
 .bulk-summary-title { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 0.75rem; }
-.bulk-day-group { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--ink-faint); font-size: 0.875rem; }
+.bulk-day-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--ink-faint); font-size: 0.875rem; }
 .bulk-day-group:last-child { border-bottom: none; }
 .bulk-day-date { font-family: 'DM Serif Display', serif; font-size: 0.95rem; min-width: 100px; }
 .bulk-day-count { color: var(--ink-muted); font-size: 0.8rem; flex: 1; }
@@ -353,6 +372,10 @@ audio { width: 100%; height: 32px; }
 .bulk-album-select select:focus { border-color: var(--accent); }
 .bulk-progress { margin-top: 0.75rem; font-size: 0.82rem; color: var(--ink-muted); text-align: center; min-height: 1.4em; }
 .bulk-progress.error { color: var(--red); }
+.bulk-day-dupes { flex-basis: 100%; margin-top: 0.4rem; padding: 0.5rem 0.6rem; background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); }
+.bulk-dupe-warning { font-size: 0.75rem; color: var(--red); margin-bottom: 0.35rem; }
+.bulk-dupe-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--ink-muted); padding: 0.15rem 0; cursor: pointer; }
+.bulk-upload-hint { margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
 /* Page loading */
 .page-loading { display: flex; align-items: center; justify-content: center; min-height: 60vh; gap: 0.75rem; color: var(--ink-muted); font-size: 0.875rem; }
@@ -606,6 +629,10 @@ audio { width: 100%; height: 32px; }
 <div class="slideshow-overlay" id="slideshow-overlay">
   <img class="slideshow-media" id="slideshow-img" src="" alt="" style="display:none;">
   <video class="slideshow-video" id="slideshow-video" playsinline style="display:none;" muted></video>
+  <div class="slideshow-loader" id="slideshow-loader">
+    <div class="slideshow-loader-rings"><span></span><span></span><span></span></div>
+    <div class="slideshow-loader-text" id="slideshow-loader-text">Preparando tus recuerdos...</div>
+  </div>
   <div class="slideshow-ui">
     <div class="slideshow-top">
       <button class="slideshow-btn" id="slideshow-pause" title="Pausar">⏸</button>
@@ -665,6 +692,18 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-subscribe">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Suscribirme</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
+    <div class="modal-body">
+      <p style="margin-bottom:1.25rem;color:var(--ink-muted);font-size:0.9rem;">Elegí cómo pagar. Vas a terminar de cargar tu tarjeta en Mercado Pago.</p>
+      <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
+      <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual — $14.000/mes</button>
+      <button class="btn btn-primary" style="width:100%;line-height:1.4;" onclick="startCheckout('annual')">Anual — $11.200/mes<br><span style="font-size:0.8em;font-weight:400;opacity:0.85;">$134.400/año en un solo pago · 20% off</span></button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-bulk-upload">
   <div class="modal" style="max-width:480px;">
     <div class="modal-header"><div class="modal-title">Carga masiva</div><button class="modal-close" onclick="closeBulkUpload()">×</button></div>
@@ -677,6 +716,7 @@ audio { width: 100%; height: 32px; }
         <div class="bulk-album-select"><div class="form-label" style="margin-bottom:0.4rem;">Álbum de destino</div><select id="bulk-album-select"></select></div>
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-dated-list"></div><div id="bulk-undated-list"></div></div>
         <button class="btn btn-primary" style="width:100%;" id="bulk-confirm-btn" onclick="confirmBulkUpload()">Guardar todo en Drive</button>
+        <div class="bulk-upload-hint" id="bulk-upload-hint" style="display:none;">💡 No minimices la app ni bloquees el celular hasta que termine de subir.</div>
         <div class="bulk-progress" id="bulk-progress"></div>
       </div>
     </div>
@@ -694,6 +734,7 @@ audio { width: 100%; height: 32px; }
       <div id="bulk-diary-step-review" style="display:none;">
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-diary-dated-list"></div><div id="bulk-diary-undated-list"></div></div>
         <button class="btn btn-primary" style="width:100%;" id="bulk-diary-confirm-btn" onclick="confirmBulkDiary()">Guardar en este álbum</button>
+        <div class="bulk-upload-hint" id="bulk-diary-upload-hint" style="display:none;">💡 No minimices la app ni bloquees el celular hasta que termine de subir.</div>
         <div class="bulk-progress" id="bulk-diary-progress"></div>
       </div>
     </div>
@@ -721,7 +762,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.14 ·
+      Versión 1.26 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -746,6 +787,7 @@ function navigateTo(view, params = {}) {
     dirty = false;
     document.getElementById('header-subtitle').textContent = 'mis viajes';
     renderHomeHeader();
+    updateDriveBtn(); // renderHomeHeader() resetea el botón al texto default — corregirlo al estado real
     renderAlbums();
   } else if (view === 'diary') {
     albumId        = params.albumId || null;
@@ -759,11 +801,15 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.14</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.26</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
+    <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
 }
+
+function openSubscribeModal() { document.getElementById('modal-subscribe').classList.add('open'); }
+function closeSubscribeModal() { document.getElementById('modal-subscribe').classList.remove('open'); }
 
 function renderDiaryHeader() {
   document.getElementById('header-actions').innerHTML = `
@@ -820,6 +866,52 @@ function formatDateLong(str) {
 // ═══════════════════════════════════════════════════════════
 // ─── DRIVE AUTH ─────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
+// El access_token de Google vence a la hora, siempre, y este flujo
+// (initTokenClient) nunca da refresh_token — la única forma de evitar
+// que el usuario tenga que reconectarse a mano es pedir uno nuevo EN
+// SILENCIO (prompt:'') un rato antes de que venza. No está garantizado
+// que funcione siempre — Google recomienda llamar requestAccessToken()
+// desde un evento iniciado por el usuario, y llamarlo desde un timer o
+// al volver a la pestaña no lo es del todo (Safari/iOS es más estricto
+// con esto que Chrome). Si falla, no rompe nada: response.error hace
+// que no se haga nada y el usuario ve el flujo de reconexión normal,
+// igual que hoy.
+const SILENT_REFRESH_BUFFER_MS = 5 * 60 * 1000; // refrescar 5 min antes de vencer
+let _silentRefreshTimer = null;
+
+function newAuthState() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
+function saveTokenExpiry(expiresInSeconds) {
+  const secs = parseInt(expiresInSeconds, 10) || 3600;
+  localStorage.setItem('drive_token_expires_at', String(Date.now() + secs * 1000));
+  scheduleSilentRefresh();
+}
+
+function scheduleSilentRefresh() {
+  if (_silentRefreshTimer) clearTimeout(_silentRefreshTimer);
+  const expiresAt = parseInt(localStorage.getItem('drive_token_expires_at') || '0', 10);
+  const delay = Math.max(0, expiresAt - SILENT_REFRESH_BUFFER_MS - Date.now());
+  _silentRefreshTimer = setTimeout(trySilentRefresh, delay);
+}
+
+function trySilentRefresh() {
+  if (!window._tokenClient || !isDriveConnected()) return;
+  pendingAuthState = newAuthState();
+  window._tokenClient.requestAccessToken({ state: pendingAuthState, prompt: '' });
+}
+
+// Los timers de setTimeout se pausan/retrasan cuando la pestaña está
+// oculta (sobre todo en mobile) — si el usuario vuelve a la app (PWA
+// reabierta, pestaña que estuvo en segundo plano) y el token ya está
+// por vencer, probar refrescarlo ya en vez de esperar al timer.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !isDriveConnected()) return;
+  const expiresAt = parseInt(localStorage.getItem('drive_token_expires_at') || '0', 10);
+  if (Date.now() > expiresAt - SILENT_REFRESH_BUFFER_MS) trySilentRefresh();
+});
+
 async function initGoogleAuth() {
   const sp     = new URLSearchParams(location.search);
   const joinId = sp.get('join');
@@ -840,6 +932,8 @@ async function initGoogleAuth() {
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
+        saveTokenExpiry(response.expires_in);
+        establishSession(driveToken); // en paralelo, no bloquea el flujo de Drive
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
         if (_onConnected) { await _onConnected(); return; }
         const sp2 = new URLSearchParams(location.search);
@@ -855,6 +949,8 @@ async function initGoogleAuth() {
   }
 
   initDrive(async () => {
+    scheduleSilentRefresh(); // por si el token guardado ya está por vencer
+    if (sessionToken) refreshSubscriptionStatus(); else establishSession(driveToken); // en paralelo
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
     updateDriveBtn(); await renderAlbums(); await checkMigratable();
   }, () => {
@@ -864,9 +960,14 @@ async function initGoogleAuth() {
 
 function handleDriveBtn() {
   if (isDriveConnected()) {
-    if (confirm('¿Desconectar Google Drive?')) { disconnectDrive(); updateDriveBtn(); renderDisconnected(); }
+    if (confirm('¿Desconectar Google Drive?')) {
+      disconnectDrive();
+      if (_silentRefreshTimer) { clearTimeout(_silentRefreshTimer); _silentRefreshTimer = null; }
+      localStorage.removeItem('drive_token_expires_at');
+      updateDriveBtn(); renderDisconnected();
+    }
   } else if (window._tokenClient) {
-    pendingAuthState = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    pendingAuthState = newAuthState();
     window._tokenClient.requestAccessToken({ state: pendingAuthState });
   } else {
     alert('Google Drive no está disponible.');
@@ -1115,28 +1216,77 @@ function openBulkUpload() {
 }
 function closeBulkUpload() { document.getElementById('modal-bulk-upload').classList.remove('open'); }
 
+// ─── Carga masiva: aviso de posibles duplicados ────────────
+// Compara por nombre de archivo contra lo que ya está guardado en el
+// day.json de cada fecha (no por contenido — ver conversación en
+// CLAUDE.md). Marca cada File con _dup/_excluded; excluido por default
+// cuando hay coincidencia, el usuario puede re-tildarlo si de verdad
+// quiere subirlo igual.
+async function markBulkDuplicates(grouped, albumFolderId) {
+  const dates = Object.keys(grouped.dated);
+  await Promise.all(dates.map(async date => {
+    let existingNames;
+    try { existingNames = await getExistingNamesForDate(albumFolderId, date); }
+    catch { existingNames = new Set(); }
+    grouped.dated[date].forEach(file => {
+      file._dup = existingNames.has(file.name);
+      file._excluded = file._dup;
+    });
+  }));
+}
+
+// Compartido por la revisión de Home y la de dentro de un álbum.
+function renderBulkDatedList(datedList, grouped) {
+  datedList.innerHTML = '';
+  Object.keys(grouped.dated).sort().forEach(date => {
+    const files = grouped.dated[date];
+    const imgs = files.filter(f => f.type.startsWith('image/')).length;
+    const vids = files.filter(f => f.type.startsWith('video/')).length;
+    const parts = []; if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`); if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
+    const row = document.createElement('div'); row.className = 'bulk-day-group';
+    row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
+    const dupes = files.filter(f => f._dup);
+    if (dupes.length) {
+      const warnText = dupes.length === 1
+        ? '⚠ Este archivo ya podría estar subido (destildado por default):'
+        : '⚠ Estos archivos ya podrían estar subidos (destildados por default):';
+      const dupBox = document.createElement('div'); dupBox.className = 'bulk-day-dupes';
+      dupBox.innerHTML = `<div class="bulk-dupe-warning">${warnText}</div>` +
+        dupes.map(f => `<label class="bulk-dupe-item"><input type="checkbox" data-date="${date}" data-filename="${escHtml(f.name)}" ${f._excluded ? '' : 'checked'}> ${escHtml(f.name)}</label>`).join('');
+      row.appendChild(dupBox);
+    }
+    datedList.appendChild(row);
+  });
+  datedList.querySelectorAll('.bulk-dupe-item input').forEach(cb => cb.addEventListener('change', e => {
+    const { date, filename } = e.target.dataset;
+    const file = grouped.dated[date]?.find(f => f.name === filename);
+    if (file) file._excluded = !e.target.checked;
+  }));
+}
+
 async function processBulkFiles(fileList) {
   const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
   if (!files.length) return;
   document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
   bulkGrouped = await groupFilesByDate(files);
   renderBulkReview();
+  refreshBulkDuplicates(); // en paralelo — la revisión ya se ve, esto solo agrega los avisos cuando terminen de llegar
+}
+
+// Vuelve a chequear duplicados cuando cambia el álbum de destino elegido
+// en el <select> (cada álbum tiene contenido distinto en Drive).
+async function refreshBulkDuplicates() {
+  const albumId = document.getElementById('bulk-album-select').value;
+  if (!albumId || !bulkGrouped) return;
+  const albumFolderId = await getAlbumFolderId(albumId);
+  await markBulkDuplicates(bulkGrouped, albumFolderId);
+  renderBulkDatedList(document.getElementById('bulk-dated-list'), bulkGrouped);
 }
 
 function renderBulkReview() {
   const sel = document.getElementById('bulk-album-select');
   sel.innerHTML = albums.map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('');
-  const datedList = document.getElementById('bulk-dated-list');
-  datedList.innerHTML = '';
-  Object.keys(bulkGrouped.dated).sort().forEach(date => {
-    const files = bulkGrouped.dated[date];
-    const imgs = files.filter(f => f.type.startsWith('image/')).length;
-    const vids = files.filter(f => f.type.startsWith('video/')).length;
-    const parts = []; if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`); if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
-    const row = document.createElement('div'); row.className = 'bulk-day-group';
-    row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
-    datedList.appendChild(row);
-  });
+  renderBulkDatedList(document.getElementById('bulk-dated-list'), bulkGrouped);
   const undatedList = document.getElementById('bulk-undated-list');
   undatedList.innerHTML = '';
   if (bulkGrouped.undated.length) {
@@ -1165,6 +1315,10 @@ const BULK_UPLOAD_CONCURRENCY = 5;
 let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
 
 async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess) {
+  // Aviso mientras dura la subida — minimizar la app o bloquear el
+  // celular puede cortarla a mitad de camino (ver ERROR_HANDLING_PLAN.md).
+  const hintEl = document.getElementById(progressEl.id.replace('-progress', '-upload-hint'));
+  if (hintEl) hintEl.style.display = '';
   const dates = Object.keys(groupsByDate).sort();
   const dayFolderIds = {};
   for (const date of dates) dayFolderIds[date] = await getOrCreateFolder(date, albumFolderId);
@@ -1186,6 +1340,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
   });
 
   const failedTasks = tasks.filter((t, i) => results[i].status === 'rejected');
+  const quotaExceeded = results.some(r => r.status === 'rejected' && r.reason instanceof DriveQuotaExceededError);
 
   for (const date of Object.keys(newMediaByDate)) {
     const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
@@ -1196,7 +1351,10 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
 
   if (failedTasks.length) {
     const okCount = total - failedTasks.length;
-    progressEl.innerHTML = `⚠ ${okCount}/${total} subidos. ${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir. <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
+    const reasonMsg = quotaExceeded
+      ? 'Tu Google Drive se quedó sin espacio — liberá lugar o ampliá tu almacenamiento en Google.'
+      : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
+    progressEl.innerHTML = `⚠ ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
     bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess };
   } else {
@@ -1205,6 +1363,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
     bulkRetryCtx = null;
     onSuccess();
   }
+  if (hintEl) hintEl.style.display = 'none';
 }
 
 function retryFailedBulkUpload() {
@@ -1227,8 +1386,13 @@ async function confirmBulkUpload() {
   btn.disabled = true;
   try {
     const albumFolderId = await getAlbumFolderId(albumId);
-    const allGroups = { ...bulkGrouped.dated };
+    const allGroups = {};
+    Object.keys(bulkGrouped.dated).forEach(date => {
+      const kept = bulkGrouped.dated[date].filter(f => !f._excluded); // sin los duplicados destildados
+      if (kept.length) allGroups[date] = kept;
+    });
     bulkGrouped.undated.forEach(file => { const date = bulkUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir (quedaron todos destildados).'; btn.disabled = false; return; }
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
     });
@@ -1276,7 +1440,10 @@ let calDayData    = {};
 let calYear       = new Date().getFullYear();
 let calMonth      = new Date().getMonth();
 let bookShowText  = true;
-let bookPages     = [];
+let bookPages     = [];          // [{ images: [driveFileId,...], layout: string|null }]
+let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
+let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
+let bookReorderMode = false;     // true = grilla de páginas en miniatura + drawer, para reordenar
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
@@ -1284,7 +1451,7 @@ function isToday(s)  { return s === todayStr(); }
 
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
-  allDates = []; calDayData = {};
+  allDates = []; calDayData = {}; bookPages = []; bookDrawer = []; bookPhotoByFileId = new Map();
   try {
     if (!isSharedAlbum) {
       albumFolderId = await getAlbumFolderId(albumId);
@@ -1387,7 +1554,12 @@ async function loadDay(dateStr) {
   const notesEl = document.getElementById('day-notes');
   if (titleEl) { titleEl.value = currentDay.title || ''; autoResize(titleEl); }
   if (notesEl) { notesEl.value = currentDay.notes || ''; autoResize(notesEl); }
-  renderMedia(); setStatus('', 'Sin cambios');
+  renderMedia();
+  if (currentDay._reconstructed) {
+    setStatus('unsaved', 'Día reconstruido desde archivos en Drive — no se encontró título ni notas guardados');
+  } else {
+    setStatus('', 'Sin cambios');
+  }
 }
 
 async function saveCurrentDay() {
@@ -1402,7 +1574,19 @@ async function saveCurrentDay() {
     dirty = false;
     setStatus('saved', 'Guardado en Drive ✓');
     document.querySelector('.save-bar').style.display = 'none';
-  } catch(e) { setStatus('error', 'Error: ' + e.message); }
+  } catch(e) {
+    if (e.driveSaveFailedCount) {
+      // Guardado parcial: lo que sí subió ya quedó en Drive (saveDayToDrive
+      // mutó currentDay.media in-place); currentDayOriginalIds se actualiza
+      // igual para que el próximo guardado no intente volver a mover a la
+      // papelera lo que ya está bien. El mensaje ya viene completo, sin
+      // prefijo "Error:" — es un guardado parcial, no una falla total.
+      currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+      setStatus('error', e.message);
+    } else {
+      setStatus('error', 'Error: ' + e.message);
+    }
+  }
 }
 
 // ─── Media render ──────────────────────────────────────────
@@ -1460,7 +1644,10 @@ function renderMedia() {
           item.data = dataUrl;
           const el = card.querySelector(`#vt-${idx}`);
           if (el) { const v = document.createElement('video'); v.className = 'video-thumb'; v.controls = true; v.playsinline = true; v.preload = 'metadata'; v.src = dataUrl; el.replaceWith(v); }
-        }).catch(() => {});
+        }).catch(() => {
+          const el = card.querySelector(`#vt-${idx}`);
+          if (el && el.lastElementChild) el.lastElementChild.textContent = 'Video no disponible';
+        });
       }
 
     } else {
@@ -1482,7 +1669,10 @@ function renderMedia() {
           item.data = dataUrl;
           const el = card.querySelector(`#al-${idx}`);
           if (el) { const a = document.createElement('audio'); a.controls = true; a.src = dataUrl; el.replaceWith(a); }
-        }).catch(() => {});
+        }).catch(() => {
+          const el = card.querySelector(`#al-${idx}`);
+          if (el) el.textContent = 'Audio no disponible';
+        });
       }
     }
     grid.appendChild(card);
@@ -1667,44 +1857,173 @@ async function renderBook() {
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto 0.5rem;"></div>Preparando libro...</div>';
   if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
   if (!allDates.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📖</div>Todavía no hay días guardados</div>'; return; }
-  const days = await Promise.all(allDates.map(async date => {
-    const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
-    const images = (day.media || []).filter(m => m.type === 'image' && m.driveFileId);
-    return { date, title: day.title || '', notes: day.notes || '', images };
+
+  const perDay = await Promise.all(allDates.map(async date => {
+    const day = await loadDayFromDrive(albumFolderId, date) || { media: [] };
+    return (day.media || [])
+      .filter(m => m.type === 'image' && m.driveFileId)
+      .map(m => ({ driveFileId: m.driveFileId, date, caption: m.caption || '' }));
   }));
-  bookPages = [];
-  for (const day of days) {
-    if (!day.images.length) { bookPages.push({ ...day, pageImages: [], isFirst: true }); continue; }
-    const chunks = chunkArray(day.images, 4);
-    chunks.forEach((chunk, i) => bookPages.push({ ...day, pageImages: chunk, isFirst: i === 0, pageNum: i, totalPages: chunks.length }));
+  const allPhotos = perDay.flat();
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📷</div>Todavía no hay fotos en este álbum</div>'; return; }
+  bookPhotoByFileId = new Map(allPhotos.map(p => [p.driveFileId, p]));
+
+  // El libro es independiente de la fecha: book.json guarda páginas
+  // explícitas (cada una con sus fotos y un layout opcional forzado)
+  // más un "drawer" de fotos sin ubicar todavía. Se reconcilia acá
+  // contra las fotos reales del álbum en cada apertura — fotos nuevas
+  // van al drawer (nunca se auto-asignan a una página), fotos borradas
+  // se sacan de donde estén. Si todavía no existe book.json, se arma
+  // el orden cronológico por defecto sin persistirlo (recién se guarda
+  // cuando el usuario toca algo por primera vez) — ver CLAUDE.md →
+  // "Fotolibro: páginas explícitas + drawer".
+  const currentIds = allPhotos.map(p => p.driveFileId);
+  let saved = null;
+  try { saved = await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
+
+  if (!saved) {
+    bookPages = chunkArray(currentIds, 4).map(images => ({ images, layout: null }));
+    bookDrawer = [];
+  } else {
+    const currentSet = new Set(currentIds);
+    let changed = !!saved._migrated;
+    const cleanedPages = [];
+    for (const page of saved.pages) {
+      const images = page.images.filter(id => currentSet.has(id));
+      if (images.length !== page.images.length) changed = true;
+      if (!images.length) { changed = true; continue; } // página que quedó sin fotos desaparece
+      let layout = page.layout;
+      if (layout && !isValidBookLayout(layout, images.length)) { layout = null; changed = true; }
+      cleanedPages.push({ images, layout });
+    }
+    const cleanedDrawer = saved.drawer.filter(id => currentSet.has(id));
+    if (cleanedDrawer.length !== saved.drawer.length) changed = true;
+    const placedSet = new Set([...cleanedPages.flatMap(p => p.images), ...cleanedDrawer]);
+    const added = currentIds.filter(id => !placedSet.has(id)); // fotos nuevas -> al drawer, nunca a una página sola
+    if (added.length) changed = true;
+
+    bookPages = cleanedPages;
+    bookDrawer = [...cleanedDrawer, ...added];
+    if (albumCanEdit && changed) {
+      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
+    }
   }
-  wrap.innerHTML = `<div class="book-controls"><button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-page-counter" id="book-page-counter"></div>`;
-  const container = document.getElementById('book-pages-container');
-  bookPages.forEach((page, idx) => {
-    if (idx > 0 && page.isFirst) { const sep = document.createElement('div'); sep.className = 'book-page-sep'; container.appendChild(sep); }
-    container.appendChild(buildBookPage(page, idx));
+
+  bookReorderMode = false;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  renderBookPages();
+  document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
+  updateBookCounter();
+}
+
+// Layouts CSS válidos por cantidad de fotos — usado tanto para elegir
+// el automático (pickLayout) como para validar uno forzado guardado en
+// una página (si la cantidad de fotos cambió y ya no corresponde, se
+// vuelve a automático en vez de quedar inconsistente).
+const BOOK_LAYOUTS_BY_COUNT = {
+  1: ['book-layout-1'],
+  2: ['book-layout-2h', 'book-layout-2v'],
+  3: ['book-layout-3a', 'book-layout-3b'],
+  4: ['book-layout-4a', 'book-layout-4b'],
+};
+function isValidBookLayout(layout, count) {
+  return (BOOK_LAYOUTS_BY_COUNT[count] || []).includes(layout);
+}
+
+// Alterna entre la vista inmersiva (una página a pantalla completa) y
+// una grilla de páginas en miniatura + el drawer de fotos sin ubicar,
+// pensada para reordenar y mover fotos entre páginas que no entrarían
+// juntas en la vista inmersiva (ver CLAUDE.md → "Modo reordenar del
+// fotolibro" y "Fotolibro: páginas explícitas + drawer").
+function toggleBookReorderMode() {
+  bookReorderMode = !bookReorderMode;
+  const btn = document.getElementById('book-reorder-btn');
+  btn.classList.toggle('active', bookReorderMode);
+  btn.textContent = bookReorderMode ? 'Listo' : 'Reordenar';
+  document.getElementById('book-pages-container').style.display = bookReorderMode ? 'none' : '';
+  document.getElementById('book-reorder-area').style.display = bookReorderMode ? 'flex' : 'none';
+  document.getElementById('book-page-counter').style.display = bookReorderMode ? 'none' : '';
+  if (bookReorderMode) renderBookReorderGrid();
+  else { renderBookPages(); updateBookCounter(); }
+}
+
+// Grilla de páginas en miniatura + drawer (varias páginas visibles a
+// la vez, a diferencia de la vista inmersiva) — mismo bookPages/
+// bookDrawer, mismo mecanismo de arrastre (initBookDragReorder/
+// initBookTouchReorder), solo cambia cómo se dibuja cada página.
+function renderBookReorderGrid() {
+  const container = document.getElementById('book-reorder-container');
+  const drawerEl = document.getElementById('book-drawer-container');
+  const area = document.getElementById('book-reorder-area');
+  if (!container || !drawerEl || !area) return;
+  container.innerHTML = '';
+  bookPages.forEach((page, idx) => container.appendChild(buildBookReorderTile(page, idx)));
+  drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
+  const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
+  bookDrawer.forEach(id => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo)); });
+  drawerEl.appendChild(drawerGrid);
+  initBookDragReorder(area);
+  initBookTouchReorder(area);
+}
+
+function buildBookReorderTile(page, idx) {
+  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
+  const label = document.createElement('div'); label.className = 'book-reorder-tile-label'; label.textContent = `Página ${idx + 1}`;
+  tile.appendChild(label);
+  const grid = document.createElement('div'); grid.className = 'book-reorder-tile-grid';
+  page.images.forEach(id => {
+    const photo = bookPhotoByFileId.get(id); if (!photo) return;
+    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
+    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
+    cell.appendChild(imgEl);
+    const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
+    cell.appendChild(handle);
+    grid.appendChild(cell);
   });
-  const pagesEl = document.getElementById('book-pages-container');
-  pagesEl.addEventListener('scroll', updateBookCounter, { passive: true });
+  tile.appendChild(grid);
+  return tile;
+}
+
+function buildBookDrawerCell(photo) {
+  const cell = document.createElement('div'); cell.className = 'bp book-drawer-cell'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
+  const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
+  cell.appendChild(imgEl);
+  const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
+  cell.appendChild(handle);
+  return cell;
+}
+
+// Re-arma las páginas a partir de bookPages (sin volver a pedirle nada
+// a Drive) — se usa en el render inicial y después de cada reorder.
+function renderBookPages() {
+  const container = document.getElementById('book-pages-container');
+  if (!container) return;
+  container.innerHTML = '';
+  bookPages.forEach((page, idx) => container.appendChild(buildBookPage(page, idx)));
+  if (albumCanEdit) { initBookDragReorder(container); initBookTouchReorder(container); }
+  applyBookTextVisibility();
   updateBookCounter();
 }
 
 function buildBookPage(page, idx) {
-  const el = document.createElement('div'); el.className = 'book-page'; el.dataset.idx = idx;
-  const imgs = page.pageImages;
-  if (page.isFirst) {
-    const multi = page.totalPages > 1 ? ` (${page.pageNum + 1}/${page.totalPages})` : '';
-    el.innerHTML += `<div class="book-page-header book-text"><div class="book-page-date">${formatDate(page.date)}${multi}</div><div class="book-page-title">${page.title ? escHtml(page.title) : '—'}</div></div>`;
-  }
+  const el = document.createElement('div'); el.className = 'book-page'; el.dataset.pageIdx = idx;
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
-  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos este día</div>`; }
-  else {
-    const grid = document.createElement('div'); grid.className = pickLayout(imgs, `${page.date}-${page.pageNum || 0}`); grid.style.height = '100%';
-    imgs.forEach(img => { const cell = document.createElement('div'); cell.className = 'bp'; const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, img.driveFileId, 'w800'); cell.appendChild(imgEl); grid.appendChild(cell); });
-    photoArea.appendChild(grid);
-  }
+  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; el.appendChild(photoArea); return el; }
+  const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+  const grid = document.createElement('div'); grid.className = layoutClass; grid.style.height = '100%';
+  imgs.forEach(photo => {
+    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
+    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
+    cell.appendChild(imgEl);
+    const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
+    chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
+    cell.appendChild(chip);
+    if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
+    grid.appendChild(cell);
+  });
+  photoArea.appendChild(grid);
   el.appendChild(photoArea);
-  if (page.notes && page.isFirst) el.innerHTML += `<div class="book-page-footer book-text">${escHtml(page.notes.slice(0, 200))}${page.notes.length > 200 ? '…' : ''}</div>`;
   return el;
 }
 
@@ -1728,7 +2047,213 @@ function seededPick(str) {
 function toggleBookText() {
   bookShowText = !bookShowText;
   document.getElementById('book-text-btn').classList.toggle('active', bookShowText);
-  document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; el.style.maxHeight = bookShowText ? '' : '0'; el.style.padding = bookShowText ? '' : '0'; el.style.borderColor = bookShowText ? '' : 'transparent'; });
+  applyBookTextVisibility();
+}
+
+// Se llama también después de cada reorder (renderBookPages) para que
+// el estado del toggle sobreviva a un re-render de las páginas.
+function applyBookTextVisibility() {
+  document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; });
+}
+
+// ─── Fotolibro: reordenar arrastrando (independiente de la fecha) ──
+// Mismo mecanismo que initDragReorder/initTouchReorder de la pestaña
+// Día (dragstart/dragover/drop para desktop, touch manual con clon
+// para mobile), pero operando sobre bookPages/bookDrawer en vez de un
+// único día — así se puede arrastrar una foto de una página a otra (o
+// al drawer) sin importar de qué fecha sea cada una. Sirve tanto para
+// la vista inmersiva (una página completa) como para la grilla en
+// miniatura + drawer del modo reordenar — ambas comparten estas mismas
+// funciones. Usa delegación de eventos (un solo listener en la raíz)
+// en vez de uno por celda, para poder resolver también drops sobre el
+// fondo de una página o del drawer, no solo sobre otra foto puntual.
+let bookDragSrcId = null;
+
+// Encuentra el elemento scrolleable real dentro de (o igual a) `root`
+// — necesario porque en modo reordenar `root` es el área completa
+// (grilla + drawer), pero solo la grilla de páginas hace scroll.
+function bookScrollTarget(root) {
+  if (root.classList && (root.classList.contains('book-pages') || root.classList.contains('book-reorder-grid'))) return root;
+  return root.querySelector('.book-pages, .book-reorder-grid') || root;
+}
+
+// Interpreta sobre qué se soltó una foto: otra foto puntual (`cell`),
+// el fondo de una página (`page`, por su índice) o el drawer (`drawer`).
+function resolveBookDropTarget(el) {
+  if (!el) return null;
+  const cell = el.closest('.bp');
+  if (cell) return { type: 'cell', fileId: cell.dataset.fileId };
+  if (el.closest('.book-drawer')) return { type: 'drawer' };
+  const pageEl = el.closest('.book-reorder-tile, .book-page');
+  if (pageEl && pageEl.dataset.pageIdx !== undefined) return { type: 'page', pageIdx: parseInt(pageEl.dataset.pageIdx, 10) };
+  return null;
+}
+
+function initBookDragReorder(root) {
+  root.querySelectorAll('.bp').forEach(cell => {
+    cell.addEventListener('dragstart', e => { bookDragSrcId = cell.dataset.fileId; cell.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    cell.addEventListener('dragend', () => { cell.classList.remove('dragging'); root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over')); clearBookEdgeScroll(); });
+  });
+  const scrollTarget = bookScrollTarget(root);
+  root.addEventListener('dragover', e => {
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
+    const target = resolveBookDropTarget(e.target);
+    if (target && target.type === 'cell' && target.fileId !== bookDragSrcId) {
+      const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
+      if (cellEl) cellEl.classList.add('drag-over');
+    }
+    checkBookEdgeScroll(scrollTarget, e.clientX);
+  });
+  root.addEventListener('drop', e => {
+    e.preventDefault();
+    const target = resolveBookDropTarget(e.target);
+    if (bookDragSrcId && target) moveBookPhoto(bookDragSrcId, target);
+    bookDragSrcId = null;
+  });
+}
+
+function initBookTouchReorder(root) {
+  let touchSrcId = null, touchClone = null, touchOffX = 0, touchOffY = 0;
+  const scrollTarget = bookScrollTarget(root);
+  root.querySelectorAll('.bp-drag-handle').forEach(handle => {
+    handle.addEventListener('touchstart', e => {
+      const cell = handle.closest('.bp'); touchSrcId = cell.dataset.fileId;
+      const rect = cell.getBoundingClientRect(); touchOffX = e.touches[0].clientX - rect.left; touchOffY = e.touches[0].clientY - rect.top;
+      touchClone = cell.cloneNode(true);
+      touchClone.style.cssText = `position:fixed;width:${rect.width}px;height:${rect.height}px;opacity:0.85;pointer-events:none;z-index:999;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.35);transition:none;`;
+      touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px'; touchClone.style.top = (e.touches[0].clientY - touchOffY) + 'px';
+      document.body.appendChild(touchClone); cell.style.opacity = '0.3'; e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchmove', e => {
+      if (!touchClone) return;
+      touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px'; touchClone.style.top = (e.touches[0].clientY - touchOffY) + 'px';
+      touchClone.style.display = 'none'; const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY); touchClone.style.display = '';
+      root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
+      const target = resolveBookDropTarget(el);
+      if (target && target.type === 'cell' && target.fileId !== touchSrcId) {
+        const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
+        if (cellEl) cellEl.classList.add('drag-over');
+      }
+      checkBookEdgeScroll(scrollTarget, e.touches[0].clientX);
+      e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchend', e => {
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      root.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
+      clearBookEdgeScroll();
+      const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      const target = resolveBookDropTarget(el);
+      if (touchSrcId && target) moveBookPhoto(touchSrcId, target);
+      touchSrcId = null;
+    });
+  });
+}
+
+// Avanzar de página sola al sostener el arrastre cerca de un borde,
+// como en el springboard de iOS al mover un ícono entre pantallas.
+// Se arma una sola vez el avance por cada acercamiento al borde (no
+// sigue empujando solo mientras el dedo/mouse esté quieto ahí — en
+// touch no llegan más eventos si no hay movimiento real, así que hay
+// que volver a acercarse/alejarse del borde para seguir avanzando).
+const BOOK_EDGE_ZONE = 60;     // px desde el borde donde "cuenta" como cerca
+const BOOK_EDGE_HOLD_MS = 550; // cuánto hay que sostenerse ahí antes de avanzar
+let bookEdgeTimer = null, bookEdgeDir = null;
+
+function checkBookEdgeScroll(container, clientX) {
+  const rect = container.getBoundingClientRect();
+  const dir = (clientX - rect.left < BOOK_EDGE_ZONE) ? -1 : (rect.right - clientX < BOOK_EDGE_ZONE) ? 1 : 0;
+  if (dir === 0) { clearBookEdgeScroll(); return; }
+  if (bookEdgeTimer && bookEdgeDir === dir) return; // ya está programado para esta dirección
+  clearBookEdgeScroll();
+  bookEdgeDir = dir;
+  bookEdgeTimer = setTimeout(() => {
+    const item = container.querySelector('.book-page, .book-reorder-tile');
+    const step = item ? item.getBoundingClientRect().width + 12 : container.clientWidth;
+    container.scrollBy({ left: dir * step, behavior: 'smooth' });
+    bookEdgeTimer = null; bookEdgeDir = null;
+  }, BOOK_EDGE_HOLD_MS);
+}
+function clearBookEdgeScroll() {
+  if (bookEdgeTimer) clearTimeout(bookEdgeTimer);
+  bookEdgeTimer = null; bookEdgeDir = null;
+}
+
+// Saca una foto de donde esté (una página o el drawer). Si una página
+// queda sin fotos, desaparece. Si el layout forzado de la página ya no
+// corresponde a la nueva cantidad de fotos, vuelve a automático.
+function removeBookPhotoFromCurrentSpot(fileId) {
+  const drawerIdx = bookDrawer.indexOf(fileId);
+  if (drawerIdx !== -1) { bookDrawer.splice(drawerIdx, 1); return; }
+  for (let i = bookPages.length - 1; i >= 0; i--) {
+    const page = bookPages[i];
+    const slot = page.images.indexOf(fileId);
+    if (slot !== -1) {
+      page.images.splice(slot, 1);
+      if (!page.images.length) bookPages.splice(i, 1);
+      else if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+      return;
+    }
+  }
+}
+
+function locateBookPhoto(fileId) {
+  for (let i = 0; i < bookPages.length; i++) if (bookPages[i].images.includes(fileId)) return { pageIdx: i };
+  return null;
+}
+
+// Mueve una foto según dónde se soltó (`target`, de resolveBookDropTarget):
+// - Sobre otra foto de la MISMA página: solo cambia el orden entre las
+//   dos, nadie se desplaza (igual que reordenar dentro de un día).
+// - Sobre otra foto de una página DISTINTA (o del drawer): la foto
+//   pisada se manda al drawer, la arrastrada toma su lugar exacto.
+// - Sobre el fondo de una página con lugar (menos de 4 fotos): se
+//   agrega ahí, sin desplazar nada.
+// - Sobre el drawer: se saca del libro, sin reemplazo.
+// Guarda book.json en segundo plano y vuelve a armar la vista activa
+// manteniendo el scroll donde estaba el usuario.
+function moveBookPhoto(srcId, target) {
+  if (!target) return;
+  if (target.type === 'cell' && target.fileId === srcId) return;
+
+  const containerId = bookReorderMode ? 'book-reorder-area' : 'book-pages-container';
+  const containerEl = document.getElementById(containerId);
+  const scrollEl = containerEl ? bookScrollTarget(containerEl) : null;
+  const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
+
+  if (target.type === 'cell') {
+    // Misma regla siempre, sin importar si la foto pisada estaba en la
+    // misma página, en otra, o si la arrastrada venía del drawer: la
+    // pisada se va al drawer, la arrastrada toma su lugar exacto.
+    removeBookPhotoFromCurrentSpot(srcId);
+    const loc = locateBookPhoto(target.fileId);
+    if (loc) {
+      const page = bookPages[loc.pageIdx];
+      const slot = page.images.indexOf(target.fileId);
+      page.images.splice(slot, 1, srcId);
+      if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+      bookDrawer.push(target.fileId);
+    } else {
+      bookDrawer.push(srcId); // el target vivía en el drawer — nada que desplazar
+    }
+  } else if (target.type === 'page') {
+    removeBookPhotoFromCurrentSpot(srcId);
+    const page = bookPages[target.pageIdx];
+    if (page.images.length >= 4) { bookDrawer.push(srcId); }
+    else {
+      page.images.push(srcId);
+      if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+    }
+  } else if (target.type === 'drawer') {
+    removeBookPhotoFromCurrentSpot(srcId);
+    bookDrawer.push(srcId);
+  }
+
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  const newContainerEl = document.getElementById(containerId);
+  const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
+  if (newScrollEl) newScrollEl.scrollLeft = scrollLeft;
 }
 
 function updateBookCounter() {
@@ -1759,17 +2284,11 @@ async function processBulkDiaryFiles(fileList) {
   document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
   bulkDiaryGrouped = await groupFilesByDate(files);
   renderBulkDiaryReview();
+  markBulkDuplicates(bulkDiaryGrouped, albumFolderId).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
 }
 
 function renderBulkDiaryReview() {
-  const datedList = document.getElementById('bulk-diary-dated-list'); datedList.innerHTML = '';
-  Object.keys(bulkDiaryGrouped.dated).sort().forEach(date => {
-    const files = bulkDiaryGrouped.dated[date]; const imgs = files.filter(f => f.type.startsWith('image/')).length; const vids = files.filter(f => f.type.startsWith('video/')).length;
-    const parts = []; if (imgs) parts.push(`${imgs} foto${imgs > 1 ? 's' : ''}`); if (vids) parts.push(`${vids} video${vids > 1 ? 's' : ''}`);
-    const row = document.createElement('div'); row.className = 'bulk-day-group';
-    row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
-    datedList.appendChild(row);
-  });
+  renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped);
   const undatedList = document.getElementById('bulk-diary-undated-list'); undatedList.innerHTML = '';
   if (bulkDiaryGrouped.undated.length) {
     const header = document.createElement('div'); header.className = 'bulk-undated-label'; header.textContent = `⚠ ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
@@ -1790,8 +2309,13 @@ async function confirmBulkDiary() {
   const btn = document.getElementById('bulk-diary-confirm-btn'); const progress = document.getElementById('bulk-diary-progress');
   btn.disabled = true;
   try {
-    const allGroups = { ...bulkDiaryGrouped.dated };
+    const allGroups = {};
+    Object.keys(bulkDiaryGrouped.dated).forEach(date => {
+      const kept = bulkDiaryGrouped.dated[date].filter(f => !f._excluded); // sin los duplicados destildados
+      if (kept.length) allGroups[date] = kept;
+    });
     bulkDiaryGrouped.undated.forEach(file => { const date = bulkDiaryUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir (quedaron todos destildados).'; btn.disabled = false; return; }
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);
     });
@@ -1948,22 +2472,58 @@ function initTouchReorder(grid) {
 }
 
 // ─── Slideshow ────────────────────────────────────────────
-let ssItems = [], ssIdx = 0, ssPaused = false, ssTimer = null;
+// Los días del álbum se piden de a lotes (no todos de una, no uno por
+// uno) — el show arranca apenas el primer lote trae alguna foto/video,
+// y el resto se sigue pidiendo de fondo mientras el usuario ya está
+// mirando. Si el show alcanza a lo ya cargado antes de que termine de
+// llegar el resto, se muestra el loader en vez de cerrar de golpe.
+const SLIDESHOW_BATCH_SIZE = 10;
+let ssItems = [], ssIdx = 0, ssPaused = false, ssTimer = null, ssLoadingMore = false;
+
+function setSsLoaderVisible(visible, text) {
+  document.getElementById('slideshow-loader').classList.toggle('open', visible);
+  if (text) document.getElementById('slideshow-loader-text').textContent = text;
+}
+
 async function startSlideshow(album) {
   const overlay = document.getElementById('slideshow-overlay'); overlay.classList.add('open');
-  document.getElementById('slideshow-day-label').textContent = 'Cargando...';
+  document.getElementById('slideshow-day-label').textContent = '';
   document.getElementById('slideshow-caption').textContent = '';
   document.getElementById('slideshow-progress-bar').style.width = '0%';
+  ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = true;
+  document.getElementById('slideshow-pause').textContent = '⏸';
+  setSsLoaderVisible(true, 'Preparando tus recuerdos...');
   try {
     const albumFolderIdSS = album._shared ? album._folderId : await getAlbumFolderId(album.id);
-    const dates = await listDayFolders(albumFolderIdSS); const items = [];
-    for (const date of dates) { const day = await loadDayFromDrive(albumFolderIdSS, date); if (!day) continue; for (const m of (day.media || [])) { if (m.type === 'image' || m.type === 'video') items.push({ ...m, date, dayTitle: day.title || '' }); } }
-    if (!items.length) { closeSlideshow(); alert('Este álbum no tiene fotos ni videos aún.'); return; }
-    ssItems = items; ssIdx = 0; ssPaused = false; document.getElementById('slideshow-pause').textContent = '⏸'; showSsItem();
+    const dates = await listDayFolders(albumFolderIdSS);
+    let started = false;
+    for (let i = 0; i < dates.length; i += SLIDESHOW_BATCH_SIZE) {
+      if (!overlay.classList.contains('open')) return; // el usuario cerró el slideshow mientras cargaba
+      const batch = dates.slice(i, i + SLIDESHOW_BATCH_SIZE);
+      const wasWaitingAt = ssItems.length; // hasta dónde había llegado el show antes de este lote
+      const results = await Promise.all(batch.map(async date => ({ date, day: await loadDayFromDrive(albumFolderIdSS, date) })));
+      for (const { date, day } of results) {
+        if (!day) continue;
+        for (const m of (day.media || [])) { if (m.type === 'image' || m.type === 'video') ssItems.push({ ...m, date, dayTitle: day.title || '' }); }
+      }
+      ssLoadingMore = (i + SLIDESHOW_BATCH_SIZE) < dates.length;
+      if (!started && ssItems.length) {
+        started = true;
+        showSsItem();
+      } else if (started && ssIdx === wasWaitingAt && ssItems.length > wasWaitingAt) {
+        showSsItem(); // el show se había quedado esperando justo acá — retomar
+      }
+    }
+    if (!started) { closeSlideshow(); alert('Este álbum no tiene fotos ni videos aún.'); return; }
   } catch(e) { closeSlideshow(); alert('Error al cargar el álbum: ' + e.message); }
 }
 function showSsItem() {
-  clearSsTimers(); if (ssIdx >= ssItems.length) { closeSlideshow(); return; }
+  clearSsTimers();
+  if (ssIdx >= ssItems.length) {
+    if (ssLoadingMore) { setSsLoaderVisible(true, 'Cargando más fotos...'); return; }
+    closeSlideshow(); return;
+  }
+  setSsLoaderVisible(false);
   const item = ssItems[ssIdx]; const imgEl = document.getElementById('slideshow-img'); const videoEl = document.getElementById('slideshow-video'); const bar = document.getElementById('slideshow-progress-bar');
   if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src);
   document.getElementById('slideshow-day-label').textContent = formatDate(item.date) + (item.dayTitle ? ` · ${item.dayTitle}` : '');
@@ -1983,7 +2543,7 @@ function showSsItem() {
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.textContent = ssPaused ? '▶' : '⏸'; if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
-function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; }
+function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
 let diaryMenuOpen = false;
@@ -2227,6 +2787,7 @@ document.getElementById('slideshow-close').addEventListener('click', closeSlides
 document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
 document.getElementById('modal-new-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewAlbumModal(); });
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
+document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
 document.getElementById('modal-help').addEventListener('click', e => { if (e.target === e.currentTarget) closeHelp(); });
@@ -2235,6 +2796,7 @@ document.getElementById('bulk-drop-zone').addEventListener('dragover', e => { e.
 document.getElementById('bulk-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
 document.getElementById('bulk-drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); processBulkFiles(e.dataTransfer.files); });
 document.getElementById('bulk-file-input').addEventListener('change', e => { if (e.target.files.length) processBulkFiles(e.target.files); e.target.value = ''; });
+document.getElementById('bulk-album-select').addEventListener('change', refreshBulkDuplicates);
 document.getElementById('bulk-diary-drop-zone').addEventListener('click', () => document.getElementById('bulk-diary-file-input').click());
 document.getElementById('bulk-diary-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
 document.getElementById('bulk-diary-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
@@ -2344,6 +2906,9 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed:', e));
   });
 }
+
+// ─── Vuelta desde el checkout de Mercado Pago ────────────
+handleMercadoPagoReturn();
 </script>
 </body>
 </html>

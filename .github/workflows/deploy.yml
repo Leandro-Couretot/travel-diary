@@ -1,0 +1,40 @@
+name: Deploy a Firebase (Hosting + Functions)
+
+# Se dispara a mano desde GitHub (botón "Run workflow" en la pestaña
+# Actions, elegible desde el celular vía la web/app de GitHub) — igual
+# que el deploy manual desde la Mac, solo que corre en un servidor de
+# GitHub en vez de en tu compu. Podés elegir desde qué rama correrlo
+# con el selector de rama que ya trae GitHub al despachar el workflow.
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repo
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Instalar dependencias de functions/
+        run: npm install
+        working-directory: functions
+
+      - name: firebase deploy
+        env:
+          # Generado con `firebase login:ci` desde una máquina ya
+          # logueada — se carga como secret del repo (Settings →
+          # Secrets and variables → Actions), nunca en este archivo.
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase deploy --non-interactive

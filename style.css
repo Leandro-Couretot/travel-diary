@@ -291,3 +291,8 @@ body {
   .app-header { padding: 0 1rem; }
   .save-bar { padding: 0.75rem 1rem; }
 }
+
+/* Placeholder de "archivo no disponible" (ver ERROR_HANDLING_PLAN.md) —
+   sobreescribe el object-fit: cover de los thumbnails para que el ícono
+   y el texto del placeholder se vean completos, sin recortar. */
+.media-unavailable { object-fit: contain !important; background: var(--accent-light); }

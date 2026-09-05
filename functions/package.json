@@ -1,0 +1,14 @@
+{
+  "name": "travel-diary-functions",
+  "description": "Backend de suscripciones (Mercado Pago + Supabase) para Travel Diary",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "firebase-functions": "^7.3.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
