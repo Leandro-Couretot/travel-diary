@@ -556,6 +556,12 @@ const MEDIA_UNAVAILABLE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 // placeholder en vez del ícono roto del navegador.
 function setAuthImg(imgEl, fileId, size = 'w800') {
   if (!fileId || !imgEl) return;
+  // Evita el ícono nativo de "imagen rota/cargando" del navegador durante el
+  // instante entre insertar el <img> sin src todavía cargado y que la miniatura
+  // de Drive (o su fallback) termine de llegar — se saca solo con onload, sea
+  // cual sea la rama que termine resolviendo el src (ver v1.27 en CLAUDE.md).
+  imgEl.classList.add('auth-img-loading');
+  imgEl.onload = () => imgEl.classList.remove('auth-img-loading');
   const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
   imgEl.src = thumbUrl;
   imgEl.onerror = async () => {
