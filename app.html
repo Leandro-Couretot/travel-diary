@@ -764,7 +764,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.27 ·
+      Versión 1.28 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -803,7 +803,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.27</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.28</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -826,6 +826,22 @@ let hasMigratable = false;
 let shareTargetAlbum = null;
 let bulkGrouped = null;
 let bulkUndatedDates = {};
+let coverObserver = null;
+const EAGER_COVER_COUNT = 6; // portadas que se piden ya mismo; el resto espera a entrar en pantalla
+
+function sortAlbumsByTripDateDesc(list) {
+  return list.slice().sort((a, b) => (b.dateFrom || '').localeCompare(a.dateFrom || ''));
+}
+
+// Portadas más allá de EAGER_COVER_COUNT no piden su miniatura de Drive hasta
+// que la tarjeta entra en pantalla (o está por entrar, rootMargin) — evita que
+// todas las portadas compitan por red al mismo tiempo en álbumes con muchas.
+function scheduleCoverLoad(imgEl, fileId, size, idx) {
+  if (idx < EAGER_COVER_COUNT) { setAuthImg(imgEl, fileId, size); return; }
+  imgEl.dataset.coverFileId = fileId;
+  imgEl.dataset.coverSize = size;
+  coverObserver.observe(imgEl);
+}
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1038,8 +1054,17 @@ async function renderAlbums() {
   main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Cargando álbumes...</div>`;
 
   const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
-  albums = ownAlbums;
-  const sharedAlbums = sharedData.sharedAlbums || [];
+  albums = sortAlbumsByTripDateDesc(ownAlbums);
+  const sharedAlbums = sortAlbumsByTripDateDesc(sharedData.sharedAlbums || []);
+
+  if (coverObserver) coverObserver.disconnect();
+  coverObserver = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      setAuthImg(entry.target, entry.target.dataset.coverFileId, entry.target.dataset.coverSize);
+    });
+  }, { rootMargin: '300px 0px' });
 
   if (!albums.length && !sharedAlbums.length) {
     main.innerHTML = `
@@ -1070,7 +1095,7 @@ async function renderAlbums() {
         <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
         <div class="album-meta"><div class="album-days-count" id="days-count-${album.id}">—</div><div class="album-arrow">→</div></div>
       </div>`;
-    if (album.coverFileId) setAuthImg(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600');
+    if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600', idx);
     card.addEventListener('click', e => {
       if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn')) return;
       openAlbumDiary(album);
@@ -1111,7 +1136,7 @@ async function renderAlbums() {
           <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
           <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
         </div>`;
-      if (album.coverFileId) setAuthImg(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600');
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600', albums.length + idx);
       card.addEventListener('click', e => {
         if (e.target.closest('.album-play-btn')) return;
         openSharedAlbumDiary(album);
