@@ -64,6 +64,10 @@ img { transition: opacity 0.25s ease; }
 .album-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .album-days-count { font-size: 0.75rem; color: var(--ink-muted); }
 .album-arrow { font-size: 0.9rem; color: var(--ink-faint); transition: color 0.15s, transform 0.15s; }
+.album-card.archived { cursor: default; }
+.album-card.archived:hover { transform: none; box-shadow: var(--shadow); }
+.archived-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
+.archived-actions .btn { flex: 1; font-size: 0.78rem; padding: 0.45rem 0.6rem; }
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 .album-card-wrapper { position: relative; }
 .album-share-btn {
@@ -363,6 +367,13 @@ audio { width: 100%; height: 32px; }
 /* Bulk upload */
 .modal-body { padding: 1.25rem 1.5rem 1.5rem; }
 .date-range { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.btn-archive-album {
+  display: block; width: 100%; margin-top: 0.75rem;
+  background: none; border: none; color: var(--ink-faint);
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+  text-decoration: underline; cursor: pointer; padding: 0.4rem;
+}
+.btn-archive-album:hover { color: var(--ink); }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
 .bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
@@ -680,6 +691,7 @@ audio { width: 100%; height: 32px; }
       <div id="migrate-notice" style="display:none;font-size:0.8rem;color:var(--accent);margin-bottom:1rem;line-height:1.5;">✓ Se van a migrar los días que ya tenés guardados a este álbum.</div>
       <div id="album-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
       <button class="btn btn-primary" style="width:100%;" onclick="submitNewAlbum()">Crear álbum</button>
+      <button class="btn-archive-album" id="btn-archive-album" style="display:none;" onclick="archiveCurrentAlbum()">Archivar álbum</button>
     </div>
   </div>
 </div>
@@ -773,7 +785,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.32 ·
+      Versión 1.33 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -812,7 +824,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.32</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.33</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1063,7 +1075,8 @@ async function renderAlbums() {
   main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Cargando álbumes...</div>`;
 
   const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
-  albums = sortAlbumsByTripDateDesc(ownAlbums);
+  const archivedOwnAlbums = ownAlbums.filter(a => a.archived);
+  albums = sortAlbumsByTripDateDesc(ownAlbums.filter(a => !a.archived));
   const sharedAlbums = sortAlbumsByTripDateDesc(sharedData.sharedAlbums || []);
 
   if (coverObserver) coverObserver.disconnect();
@@ -1075,14 +1088,14 @@ async function renderAlbums() {
     });
   }, { rootMargin: '300px 0px' });
 
-  if (!albums.length && !sharedAlbums.length) {
+  if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `
       <div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1><p>Cada viaje es un álbum. Creá el primero para empezar.</p></div>
       <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
     return;
   }
 
-  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div><div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}`;
+  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div><div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
 
   const ownGrid = document.createElement('div');
   ownGrid.className = 'albums-grid';
@@ -1157,6 +1170,34 @@ async function renderAlbums() {
       sharedGrid.appendChild(card);
     });
   }
+
+  if (archivedOwnAlbums.length) {
+    const archivedSection = document.getElementById('section-archived');
+    archivedSection.innerHTML = `<h2 class="section-heading">Archivados</h2>`;
+    const archivedGrid = document.createElement('div');
+    archivedGrid.className = 'albums-grid';
+    archivedSection.appendChild(archivedGrid);
+    const folderIds = await Promise.all(archivedOwnAlbums.map(a => getAlbumFolderId(a.id)));
+    archivedOwnAlbums.forEach((album, i) => {
+      const folderId = folderIds[i];
+      const card = document.createElement('div');
+      card.className = 'album-card archived';
+      card.innerHTML = `
+        <div class="album-info">
+          <div class="album-name">${escHtml(album.name)}</div>
+          <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+          <div class="archived-actions">
+            <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}">Abrir en Drive</a>
+            <button class="btn btn-secondary btn-unarchive">Reactivar</button>
+          </div>
+        </div>`;
+      card.querySelector('.btn-unarchive').addEventListener('click', async () => {
+        await updateAlbumMeta(album.id, { archived: false });
+        await renderAlbums();
+      });
+      archivedGrid.appendChild(card);
+    });
+  }
 }
 
 function openAlbumDiary(album) {
@@ -1207,6 +1248,7 @@ function openNewAlbumModal() {
   document.getElementById('album-to').value = '';
   document.getElementById('album-error').style.display = 'none';
   document.getElementById('migrate-notice').style.display = hasMigratable ? 'block' : 'none';
+  document.getElementById('btn-archive-album').style.display = 'none';
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
 }
@@ -1220,8 +1262,23 @@ function openEditAlbumModal(event, album) {
   document.getElementById('album-to').value = album.dateTo || '';
   document.getElementById('album-error').style.display = 'none';
   document.getElementById('migrate-notice').style.display = 'none';
+  const archiveBtn = document.getElementById('btn-archive-album');
+  archiveBtn.style.display = 'block'; archiveBtn.textContent = 'Archivar álbum'; archiveBtn.disabled = false;
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
+}
+async function archiveCurrentAlbum() {
+  if (!editingAlbumId) return;
+  if (!confirm('Vas a archivar este álbum. Vas a poder abrirlo desde Drive cuando quieras, pero no vas a poder seguir editándolo desde la app hasta que lo reactives. ¿Confirmás?')) return;
+  const btn = document.getElementById('btn-archive-album');
+  btn.textContent = 'Archivando...'; btn.disabled = true;
+  try {
+    await updateAlbumMeta(editingAlbumId, { archived: true });
+    closeNewAlbumModal(); await renderAlbums();
+  } catch(e) {
+    showAlbumError(e.message);
+    btn.textContent = 'Archivar álbum'; btn.disabled = false;
+  }
 }
 function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); editingAlbumId = null; }
 
