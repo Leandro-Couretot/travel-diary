@@ -30,6 +30,11 @@
   padding: 3rem 1.5rem 6rem;
 }
 .home-intro { margin-bottom: 3rem; }
+.reconstructed-notice {
+  background: var(--accent-light); border-radius: var(--radius);
+  padding: 0.9rem 1.1rem; font-size: 0.85rem; color: var(--ink-muted);
+  line-height: 1.5; margin: -1.5rem 0 2rem;
+}
 .home-intro h1 {
   font-family: 'DM Serif Display', serif;
   font-size: clamp(2rem, 5vw, 3rem);
@@ -804,7 +809,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.34 ·
+      Versión 1.35 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -843,7 +848,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.34</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.35</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1094,6 +1099,7 @@ async function renderAlbums() {
   main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Cargando álbumes...</div>`;
 
   const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
+  const wasReconstructed = ownAlbums.some(a => a._reconstructed);
   const archivedOwnAlbums = ownAlbums.filter(a => a.archived);
   albums = sortAlbumsByTripDateDesc(ownAlbums.filter(a => !a.archived));
   const sharedAlbums = sortAlbumsByTripDateDesc(sharedData.sharedAlbums || []);
@@ -1114,7 +1120,10 @@ async function renderAlbums() {
     return;
   }
 
-  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div><div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
+  const reconstructedNotice = wasReconstructed
+    ? `<div class="reconstructed-notice">⚠️ No encontramos el índice de tus álbumes, así que lo reconstruimos a partir de tus carpetas en Drive — tus fotos siguen todas ahí. Se perdieron las fechas manuales de "Desde/Hasta" (podés volver a cargarlas con ✎).</div>`
+    : '';
+  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
 
   const ownGrid = document.createElement('div');
   ownGrid.className = 'albums-grid';

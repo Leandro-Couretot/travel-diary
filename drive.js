@@ -239,11 +239,42 @@ async function writeJsonFile(obj, name, folderId) {
 async function loadAlbums() {
   if (!isDriveConnected()) return [];
   const fileId = await findFileInFolder('albums.json', rootFolderId);
-  if (!fileId) return [];
-  try {
-    const data = await readJsonFile(fileId);
-    return data.albums || [];
-  } catch { return []; }
+  if (fileId) {
+    try {
+      const data = await readJsonFile(fileId);
+      if (data.albums) return data.albums;
+    } catch {}
+  }
+  // albums.json no existe o no se pudo leer — pero las carpetas de cada
+  // álbum (con sus días y fotos) pueden seguir 100% intactas en Drive.
+  // En vez de mostrar "no tenés álbumes" con el contenido real todavía
+  // ahí, se reconstruye el índice escaneando esas carpetas (mismo
+  // criterio que la reconstrucción de day.json — ver CLAUDE.md). Se
+  // pierden las fechas manuales (solo vivían en el JSON borrado) y el
+  // nombre queda aproximado desde el slug de la carpeta, pero ningún
+  // álbum desaparece.
+  const reconstructed = await reconstructAlbumsFromFolders();
+  if (reconstructed.length) {
+    await saveAlbums(reconstructed.map(({ _reconstructed, ...a }) => a));
+  }
+  return reconstructed;
+}
+
+async function reconstructAlbumsFromFolders() {
+  const folders = await listFolders(rootFolderId);
+  // Las carpetas con nombre de fecha son días sueltos de la estructura
+  // plana vieja (pre-álbumes, ver migrateOldDaysToAlbum) — no álbumes.
+  const albumFolders = folders.filter(f => !/^\d{4}-\d{2}-\d{2}$/.test(f.name));
+  return albumFolders.map(f => ({
+    id: f.name,
+    name: prettifyFolderName(f.name),
+    dateFrom: null, dateTo: null, coverFileId: null,
+    _reconstructed: true,
+  }));
+}
+
+function prettifyFolderName(slug) {
+  return slug.split('-').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ');
 }
 
 async function saveAlbums(albums) {
