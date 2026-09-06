@@ -75,6 +75,15 @@ img { transition: opacity 0.25s ease; }
 }
 .album-card-wrapper:hover .album-share-btn { opacity: 1; }
 @media (hover: none) { .album-share-btn { opacity: 1; } }
+.album-edit-btn {
+  position: absolute; top: 0.5rem; right: 2.4rem; z-index: 2;
+  background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
+  color: #fff; cursor: pointer; font-size: 0.8rem;
+  padding: 0.25rem 0.5rem; line-height: 1;
+  opacity: 0; transition: opacity 0.2s;
+}
+.album-card-wrapper:hover .album-edit-btn { opacity: 1; }
+@media (hover: none) { .album-edit-btn { opacity: 1; } }
 .album-cover-wrap { position: relative; display: block; }
 .album-play-btn {
   position: absolute; bottom: 0.6rem; right: 0.6rem;
@@ -661,7 +670,7 @@ audio { width: 100%; height: 32px; }
 <!-- ─── MODALS ─── -->
 <div class="modal-overlay" id="modal-new-album">
   <div class="modal">
-    <div class="modal-header"><div class="modal-title">Nuevo álbum</div><button class="modal-close" onclick="closeNewAlbumModal()">×</button></div>
+    <div class="modal-header"><div class="modal-title" id="album-modal-title">Nuevo álbum</div><button class="modal-close" onclick="closeNewAlbumModal()">×</button></div>
     <div class="modal-body">
       <div class="form-field"><label class="form-label">Nombre del viaje</label><input class="form-input" id="album-name" type="text" placeholder="Ej: Japón 2026"></div>
       <div class="date-range">
@@ -764,7 +773,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.29 ·
+      Versión 1.30 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -803,7 +812,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.29</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.30</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1097,14 +1106,17 @@ async function renderAlbums() {
       </div>`;
     if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600', idx);
     card.addEventListener('click', e => {
-      if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn')) return;
+      if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn') || e.target.closest('.album-edit-btn')) return;
       openAlbumDiary(album);
     });
     card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow(album); });
     const shareBtn = document.createElement('button');
     shareBtn.className = 'album-share-btn'; shareBtn.title = 'Compartir álbum'; shareBtn.textContent = '↗';
     shareBtn.addEventListener('click', e => openShareModal(e, album));
-    wrapper.appendChild(card); wrapper.appendChild(shareBtn); ownGrid.appendChild(wrapper);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'album-edit-btn'; editBtn.title = 'Editar álbum'; editBtn.textContent = '✎';
+    editBtn.addEventListener('click', e => openEditAlbumModal(e, album));
+    wrapper.appendChild(card); wrapper.appendChild(shareBtn); wrapper.appendChild(editBtn); ownGrid.appendChild(wrapper);
     loadDayCount(album.id);
   });
 
@@ -1164,8 +1176,13 @@ async function loadDayCount(albumId) {
 }
 
 // ─── Album modals ─────────────────────────────────────────
+let editingAlbumId = null;
+
 function openNewAlbumModal() {
   if (!isDriveConnected()) { handleDriveBtn(); return; }
+  editingAlbumId = null;
+  document.getElementById('album-modal-title').textContent = 'Nuevo álbum';
+  document.querySelector('#modal-new-album .btn-primary').textContent = 'Crear álbum';
   document.getElementById('album-name').value = '';
   document.getElementById('album-from').value = '';
   document.getElementById('album-to').value = '';
@@ -1174,16 +1191,37 @@ function openNewAlbumModal() {
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
 }
-function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); }
+function openEditAlbumModal(event, album) {
+  event.preventDefault(); event.stopPropagation();
+  editingAlbumId = album.id;
+  document.getElementById('album-modal-title').textContent = 'Editar álbum';
+  document.querySelector('#modal-new-album .btn-primary').textContent = 'Guardar cambios';
+  document.getElementById('album-name').value = album.name || '';
+  document.getElementById('album-from').value = album.dateFrom || '';
+  document.getElementById('album-to').value = album.dateTo || '';
+  document.getElementById('album-error').style.display = 'none';
+  document.getElementById('migrate-notice').style.display = 'none';
+  document.getElementById('modal-new-album').classList.add('open');
+  setTimeout(() => document.getElementById('album-name').focus(), 100);
+}
+function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); editingAlbumId = null; }
 
 async function submitNewAlbum() {
   const name = document.getElementById('album-name').value.trim();
   const dateFrom = document.getElementById('album-from').value;
   const dateTo   = document.getElementById('album-to').value;
   if (!name) { showAlbumError('El nombre es obligatorio'); return; }
-  const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   document.getElementById('album-error').style.display = 'none';
   const btn = document.querySelector('#modal-new-album .btn-primary');
+  if (editingAlbumId) {
+    btn.textContent = 'Guardando...'; btn.disabled = true;
+    try {
+      await updateAlbumMeta(editingAlbumId, { name, dateFrom, dateTo });
+      closeNewAlbumModal(); await renderAlbums();
+    } catch(e) { showAlbumError(e.message); btn.textContent = 'Guardar cambios'; btn.disabled = false; }
+    return;
+  }
+  const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   btn.textContent = 'Creando...'; btn.disabled = true;
   try {
     await createAlbum({ id, name, dateFrom, dateTo });
