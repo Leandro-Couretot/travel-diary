@@ -76,15 +76,35 @@ const DRIVE_MAX_RETRIES = 3;
 async function driveReq(method, url, body) {
   const headers = { 'Authorization': `Bearer ${driveToken}` };
   const opts = { method, headers };
-  if (body instanceof FormData) {
+  const isUpload = body instanceof FormData;
+  if (isUpload) {
     opts.body = body;
   } else if (body) {
     headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
+  // Subidas de archivo pueden tardar de verdad en una conexión lenta — se les
+  // da más margen antes de considerar el pedido colgado que a un JSON chico.
+  const timeoutMs = isUpload ? 120000 : 20000;
 
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, opts);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(url, { ...opts, signal: controller.signal });
+    } catch (err) {
+      // v1.31: sin esto, un fetch que ni resuelve ni falla (conexión
+      // inestable) dejaba la promesa colgada para siempre — el botón se
+      // quedaba en "Guardando..." sin ningún aviso ni forma de reintentar.
+      if (attempt >= DRIVE_MAX_RETRIES) {
+        throw new Error(err.name === 'AbortError' ? 'La conexión con Drive tardó demasiado. Probá de nuevo.' : err.message);
+      }
+      await new Promise(r => setTimeout(r, (2 ** attempt) * 500 + Math.random() * 250));
+      continue;
+    } finally {
+      clearTimeout(timer);
+    }
     if (res.status === 401) {
       driveToken = null; rootFolderId = null;
       localStorage.removeItem('drive_token');
