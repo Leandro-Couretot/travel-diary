@@ -773,7 +773,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.31 ·
+      Versión 1.32 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -812,7 +812,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.31</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.32</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1101,7 +1101,7 @@ async function renderAlbums() {
       <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">▶</button></div>
       <div class="album-info">
         <div class="album-name">${escHtml(album.name)}</div>
-        <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+        <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
         <div class="album-meta"><div class="album-days-count" id="days-count-${album.id}">—</div><div class="album-arrow">→</div></div>
       </div>`;
     if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600', idx);
@@ -1117,7 +1117,7 @@ async function renderAlbums() {
     editBtn.className = 'album-edit-btn'; editBtn.title = 'Editar álbum'; editBtn.textContent = '✎';
     editBtn.addEventListener('click', e => openEditAlbumModal(e, album));
     wrapper.appendChild(card); wrapper.appendChild(shareBtn); wrapper.appendChild(editBtn); ownGrid.appendChild(wrapper);
-    loadDayCount(album.id);
+    loadAlbumDaysInfo(album);
   });
 
   const newCard = document.createElement('button');
@@ -1166,12 +1166,31 @@ function openSharedAlbumDiary(album) {
   navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId });
 }
 
-async function loadDayCount(albumId) {
+// Duración de un viaje entre dos fechas (YYYY-MM-DD), incluyendo ambos
+// extremos — ej. 1 ene a 13 ene son 13 días, no 12.
+function daysBetweenInclusive(fromStr, toStr) {
+  const from = new Date(fromStr + 'T12:00:00');
+  const to = new Date(toStr + 'T12:00:00');
+  return Math.round((to - from) / 86400000) + 1;
+}
+
+async function loadAlbumDaysInfo(album) {
   try {
-    const fid = await getAlbumFolderId(albumId);
+    const fid = await getAlbumFolderId(album.id);
     const days = await listDayFolders(fid);
-    const el = document.getElementById(`days-count-${albumId}`);
-    if (el) el.textContent = days.length ? `${days.length} día${days.length > 1 ? 's' : ''}` : 'Sin días aún';
+    const countEl = document.getElementById(`days-count-${album.id}`);
+    if (!days.length) {
+      if (countEl) countEl.textContent = 'Sin días aún';
+      return;
+    }
+    // "Días" = duración real del viaje (primer día con contenido → último),
+    // no la fecha manual de "Desde/Hasta" ni la cantidad de días con diario
+    // escrito — un día de viaje sin nada cargado igual cuenta en el rango.
+    const first = days[0], last = days[days.length - 1];
+    const duration = daysBetweenInclusive(first, last);
+    if (countEl) countEl.textContent = `${duration} día${duration > 1 ? 's' : ''}`;
+    const datesEl = document.getElementById(`dates-${album.id}`);
+    if (datesEl) datesEl.textContent = `${formatDate(first)} — ${formatDate(last)}`;
   } catch {}
 }
 
