@@ -67,7 +67,10 @@ img { transition: opacity 0.25s ease; }
 .album-card.archived { cursor: default; }
 .album-card.archived:hover { transform: none; box-shadow: var(--shadow); }
 .archived-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
-.archived-actions .btn { flex: 1; font-size: 0.78rem; padding: 0.45rem 0.6rem; }
+.archived-actions .btn {
+  flex: 1; min-width: 0; font-size: 0.78rem; padding: 0.45rem 0.4rem;
+  white-space: normal; text-align: center; line-height: 1.25;
+}
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 .album-card-wrapper { position: relative; }
 .album-share-btn {
@@ -374,6 +377,9 @@ audio { width: 100%; height: 32px; }
   text-decoration: underline; cursor: pointer; padding: 0.4rem;
 }
 .btn-archive-album:hover { color: var(--ink); }
+.confirm-message { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.5; margin-bottom: 1.25rem; }
+.confirm-actions { display: flex; gap: 0.75rem; }
+.confirm-actions .btn { flex: 1; }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
 .bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
@@ -696,6 +702,19 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="confirm-title">Confirmar</div><button class="modal-close" id="confirm-close-x">×</button></div>
+    <div class="modal-body">
+      <div class="confirm-message" id="confirm-message"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" id="confirm-cancel-btn">Cancelar</button>
+        <button class="btn btn-primary" id="confirm-ok-btn">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-share-album">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
@@ -785,7 +804,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.33 ·
+      Versión 1.34 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -824,7 +843,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.33</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.34</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1235,6 +1254,33 @@ async function loadAlbumDaysInfo(album) {
   } catch {}
 }
 
+// ─── Confirmación propia (reemplaza confirm() nativo) ────────
+// Devuelve una Promise<boolean> — usar con await en vez de confirm().
+function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar' } = {}) {
+  return new Promise(resolve => {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-ok-btn').textContent = confirmLabel;
+    const modal = document.getElementById('modal-confirm');
+    const okBtn = document.getElementById('confirm-ok-btn');
+    const cancelBtn = document.getElementById('confirm-cancel-btn');
+    const closeBtn = document.getElementById('confirm-close-x');
+    const finish = (result) => {
+      modal.classList.remove('open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      closeBtn.removeEventListener('click', onCancel);
+      resolve(result);
+    };
+    const onOk = () => finish(true);
+    const onCancel = () => finish(false);
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+    modal.classList.add('open');
+  });
+}
+
 // ─── Album modals ─────────────────────────────────────────
 let editingAlbumId = null;
 
@@ -1269,7 +1315,11 @@ function openEditAlbumModal(event, album) {
 }
 async function archiveCurrentAlbum() {
   if (!editingAlbumId) return;
-  if (!confirm('Vas a archivar este álbum. Vas a poder abrirlo desde Drive cuando quieras, pero no vas a poder seguir editándolo desde la app hasta que lo reactives. ¿Confirmás?')) return;
+  const ok = await customConfirm(
+    'Vas a poder abrirlo desde Drive cuando quieras, pero no vas a poder seguir editándolo desde la app hasta que lo reactives.',
+    { title: 'Archivar álbum', confirmLabel: 'Archivar' }
+  );
+  if (!ok) return;
   const btn = document.getElementById('btn-archive-album');
   btn.textContent = 'Archivando...'; btn.disabled = true;
   try {
@@ -2927,6 +2977,7 @@ document.getElementById('lightbox').addEventListener('touchend', e => { const di
 document.getElementById('slideshow-close').addEventListener('click', closeSlideshow);
 document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
 document.getElementById('modal-new-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewAlbumModal(); });
+document.getElementById('modal-confirm').addEventListener('click', e => { if (e.target === e.currentTarget) document.getElementById('confirm-cancel-btn').click(); });
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
 document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
