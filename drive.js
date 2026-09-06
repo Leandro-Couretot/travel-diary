@@ -181,8 +181,9 @@ async function listDayFolders(albumFolderId) {
 }
 
 // ─── FILE HELPERS ────────────────────────────────────────
-async function uploadFile(blob, name, folderId, existingId = null) {
+async function uploadFile(blob, name, folderId, existingId = null, description = null) {
   const meta = { name };
+  if (description) meta.description = description;
   if (!existingId) meta.parents = [folderId];
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
@@ -233,12 +234,73 @@ async function writeJsonFile(obj, name, folderId) {
   return await uploadFile(blob, name, folderId, existingId);
 }
 
+// ─── NOMENCLATURA DE ARCHIVOS DE LA APP ──────────────────
+// Los archivos que crea la app en Drive llevan el prefijo "[Travel
+// Diary]" para que se puedan identificar de un vistazo (ej. en la
+// vista "Recientes" de Drive, donde aparecen sueltos sin la carpeta
+// que les da contexto) y no se borren por accidente pensando que son
+// basura. Migración deliberadamente lazy: NO se renombran en bloque
+// los archivos ya existentes con el nombre viejo — se siguen
+// reconociendo (findFileInFolderMigrating) y recién se renombran la
+// próxima vez que ese archivo puntual se escribe
+// (writeJsonFileMigrating), mismo criterio que ya se usó para migrar
+// book.json v1→v2.
+const APP_NAME_PREFIX = '[Travel Diary]';
+
+// Busca primero con el nombre nuevo; si no aparece, cae al nombre viejo
+// (archivo creado antes de este cambio, todavía sin migrar).
+async function findFileInFolderMigrating(newName, oldName, folderId) {
+  const id = await findFileInFolder(newName, folderId);
+  if (id) return id;
+  return await findFileInFolder(oldName, folderId);
+}
+
+// Escribe con el nombre nuevo. Si ya existe un archivo con el nombre
+// nuevo lo actualiza; si no, pero existe uno con el nombre viejo, lo
+// actualiza Y renombra en el mismo pedido (uploadFile hace PATCH del
+// name además del contenido); si no existe ninguno, crea uno nuevo.
+async function writeJsonFileMigrating(obj, newName, oldName, folderId, description) {
+  let existingId = await findFileInFolder(newName, folderId);
+  if (!existingId) existingId = await findFileInFolder(oldName, folderId);
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  return await uploadFile(blob, newName, folderId, existingId, description);
+}
+
+const ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Mis álbumes.json`;
+const ALBUMS_JSON_OLD_NAME = 'albums.json';
+const ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — es el índice de todos tus álbumes. Borrarlo no borra tus fotos, pero hace que la app deje de encontrarlas hasta que se reconstruya solo.';
+
+const SHARED_ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Álbumes compartidos.json`;
+const SHARED_ALBUMS_JSON_OLD_NAME = 'shared-albums.json';
+const SHARED_ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — es la lista de álbumes que otras personas compartieron con vos. Borrarlo no afecta tus propios álbumes.';
+
+const BOOK_JSON_NAME = `${APP_NAME_PREFIX} - Fotolibro.json`;
+const BOOK_JSON_OLD_NAME = 'book.json';
+const BOOK_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — guarda el orden manual del fotolibro de este álbum. Borrarlo no borra ninguna foto, solo se pierde el orden elegido.';
+
+function dayJsonName(dateStr) { return `${APP_NAME_PREFIX} - Día ${dateStr}.json`; }
+const DAY_JSON_OLD_NAME = 'day.json';
+const DAY_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary. Borrarlo puede hacer que pierdas el título/notas de este día (las fotos no se pierden).';
+
+async function findDayJsonId(dayFolderId, dateStr) {
+  return await findFileInFolderMigrating(dayJsonName(dateStr), DAY_JSON_OLD_NAME, dayFolderId);
+}
+async function saveDayJson(dayFolderId, dateStr, dayJson) {
+  return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), DAY_JSON_OLD_NAME, dayFolderId, DAY_JSON_DESCRIPTION);
+}
+
+const MEDIA_KIND_LABELS = { image: 'foto', video: 'video', audio: 'audio' };
+const MEDIA_FILE_DESCRIPTION = 'Este archivo es una foto/video/audio de tu diario en la app Travel Diary.';
+function mediaFileName(kind, originalName) {
+  return `${APP_NAME_PREFIX} - ${MEDIA_KIND_LABELS[kind] || kind} - ${originalName}`;
+}
+
 // ─── ALBUMS ──────────────────────────────────────────────
 
 // albums.json lives at root: { albums: [ { id, name, dateFrom, dateTo, coverFileId } ] }
 async function loadAlbums() {
   if (!isDriveConnected()) return [];
-  const fileId = await findFileInFolder('albums.json', rootFolderId);
+  const fileId = await findFileInFolderMigrating(ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId);
   if (fileId) {
     try {
       const data = await readJsonFile(fileId);
@@ -278,7 +340,7 @@ function prettifyFolderName(slug) {
 }
 
 async function saveAlbums(albums) {
-  await writeJsonFile({ version: 1, albums }, 'albums.json', rootFolderId);
+  await writeJsonFileMigrating({ version: 1, albums }, ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId, ALBUMS_JSON_DESCRIPTION);
 }
 
 async function createAlbum(album) {
@@ -344,7 +406,7 @@ async function getExistingNamesForDate(albumFolderId, dateStr) {
 // anteriores): se agrupa de a 4 en el mismo orden que ya se veía,
 // drawer vacío — no se pierde ni se reordena nada existente.
 async function loadBookLayout(albumFolderId) {
-  const fileId = await findFileInFolder('book.json', albumFolderId);
+  const fileId = await findFileInFolderMigrating(BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId);
   if (!fileId) return null;
   const data = await readJsonFile(fileId);
   if (Array.isArray(data?.pages)) {
@@ -359,7 +421,7 @@ async function loadBookLayout(albumFolderId) {
 }
 
 async function saveBookLayout(albumFolderId, { pages, drawer }) {
-  await writeJsonFile({ version: 2, pages, drawer }, 'book.json', albumFolderId);
+  await writeJsonFileMigrating({ version: 2, pages, drawer }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
@@ -384,7 +446,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
         continue; // blob URL or no data — skip
       }
       try {
-        item.driveFileId = await uploadFile(blob, item.name, dayFolderId);
+        item.driveFileId = await uploadFile(blob, mediaFileName(item.type, item.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION);
         if (item._file) {
           // Replace blob URL with Drive thumbnail reference, free memory
           URL.revokeObjectURL(item.data);
@@ -416,7 +478,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
       caption: m.caption || ''
     }))
   };
-  await writeJsonFile(dayJson, 'day.json', dayFolderId);
+  await saveDayJson(dayFolderId, dateStr, dayJson);
   _dayCache[_dayKey(albumFolderId, dateStr)] = { folderId: dayFolderId, json: { title: dayJson.title, notes: dayJson.notes, media: dayJson.media } };
   if (failedItems.length) {
     const isQuota = failedItems.some(e => e instanceof DriveQuotaExceededError);
@@ -449,7 +511,7 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
       if (!data.files || !data.files.length) return null;
       dayFolderId = data.files[0].id;
     }
-    const jsonId = await findFileInFolder('day.json', dayFolderId);
+    const jsonId = await findDayJsonId(dayFolderId, dateStr);
     let result;
     if (!jsonId) {
       // day.json no existe pero la carpeta puede seguir teniendo archivos
@@ -512,7 +574,7 @@ function generateShareLink(folderId, name, dateFrom, dateTo) {
 
 async function loadSharedAlbums() {
   if (!isDriveConnected()) return { version: 1, sharedAlbums: [] };
-  const fileId = await findFileInFolder('shared-albums.json', rootFolderId);
+  const fileId = await findFileInFolderMigrating(SHARED_ALBUMS_JSON_NAME, SHARED_ALBUMS_JSON_OLD_NAME, rootFolderId);
   if (!fileId) return { version: 1, sharedAlbums: [] };
   try {
     const data = await readJsonFile(fileId);
@@ -521,7 +583,7 @@ async function loadSharedAlbums() {
 }
 
 async function saveSharedAlbums(data) {
-  await writeJsonFile(data, 'shared-albums.json', rootFolderId);
+  await writeJsonFileMigrating(data, SHARED_ALBUMS_JSON_NAME, SHARED_ALBUMS_JSON_OLD_NAME, rootFolderId, SHARED_ALBUMS_JSON_DESCRIPTION);
 }
 
 async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
