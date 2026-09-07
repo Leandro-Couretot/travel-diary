@@ -367,6 +367,23 @@ async function getAlbumFolderId(albumId) {
   return await getOrCreateFolder(albumId, rootFolderId);
 }
 
+// Cuenta cuántos álbumes puede editar el usuario actual DESDE LA APP —
+// usado para el límite de álbumes gratis (ver CLAUDE.md → "Suscripciones").
+// Cuenta: álbumes propios activos (no archivados) + álbumes compartidos
+// donde el usuario es editor AHORA MISMO (rol real de Drive, consultado
+// en vivo con canEditFolder — shared-albums.json no guarda el rol, así
+// que no se puede cachear). Los archivados y los compartidos donde solo
+// puede ver no cuentan — evita que alguien junte cupo gratis en varias
+// cuentas compartiéndose álbumes de solo lectura entre sí.
+async function countEditableAlbums() {
+  const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
+  const ownActiveCount = ownAlbums.filter(a => !a.archived).length;
+  const sharedAlbums = sharedData.sharedAlbums || [];
+  const canEditFlags = await Promise.all(sharedAlbums.map(a => canEditFolder(a.folderDriveId)));
+  const sharedEditableCount = canEditFlags.filter(Boolean).length;
+  return ownActiveCount + sharedEditableCount;
+}
+
 // Elimina un álbum propio de verdad: manda la carpeta completa (con todo
 // su contenido) a la papelera de Drive (trashed:true, recuperable 30 días
 // desde Drive — mismo criterio que archivos individuales desde v1.9) y

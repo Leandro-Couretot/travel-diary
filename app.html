@@ -835,7 +835,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.39 ·
+      Versión 1.40 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -874,7 +874,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.39</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.40</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -899,6 +899,7 @@ let bulkGrouped = null;
 let bulkUndatedDates = {};
 let coverObserver = null;
 const EAGER_COVER_COUNT = 6; // portadas que se piden ya mismo; el resto espera a entrar en pantalla
+const FREE_ALBUM_LIMIT = 4; // álbumes editables gratis (propios activos + compartidos-editor) — ver CLAUDE.md → "Suscripciones"
 
 function sortAlbumsByTripDateDesc(list) {
   return list.slice().sort((a, b) => (b.dateFrom || '').localeCompare(a.dateFrom || ''));
@@ -1430,8 +1431,17 @@ async function submitNewAlbum() {
     return;
   }
   const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  btn.textContent = 'Creando...'; btn.disabled = true;
+  btn.textContent = 'Verificando...'; btn.disabled = true;
   try {
+    if (!isPaidUser()) {
+      const editableCount = await countEditableAlbums();
+      if (editableCount >= FREE_ALBUM_LIMIT) {
+        showAlbumError(`Llegaste al límite de ${FREE_ALBUM_LIMIT} álbumes editables del plan gratis. Archivá, eliminá o salí de alguno para liberar lugar, o pasate a Pro para álbumes ilimitados.`);
+        btn.textContent = 'Crear álbum'; btn.disabled = false;
+        return;
+      }
+    }
+    btn.textContent = 'Creando...';
     await createAlbum({ id, name, dateFrom, dateTo });
     if (hasMigratable) { btn.textContent = 'Migrando días...'; await migrateOldDaysToAlbum(id); }
     closeNewAlbumModal(); await renderAlbums(); await checkMigratable();
