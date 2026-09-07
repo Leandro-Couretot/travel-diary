@@ -367,6 +367,33 @@ async function getAlbumFolderId(albumId) {
   return await getOrCreateFolder(albumId, rootFolderId);
 }
 
+// Elimina un álbum propio de verdad: manda la carpeta completa (con todo
+// su contenido) a la papelera de Drive (trashed:true, recuperable 30 días
+// desde Drive — mismo criterio que archivos individuales desde v1.9) y
+// saca la entrada de albums.json. A diferencia de archivar, esto sí
+// compromete el contenido — el llamador debe confirmar explícitamente
+// con el usuario antes de invocarla.
+async function deleteAlbum(albumId) {
+  const albums = await loadAlbums();
+  const idx = albums.findIndex(a => a.id === albumId);
+  if (idx < 0) throw new Error('Álbum no encontrado');
+  const folderId = await getAlbumFolderId(albumId);
+  await driveReq('PATCH', `https://www.googleapis.com/drive/v3/files/${folderId}`, { trashed: true });
+  albums.splice(idx, 1);
+  await saveAlbums(albums);
+}
+
+// Saca un álbum compartido de la propia lista (shared-albums.json) — NO
+// revoca el permiso real que dio el dueño en Drive, solo deja de
+// aparecer en el Home de este usuario. El dueño puede seguir viendo que
+// el permiso sigue activo del lado de Drive; si de verdad quiere cortar
+// el acceso, tiene que sacarlo desde el panel de compartir de la carpeta.
+async function leaveSharedAlbum(folderDriveId) {
+  const stored = await loadSharedAlbums();
+  stored.sharedAlbums = stored.sharedAlbums.filter(a => a.folderDriveId !== folderDriveId);
+  await saveSharedAlbums(stored);
+}
+
 // Consulta a Drive si el usuario actual puede editar esta carpeta
 // (rol writer) o solo verla (rol reader). Se usa para álbumes
 // compartidos, donde el rol puede ser cualquiera de los dos — para

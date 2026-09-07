@@ -96,6 +96,15 @@ img { transition: opacity 0.25s ease; }
 }
 .album-card-wrapper:hover .album-edit-btn { opacity: 1; }
 @media (hover: none) { .album-edit-btn { opacity: 1; } }
+.album-leave-btn {
+  position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
+  background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
+  color: #fff; cursor: pointer; font-size: 0.8rem;
+  padding: 0.25rem 0.5rem; line-height: 1;
+  opacity: 0; transition: opacity 0.2s;
+}
+.album-card-wrapper:hover .album-leave-btn { opacity: 1; }
+@media (hover: none) { .album-leave-btn { opacity: 1; } }
 .album-cover-wrap { position: relative; display: block; }
 .album-play-btn {
   position: absolute; bottom: 0.6rem; right: 0.6rem;
@@ -382,6 +391,13 @@ audio { width: 100%; height: 32px; }
   text-decoration: underline; cursor: pointer; padding: 0.4rem;
 }
 .btn-archive-album:hover { color: var(--ink); }
+.btn-delete-album {
+  display: block; width: 100%; margin-top: 0.35rem;
+  background: none; border: none; color: var(--red);
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+  text-decoration: underline; cursor: pointer; padding: 0.4rem;
+}
+.btn-delete-album:hover { opacity: 0.7; }
 .confirm-message { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.5; margin-bottom: 1.25rem; }
 .confirm-actions { display: flex; gap: 0.75rem; }
 .confirm-actions .btn { flex: 1; }
@@ -712,6 +728,7 @@ audio { width: 100%; height: 32px; }
       <div id="album-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
       <button class="btn btn-primary" style="width:100%;" onclick="submitNewAlbum()">Crear álbum</button>
       <button class="btn-archive-album" id="btn-archive-album" style="display:none;" onclick="archiveCurrentAlbum()">Archivar álbum</button>
+      <button class="btn-delete-album" id="btn-delete-album" style="display:none;" onclick="deleteCurrentAlbum()">Eliminar álbum</button>
     </div>
   </div>
 </div>
@@ -818,7 +835,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.38 ·
+      Versión 1.39 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -857,7 +874,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.38</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.39</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1184,6 +1201,8 @@ async function renderAlbums() {
     sharedGrid.className = 'albums-grid';
     sharedSection.appendChild(sharedGrid);
     sharedAlbums.forEach((album, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'album-card-wrapper';
       const card = document.createElement('div');
       card.className = 'album-card';
       card.style.animationDelay = `${idx * 0.07}s`;
@@ -1200,11 +1219,24 @@ async function renderAlbums() {
         </div>`;
       if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600', albums.length + idx);
       card.addEventListener('click', e => {
-        if (e.target.closest('.album-play-btn')) return;
+        if (e.target.closest('.album-play-btn') || e.target.closest('.album-leave-btn')) return;
         openSharedAlbumDiary(album);
       });
       card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true }); });
-      sharedGrid.appendChild(card);
+      const leaveBtn = document.createElement('button');
+      leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.textContent = '✕';
+      leaveBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const ok = await customConfirm(
+          `Vas a dejar de ver "${album.name}" en tu Home. Esto no le saca el permiso a nadie más — si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
+          { title: 'Salir del álbum', confirmLabel: 'Salir' }
+        );
+        if (!ok) return;
+        await leaveSharedAlbum(album.folderDriveId);
+        await renderAlbums();
+      });
+      wrapper.appendChild(card); wrapper.appendChild(leaveBtn);
+      sharedGrid.appendChild(wrapper);
     });
   }
 
@@ -1227,9 +1259,21 @@ async function renderAlbums() {
             <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}">Abrir en Drive</a>
             <button class="btn btn-secondary btn-unarchive">Reactivar</button>
           </div>
+          <button class="btn-delete-album btn-delete-archived">Eliminar álbum</button>
         </div>`;
       card.querySelector('.btn-unarchive').addEventListener('click', async () => {
         await updateAlbumMeta(album.id, { archived: false });
+        await renderAlbums();
+      });
+      card.querySelector('.btn-delete-archived').addEventListener('click', async (e) => {
+        const ok = await customConfirm(
+          'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+          { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
+        );
+        if (!ok) return;
+        const btn = e.target;
+        btn.textContent = 'Eliminando...'; btn.disabled = true;
+        await deleteAlbum(album.id);
         await renderAlbums();
       });
       archivedGrid.appendChild(card);
@@ -1313,6 +1357,7 @@ function openNewAlbumModal() {
   document.getElementById('album-error').style.display = 'none';
   document.getElementById('migrate-notice').style.display = hasMigratable ? 'block' : 'none';
   document.getElementById('btn-archive-album').style.display = 'none';
+  document.getElementById('btn-delete-album').style.display = 'none';
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
 }
@@ -1328,8 +1373,27 @@ function openEditAlbumModal(event, album) {
   document.getElementById('migrate-notice').style.display = 'none';
   const archiveBtn = document.getElementById('btn-archive-album');
   archiveBtn.style.display = 'block'; archiveBtn.textContent = 'Archivar álbum'; archiveBtn.disabled = false;
+  const deleteBtn = document.getElementById('btn-delete-album');
+  deleteBtn.style.display = 'block'; deleteBtn.textContent = 'Eliminar álbum'; deleteBtn.disabled = false;
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
+}
+async function deleteCurrentAlbum() {
+  if (!editingAlbumId) return;
+  const ok = await customConfirm(
+    'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+    { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
+  );
+  if (!ok) return;
+  const btn = document.getElementById('btn-delete-album');
+  btn.textContent = 'Eliminando...'; btn.disabled = true;
+  try {
+    await deleteAlbum(editingAlbumId);
+    closeNewAlbumModal(); await renderAlbums();
+  } catch(e) {
+    showAlbumError(e.message);
+    btn.textContent = 'Eliminar álbum'; btn.disabled = false;
+  }
 }
 async function archiveCurrentAlbum() {
   if (!editingAlbumId) return;
