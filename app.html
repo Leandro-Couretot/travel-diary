@@ -818,7 +818,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.37 ·
+      Versión 1.38 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -857,7 +857,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.37</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.38</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1548,6 +1548,10 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
   const total = tasks.length;
   let done = 0;
   const newMediaByDate = {};
+  // Mostrar "0/N" apenas arranca, no recién cuando termina el primer
+  // archivo — antes el texto solo se actualizaba en el callback de "listo",
+  // así que quedaba en blanco todo lo que tarda comprimir+subir el primero.
+  progressEl.textContent = `Subiendo... ${done}/${total}`;
 
   const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }) => {
     const isImg = file.type.startsWith('image/');
@@ -1604,6 +1608,7 @@ async function confirmBulkUpload() {
   const btn = document.getElementById('bulk-confirm-btn');
   const progress = document.getElementById('bulk-progress');
   btn.disabled = true;
+  progress.textContent = 'Preparando...'; // feedback inmediato al tocar — antes quedaba en blanco varios segundos
   try {
     const albumFolderId = await getAlbumFolderId(albumId);
     const allGroups = {};
@@ -2528,6 +2533,7 @@ function renderBulkDiaryReview() {
 async function confirmBulkDiary() {
   const btn = document.getElementById('bulk-diary-confirm-btn'); const progress = document.getElementById('bulk-diary-progress');
   btn.disabled = true;
+  progress.textContent = 'Preparando...'; // feedback inmediato al tocar — antes quedaba en blanco varios segundos
   try {
     const allGroups = {};
     Object.keys(bulkDiaryGrouped.dated).forEach(date => {
