@@ -71,11 +71,11 @@ img { transition: opacity 0.25s ease; }
 .album-arrow { font-size: 0.9rem; color: var(--ink-faint); transition: color 0.15s, transform 0.15s; }
 .album-card.archived { cursor: default; }
 .album-card.archived:hover { transform: none; box-shadow: var(--shadow); }
-.archived-error { font-size: 0.72rem; color: var(--red); line-height: 1.4; margin-top: 0.6rem; }
-.archived-error-link {
-  background: none; border: none; padding: 0; margin: 0;
-  font: inherit; color: var(--red); font-weight: 700;
-  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+.btn-spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid currentColor; border-top-color: transparent;
+  border-radius: 50%; opacity: 0.6; animation: spin 0.7s linear infinite;
+  vertical-align: middle;
 }
 .archived-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .archived-actions .btn {
@@ -427,6 +427,19 @@ audio { width: 100%; height: 32px; }
 .confirm-message { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.5; margin-bottom: 1.25rem; }
 .confirm-actions { display: flex; gap: 0.75rem; }
 .confirm-actions .btn { flex: 1; }
+.subscribe-context {
+  background: var(--accent-light); border-radius: var(--radius);
+  padding: 0.65rem 0.8rem; font-size: 0.8rem; color: var(--ink-muted);
+  line-height: 1.5; margin-bottom: 1.25rem;
+}
+.plan-compare { border: 1px solid var(--ink-faint); border-radius: var(--radius); overflow: hidden; }
+.plan-compare-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr; align-items: center; padding: 0.55rem 0.75rem; font-size: 0.82rem; }
+.plan-compare-row + .plan-compare-row { border-top: 1px solid var(--ink-faint); }
+.plan-compare-head { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); background: var(--bg); }
+.plan-compare-head div:nth-child(2), .plan-compare-head div:nth-child(3) { text-align: center; }
+.plan-compare-label { color: var(--ink); font-weight: 500; }
+.plan-compare-free { text-align: center; color: var(--ink-muted); }
+.plan-compare-pro { text-align: center; color: var(--accent); font-weight: 700; }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
 .bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
@@ -802,9 +815,14 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-subscribe">
   <div class="modal">
-    <div class="modal-header"><div class="modal-title">Suscribirme</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
+    <div class="modal-header"><div class="modal-title">Pasar a Pro</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
     <div class="modal-body">
-      <p style="margin-bottom:1.25rem;color:var(--ink-muted);font-size:0.9rem;">Elegí cómo pagar. Vas a terminar de cargar tu tarjeta en Mercado Pago.</p>
+      <div id="subscribe-context" class="subscribe-context" style="display:none;"></div>
+      <div class="plan-compare">
+        <div class="plan-compare-row plan-compare-head"><div></div><div>Free</div><div>Pro</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Álbumes</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitados</div></div>
+      </div>
+      <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar viajes viejos cada vez que sumás uno nuevo.</p>
       <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
       <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual — $14.000/mes</button>
       <button class="btn btn-primary" style="width:100%;line-height:1.4;" onclick="startCheckout('annual')">Anual — $11.200/mes<br><span style="font-size:0.8em;font-weight:400;opacity:0.85;">$134.400/año en un solo pago · 20% off</span></button>
@@ -870,7 +888,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.48 ·
+      Versión 1.49 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -909,14 +927,19 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.48</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.49</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
 }
 
-function openSubscribeModal() { document.getElementById('modal-subscribe').classList.add('open'); }
+function openSubscribeModal(context) {
+  const ctxEl = document.getElementById('subscribe-context');
+  if (context) { ctxEl.textContent = context; ctxEl.style.display = 'block'; }
+  else { ctxEl.style.display = 'none'; }
+  document.getElementById('modal-subscribe').classList.add('open');
+}
 function closeSubscribeModal() { document.getElementById('modal-subscribe').classList.remove('open'); }
 
 function renderDiaryHeader() {
@@ -1326,22 +1349,18 @@ async function renderAlbums() {
             <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}">Abrir en Drive</a>
             <button class="btn btn-secondary btn-unarchive">Reactivar</button>
           </div>
-          <div class="archived-error" style="display:none;"></div>
           <button class="btn-delete-album btn-delete-archived">Eliminar álbum</button>
         </div>`;
       if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w600', albums.length + i);
       card.querySelector('.btn-unarchive').addEventListener('click', async (e) => {
         const btn = e.target;
-        const errEl = card.querySelector('.archived-error');
-        errEl.style.display = 'none';
-        btn.textContent = 'Verificando...'; btn.disabled = true;
+        const originalLabel = btn.textContent;
+        btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span>';
         if (!isPaidUser()) {
           const currentOwnAlbums = await loadAlbums();
           if (!isFreeEligibleAlbum(currentOwnAlbums, album.id, FREE_ALBUM_LIMIT)) {
-            errEl.innerHTML = `Este álbum quedó fuera de tu cupo gratis de ${FREE_ALBUM_LIMIT} — archivar otro no le cede el lugar, hace falta eliminar alguno de tus primeros ${FREE_ALBUM_LIMIT} álbumes, o <button type="button" class="archived-error-link">pasate a Pro</button> para reactivar este también.`;
-            errEl.querySelector('.archived-error-link').addEventListener('click', () => openSubscribeModal());
-            errEl.style.display = 'block';
-            btn.textContent = 'Reactivar'; btn.disabled = false;
+            btn.textContent = originalLabel; btn.disabled = false;
+            openSubscribeModal(`"${escHtml(album.name)}" quedó fuera de tu cupo gratis de ${FREE_ALBUM_LIMIT} — archivar otro álbum no le cede el lugar, hace falta eliminar alguno de tus primeros ${FREE_ALBUM_LIMIT}, o pasar a Pro para reactivarlo.`);
             return;
           }
         }
