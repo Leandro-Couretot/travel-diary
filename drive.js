@@ -384,6 +384,37 @@ async function countEditableAlbums() {
   return ownActiveCount + sharedEditableCount;
 }
 
+// Aplica el downgrade automático (Paso 4 del modelo freemium — ver
+// CLAUDE.md → "Suscripciones"): si el usuario ya NO es Pro y tiene más
+// de `freeLimit` álbumes propios activos, archiva los más nuevos (se
+// conservan los primeros `freeLimit` creados, por orden de albums.json)
+// marcándolos con `archivedByDowngrade:true` — reusa el archivado del
+// Paso 1, misma experiencia ("Archivados" + link a Drive), solo que
+// disparada sola en vez de a mano. Si el usuario SÍ es Pro, desarchiva
+// automáticamente SOLO los álbumes con ese flag — nunca uno que el
+// usuario archivó a mano (esos no tienen el flag, así que no se tocan).
+// Devuelve true si cambió algo (para que el llamador sepa si hace falta
+// re-renderizar Home).
+async function enforceAlbumLimit(isPaid, freeLimit) {
+  const albums = await loadAlbums();
+  let changed = false;
+  if (isPaid) {
+    albums.forEach(a => {
+      if (a.archivedByDowngrade) { a.archived = false; a.archivedByDowngrade = false; changed = true; }
+    });
+  } else {
+    const activeOwn = albums.filter(a => !a.archived);
+    if (activeOwn.length > freeLimit) {
+      const toArchive = new Set(activeOwn.slice(freeLimit).map(a => a.id));
+      albums.forEach(a => {
+        if (toArchive.has(a.id)) { a.archived = true; a.archivedByDowngrade = true; changed = true; }
+      });
+    }
+  }
+  if (changed) await saveAlbums(albums);
+  return changed;
+}
+
 // Elimina un álbum propio de verdad: manda la carpeta completa (con todo
 // su contenido) a la papelera de Drive (trashed:true, recuperable 30 días
 // desde Drive — mismo criterio que archivos individuales desde v1.9) y
