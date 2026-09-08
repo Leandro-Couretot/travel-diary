@@ -3,14 +3,22 @@
 //  1) la segunda visita en adelante cargue al toque, sin esperar red.
 //  2) sin conexión, la PWA abra igual en vez de romperse.
 //
-// Estrategia mixta (v1.25): el documento principal (app.html, el que
-// dice qué versión es) va a la red primero — así un usuario con señal
-// ve el último deploy ya en la primera apertura, sin tener que abrir la
-// app dos veces para que se actualice. El resto del shell (CSS/JS/
-// íconos) sigue con stale-while-revalidate: sirve lo cacheado al toque
-// y en paralelo pide la versión nueva para la PRÓXIMA visita — no hace
-// falta acordarse de bumpear una versión en cada deploy. Sin conexión,
-// todo cae al caché (o al aviso de sin conexión si no hay nada guardado
+// Estrategia mixta (v1.25, ampliada en v1.43): el documento principal
+// (app.html, el que dice qué versión es) y todo el JS del shell van a
+// la red primero. app.html siempre puede llegar a llamar una función
+// nueva que se agregó en drive.js/exif.js/debug.js en el mismo deploy
+// (pasó de verdad en v1.42: un usuario con drive.js todavía viejo en
+// caché — de antes del límite de álbumes — vio "Can't find variable:
+// countEditableAlbums" al crear un álbum, porque app.html sí se
+// actualizaba solo pero drive.js se quedaba un paso atrás con
+// stale-while-revalidate). Los scripts no pueden quedar desincronizados
+// entre sí como sí puede quedar el CSS o un ícono (eso es solo visual,
+// nunca revienta la app) — por eso ahora comparten el mismo criterio
+// que ya tenía app.html. El resto del shell (CSS/íconos/manifest) sigue
+// con stale-while-revalidate: sirve lo cacheado al toque y en paralelo
+// pide la versión nueva para la PRÓXIMA visita — no hace falta
+// acordarse de bumpear una versión en cada deploy. Sin conexión, todo
+// cae al caché (o al aviso de sin conexión si no hay nada guardado
 // todavía) — eso no cambia.
 //
 // Solo toca pedidos al propio origen (el shell). Todo lo demás — la
@@ -67,10 +75,12 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return; // solo el propio origen
 
   // El documento principal (app.html, pedido con mode:'navigate' al abrir
-  // la PWA o recargar) va siempre a la red primero — es el que dice qué
-  // versión es, así que no puede quedar un paso atrás como el resto del
-  // shell (ver v1.25 en CLAUDE.md). Si no hay conexión, cae al caché.
-  event.respondWith(req.mode === 'navigate' ? networkFirst(req) : staleWhileRevalidate(req));
+  // la PWA o recargar) y todos los scripts del shell van siempre a la
+  // red primero — un script viejo cacheado puede no tener todavía una
+  // función que el app.html nuevo ya llama (ver v1.43 en CLAUDE.md). Si
+  // no hay conexión, cae al caché igual que antes.
+  const isScript = url.pathname.endsWith('.js');
+  event.respondWith(req.mode === 'navigate' || isScript ? networkFirst(req) : staleWhileRevalidate(req));
 });
 
 async function networkFirst(req) {
