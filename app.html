@@ -69,29 +69,14 @@ img { transition: opacity 0.25s ease; }
 .album-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .album-days-count { font-size: 0.75rem; color: var(--ink-muted); }
 .album-arrow { font-size: 0.9rem; color: var(--ink-faint); transition: color 0.15s, transform 0.15s; }
-.album-card.archived { cursor: default; position: relative; }
+.album-card.archived { cursor: default; }
 .album-card.archived:hover { transform: none; box-shadow: var(--shadow); }
-.pro-badge {
-  position: absolute; top: -0.5rem; right: 1rem; z-index: 1;
-  background: var(--ink); color: var(--accent);
-  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em;
-  padding: 0.2rem 0.5rem; border-radius: 999px; box-shadow: var(--shadow-sm);
-}
-.downgrade-notice {
-  background: var(--accent-light); border-radius: var(--radius);
-  padding: 0.5rem 0.65rem; font-size: 0.72rem; color: var(--ink-muted);
-  line-height: 1.4; margin-top: 0.6rem;
-}
 .archived-error { font-size: 0.72rem; color: var(--red); line-height: 1.4; margin-top: 0.6rem; }
 .archived-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .archived-actions .btn {
   flex: 1; min-width: 0; font-size: 0.78rem; padding: 0.45rem 0.4rem;
   white-space: normal; text-align: center; line-height: 1.25;
 }
-.archived-actions .btn-pro-upgrade {
-  background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 500;
-}
-.archived-actions .btn-pro-upgrade:hover { filter: brightness(0.93); }
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 .album-card-wrapper { position: relative; }
 .album-share-btn {
@@ -851,7 +836,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.44 ·
+      Versión 1.45 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -890,7 +875,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.44</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.45</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1295,27 +1280,22 @@ async function renderAlbums() {
       const folderId = folderIds[i];
       const card = document.createElement('div');
       card.className = 'album-card archived';
-      const proBadge = album.archivedByDowngrade ? `<div class="pro-badge">PRO</div>` : '';
-      const downgradeNotice = album.archivedByDowngrade
-        ? `<div class="downgrade-notice">Se archivó porque superaste el límite de ${FREE_ALBUM_LIMIT} álbumes gratis — tus fotos siguen 100% intactas en tu Drive. Para volver a editarlo desde la app hace falta pasar a Pro (o liberar lugar archivando/eliminando otro).</div>`
-        : '';
-      const proButton = album.archivedByDowngrade
-        ? `<button class="btn btn-pro-upgrade">Pasar a Pro</button>`
-        : '';
+      const coverHtml = album.coverFileId
+        ? `<img class="album-cover" id="cover-arch-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
+        : `<div class="album-cover-empty">旅</div>`;
       card.innerHTML = `
-        ${proBadge}
+        <div class="album-cover-wrap">${coverHtml}</div>
         <div class="album-info">
           <div class="album-name">${escHtml(album.name)}</div>
           <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
-          ${downgradeNotice}
           <div class="archived-actions">
             <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}">Abrir en Drive</a>
             <button class="btn btn-secondary btn-unarchive">Reactivar</button>
-            ${proButton}
           </div>
           <div class="archived-error" style="display:none;"></div>
           <button class="btn-delete-album btn-delete-archived">Eliminar álbum</button>
         </div>`;
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w600', albums.length + i);
       card.querySelector('.btn-unarchive').addEventListener('click', async (e) => {
         const btn = e.target;
         const errEl = card.querySelector('.archived-error');
@@ -1333,8 +1313,6 @@ async function renderAlbums() {
         await updateAlbumMeta(album.id, { archived: false, archivedByDowngrade: false });
         await renderAlbums();
       });
-      const proBtnEl = card.querySelector('.btn-pro-upgrade');
-      if (proBtnEl) proBtnEl.addEventListener('click', () => openSubscribeModal());
       card.querySelector('.btn-delete-archived').addEventListener('click', async (e) => {
         const ok = await customConfirm(
           'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
