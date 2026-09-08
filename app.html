@@ -72,6 +72,11 @@ img { transition: opacity 0.25s ease; }
 .album-card.archived { cursor: default; }
 .album-card.archived:hover { transform: none; box-shadow: var(--shadow); }
 .archived-error { font-size: 0.72rem; color: var(--red); line-height: 1.4; margin-top: 0.6rem; }
+.archived-error-link {
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: var(--red); font-weight: 700;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
 .archived-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .archived-actions .btn {
   flex: 1; min-width: 0; font-size: 0.78rem; padding: 0.45rem 0.4rem;
@@ -301,7 +306,7 @@ audio { width: 100%; height: 32px; }
 .book-reorder-grid::-webkit-scrollbar { display: none; }
 .book-reorder-tile { position: relative; flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
 .book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-.book-reorder-tile-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 2px; aspect-ratio: 1; }
+.book-reorder-tile-grid { aspect-ratio: 1; overflow: hidden; }
 .book-reorder-layout-btn {
   position: absolute; top: 0.3rem; right: 0.3rem; z-index: 2;
   width: 22px; height: 22px; border-radius: 4px; border: none;
@@ -865,7 +870,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.46 ·
+      Versión 1.47 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -904,7 +909,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.46</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.47</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1333,7 +1338,8 @@ async function renderAlbums() {
         if (!isPaidUser()) {
           const editableCount = await countEditableAlbums();
           if (editableCount >= FREE_ALBUM_LIMIT) {
-            errEl.textContent = `Ya tenés ${FREE_ALBUM_LIMIT} álbumes activos. Archivá o eliminá alguno primero, o pasate a Pro para reactivar este también.`;
+            errEl.innerHTML = `Ya tenés ${FREE_ALBUM_LIMIT} álbumes activos. Archivá o eliminá alguno primero, o <button type="button" class="archived-error-link">pasate a Pro</button> para reactivar este también.`;
+            errEl.querySelector('.archived-error-link').addEventListener('click', () => openSubscribeModal());
             errEl.style.display = 'block';
             btn.textContent = 'Reactivar'; btn.disabled = false;
             return;
@@ -2366,7 +2372,11 @@ function buildBookReorderTile(page, idx) {
     layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
     tile.appendChild(layoutBtn);
   }
-  const grid = document.createElement('div'); grid.className = 'book-reorder-tile-grid';
+  const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
+  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+  const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+  const grid = document.createElement('div'); grid.className = layoutClass; grid.style.height = '100%';
+  wrap.appendChild(grid);
   page.images.forEach(id => {
     const photo = bookPhotoByFileId.get(id); if (!photo) return;
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
@@ -2376,7 +2386,7 @@ function buildBookReorderTile(page, idx) {
     cell.appendChild(handle);
     grid.appendChild(cell);
   });
-  tile.appendChild(grid);
+  tile.appendChild(wrap);
   return tile;
 }
 
@@ -2457,7 +2467,7 @@ function openBookLayoutModal(idx) {
   if (options.length <= 1) return;
   bookLayoutModalPageIdx = idx;
   const currentLayout = page.layout && isValidBookLayout(page.layout, count) ? page.layout : null;
-  const autoLayout = pickLayout(imgs, page.images.join('-'));
+  const autoLayout = pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
 
   const container = document.getElementById('book-layout-options');
   container.innerHTML = '';
