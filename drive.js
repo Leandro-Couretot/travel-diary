@@ -384,17 +384,33 @@ async function countEditableAlbums() {
   return ownActiveCount + sharedEditableCount;
 }
 
+// Un álbum propio es "elegible gratis" si está entre los primeros
+// `freeLimit` creados (orden de `albums.json`, nunca se reordena salvo
+// que se elimine uno) que TODAVÍA existen — no importa si está activo o
+// archivado, solo su posición de creación. Deliberadamente por
+// IDENTIDAD y no por cantidad activa en este momento: si fuera por
+// cantidad, un usuario gratis podría alternar cuál archiva/reactiva y
+// terminar editando más de `freeLimit` álbumes con el tiempo sin pagar
+// nunca — cada vez que "libera" un lugar archivando uno, reactiva otro.
+// Con este criterio, archivar un álbum de los primeros `freeLimit`
+// nunca le cede el lugar a uno más nuevo (sigue ocupando su posición);
+// solo **eliminarlo** de verdad corre a los demás y deja entrar al
+// siguiente.
+function isFreeEligibleAlbum(albums, albumId, freeLimit) {
+  const idx = albums.findIndex(a => a.id === albumId);
+  return idx !== -1 && idx < freeLimit;
+}
+
 // Aplica el downgrade automático (Paso 4 del modelo freemium — ver
-// CLAUDE.md → "Suscripciones"): si el usuario ya NO es Pro y tiene más
-// de `freeLimit` álbumes propios activos, archiva los más nuevos (se
-// conservan los primeros `freeLimit` creados, por orden de albums.json)
-// marcándolos con `archivedByDowngrade:true` — reusa el archivado del
-// Paso 1, misma experiencia ("Archivados" + link a Drive), solo que
-// disparada sola en vez de a mano. Si el usuario SÍ es Pro, desarchiva
-// automáticamente SOLO los álbumes con ese flag — nunca uno que el
-// usuario archivó a mano (esos no tienen el flag, así que no se tocan).
-// Devuelve true si cambió algo (para que el llamador sepa si hace falta
-// re-renderizar Home).
+// CLAUDE.md → "Suscripciones"): si el usuario ya NO es Pro, archiva
+// cualquier álbum propio activo que no sea "elegible gratis" (ver
+// isFreeEligibleAlbum) marcándolo con `archivedByDowngrade:true` —
+// reusa el archivado del Paso 1, misma experiencia ("Archivados" + link
+// a Drive), solo que disparada sola en vez de a mano. Si el usuario SÍ
+// es Pro, desarchiva automáticamente SOLO los álbumes con ese flag —
+// nunca uno que el usuario archivó a mano (esos no tienen el flag, así
+// que no se tocan). Devuelve true si cambió algo (para que el llamador
+// sepa si hace falta re-renderizar Home).
 async function enforceAlbumLimit(isPaid, freeLimit) {
   const albums = await loadAlbums();
   let changed = false;
@@ -403,13 +419,9 @@ async function enforceAlbumLimit(isPaid, freeLimit) {
       if (a.archivedByDowngrade) { a.archived = false; a.archivedByDowngrade = false; changed = true; }
     });
   } else {
-    const activeOwn = albums.filter(a => !a.archived);
-    if (activeOwn.length > freeLimit) {
-      const toArchive = new Set(activeOwn.slice(freeLimit).map(a => a.id));
-      albums.forEach(a => {
-        if (toArchive.has(a.id)) { a.archived = true; a.archivedByDowngrade = true; changed = true; }
-      });
-    }
+    albums.forEach((a, idx) => {
+      if (!a.archived && idx >= freeLimit) { a.archived = true; a.archivedByDowngrade = true; changed = true; }
+    });
   }
   if (changed) await saveAlbums(albums);
   return changed;
