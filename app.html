@@ -46,6 +46,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1.5rem;
+  align-items: start; /* deja que cada tarjeta ocupe su alto real en vez de estirarse a la fila — necesario para que el corrimiento por tarjeta (albumStaggerOffset) se vea */
 }
 .album-card {
   background: var(--surface); border-radius: 10px; overflow: hidden;
@@ -888,7 +889,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
     </div>
     <div class="help-version">
-      Versión 1.49 ·
+      Versión 1.50 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -927,7 +928,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.49</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.50</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -988,6 +989,17 @@ async function refreshSubscriptionAndEnforceLimit() {
 
 function sortAlbumsByTripDateDesc(list) {
   return list.slice().sort((a, b) => (b.dateFrom || '').localeCompare(a.dateFrom || ''));
+}
+
+// Corrimiento vertical chico y estable por álbum (mismo hash simple que
+// usa pickLayout() para el fotolibro) — el mismo álbum siempre cae en el
+// mismo lugar entre recargas, no es un random que salta. Es margin-top
+// real (no transform), así el alto de cada fila de .albums-grid lo
+// absorbe solo sin arriesgar que una tarjeta pise la fila de abajo.
+function albumStaggerOffset(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return (Math.abs(hash) % 3) * 8; // 0, 8 o 16px
 }
 
 // Portadas más allá de EAGER_COVER_COUNT no piden su miniatura de Drive hasta
@@ -1244,6 +1256,7 @@ async function renderAlbums() {
   albums.forEach((album, idx) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'album-card-wrapper';
+    wrapper.style.marginTop = `${albumStaggerOffset(album.id)}px`;
     const card = document.createElement('div');
     card.className = 'album-card';
     card.style.animationDelay = `${idx * 0.07}s`;
