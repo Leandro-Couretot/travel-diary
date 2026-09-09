@@ -887,7 +887,7 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-section"><div class="help-section-title">🎙 Grabar audio</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
-      <div class="help-tip">Plan gratis: 1 audio a la vez (subido o grabado). Borrá el que tenés para grabar otro, o pasate a Pro para tener varios.</div>
+      <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
     </div>
     <div class="help-section" id="debug-plan-section">
       <div class="help-section-title">🧪 Debug: forzar plan</div>
@@ -900,7 +900,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.53 ·
+      Versión 1.54 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -939,7 +939,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.53</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.54</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1877,8 +1877,8 @@ let currentDayOriginalIds = new Set();
 // día. currentDayAudioCountAtLoad es cuántos tenía ESTE día al cargarlo —
 // hace falta para no contar dos veces los audios del día que se está
 // editando ahora mismo (ver liveAudioTotal()).
-const AUDIO_FREE_LIMIT = 1; // audios simultáneos permitidos en el plan gratis — borrar uno libera cupo
-let usageState = { version: 1, audioCount: 0 };
+const AUDIO_FREE_LIMIT = 4; // audios simultáneos permitidos en el plan gratis — borrar uno libera cupo
+let usageState = { version: 1, audioCount: 0, reconciled: false };
 let currentDayAudioCountAtLoad = 0;
 let currentTab    = 'day';
 let allDates      = [];
@@ -1909,6 +1909,13 @@ function remainingFreeAudioSlots() {
   if (isPaidUser()) return Infinity;
   return Math.max(0, AUDIO_FREE_LIMIT - liveAudioTotal());
 }
+// Mensaje del paywall cuando ya no hay cupo — muestra el total real en vez
+// de asumir que siempre está justo en el límite (una cuenta que bajó de
+// Pro con más de 4 audios puede tener bastantes más).
+function audioLimitMessage() {
+  const total = liveAudioTotal();
+  return `Tenés ${total} audio${total === 1 ? '' : 's'} guardado${total === 1 ? '' : 's'} — el plan gratis permite hasta ${AUDIO_FREE_LIMIT}. Borrá alguno para agregar otro, o pasate a Pro para audios ilimitados.`;
+}
 
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
@@ -1923,11 +1930,12 @@ async function bootstrapDiaryPage() {
     } else {
       albumCanEdit = await canEditFolder(albumFolderId);
     }
-    // Solo hace falta el contador de audio si de verdad se puede grabar/subir
-    // acá (álbum de solo lectura ya oculta esos controles) y si el gate
-    // aplica (un usuario Pro nunca lo consulta, mismo criterio que
-    // countEditableAlbums() para el límite de álbumes).
-    usageState = (albumCanEdit && !isPaidUser()) ? await loadUsage() : { version: 1, audioCount: 0 };
+    // Se carga (y, la primera vez, se reconcilia con el conteo real — ver
+    // loadUsage() en drive.js) sin importar el plan: un usuario Pro no
+    // consulta el gate, pero igual necesitamos que el contador esté al día
+    // para el día en que baje a Free y sí importe. Solo se salta en álbumes
+    // de solo lectura, donde ni el drop-zone ni el grabador aparecen.
+    usageState = albumCanEdit ? await loadUsage() : { version: 1, audioCount: 0, reconciled: false };
     currentDate = await resolveStartDate();
     renderDiaryPage();
     await loadDay(currentDate);
@@ -2032,17 +2040,16 @@ async function loadDay(dateStr) {
 // Recalcula el delta de audios de ESTE día contra lo que tenía al cargarlo
 // y lo suma/resta a usageState.audioCount (persistido en Drive) — cubre
 // tanto grabar/subir (delta positivo) como borrar (delta negativo, ver
-// "¿Se recupera el cupo?" en CLAUDE.md). Solo se sincroniza para usuarios
-// free (Pro nunca cargó usageState de entrada, así que no tiene sentido
-// escribirlo) — si alguien baja de Pro a free después de haber grabado de
-// más, el contador puede arrancar corrido hasta que vuelva a guardar un
-// día con audio; limitación conocida y aceptable para un gate del lado
-// del cliente como este.
+// "¿Se recupera el cupo?" en CLAUDE.md). Se sincroniza SIEMPRE, sea Pro o
+// free — si solo sincronizara para free, una cuenta Pro que graba de más
+// y después baja a Free se encontraría con un contador en 0 sin reflejar
+// nada de lo real (ver "Gate de audio: tope de 4, no se pierde nada al
+// bajar de plan" en CLAUDE.md → "Funcionando bien").
 async function syncAudioUsageAfterSave() {
   const newAudioCount = currentDay.media.filter(m => m.type === 'audio').length;
   const delta = newAudioCount - currentDayAudioCountAtLoad;
   currentDayAudioCountAtLoad = newAudioCount;
-  if (delta === 0 || isPaidUser()) return;
+  if (delta === 0) return;
   usageState.audioCount = Math.max(0, usageState.audioCount + delta);
   try { await saveUsage(usageState); } catch (e) { console.warn('No se pudo actualizar el contador de audio del plan gratis:', e); }
 }
@@ -2195,8 +2202,8 @@ function enforceAudioFreeLimit(audioFiles) {
   const kept = audioFiles.slice(0, allowedCount);
   const blockedCount = audioFiles.length - kept.length;
   openSubscribeModal(kept.length
-    ? `Se agregó 1 audio — ${blockedCount} más no se subieron porque ya llegaste al cupo gratis de ${AUDIO_FREE_LIMIT} audio a la vez. Pasate a Pro para subir el resto, o borrá el que ya tenés.`
-    : `Ya tenés ${AUDIO_FREE_LIMIT} audio guardado — es el cupo del plan gratis. Borralo si querés subir uno distinto, o pasate a Pro para tener varios a la vez.`);
+    ? `Se agregaron ${kept.length} audio${kept.length === 1 ? '' : 's'} — ${blockedCount} más no se subieron porque el plan gratis permite hasta ${AUDIO_FREE_LIMIT} audios en la cuenta. Pasate a Pro para subir el resto, o borrá alguno para hacer lugar.`
+    : audioLimitMessage());
   return kept;
 }
 
@@ -2990,7 +2997,7 @@ function initRecorder() {
 }
 async function startRecording() {
   if (remainingFreeAudioSlots() <= 0) {
-    openSubscribeModal(`Ya tenés ${AUDIO_FREE_LIMIT} audio guardado — es el cupo del plan gratis. Borralo si querés grabar uno distinto, o pasate a Pro para tener varios a la vez.`);
+    openSubscribeModal(audioLimitMessage());
     return;
   }
   try { recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(e) { document.getElementById('recorder-sub').textContent = 'No se pudo acceder al micrófono'; return; }

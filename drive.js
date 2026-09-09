@@ -301,24 +301,59 @@ function mediaFileName(kind, originalName) {
 // tiene la cuenta en total (todos los álbumes propios) — no cuántos se
 // grabaron alguna vez, así que borrar un audio libera cupo de nuevo (ver
 // CLAUDE.md → "Suscripciones"). app.html lo mantiene sincronizado con un
-// delta cada vez que se guarda un día cuya cantidad de audios cambió.
+// delta cada vez que se guarda un día cuya cantidad de audios cambió,
+// sin importar el plan — así el conteo nunca queda desactualizado si la
+// cuenta pasa de Pro a Free más adelante (ver el flag `reconciled` abajo).
 const USAGE_JSON_NAME = `${APP_NAME_PREFIX} - Uso.json`;
 const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — lleva la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
 
-async function loadUsage() {
-  if (!isDriveConnected()) return { version: 1, audioCount: 0 };
-  const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
-  if (fileId) {
+// Recorre los álbumes propios (activos Y archivados — el audio sigue ahí
+// igual) y cuenta los audios reales de cada day.json. Cara de correr (una
+// ronda de Drive por día de cada álbum) — solo se usa para la
+// reconciliación única de loadUsage(), nunca en el chequeo del gate en sí.
+// No cuenta audio de álbumes compartidos donde el usuario es editor —
+// limitación conocida, ver CLAUDE.md.
+async function computeRealAudioCount() {
+  const albums = await loadAlbums();
+  let total = 0;
+  for (const album of albums) {
     try {
-      const data = await readJsonFile(fileId);
-      return { version: 1, audioCount: data.audioCount || 0 };
+      const folderId = await getAlbumFolderId(album.id);
+      const dates = await listDayFolders(folderId);
+      for (const dateStr of dates) {
+        try {
+          const day = await loadDayFromDrive(folderId, dateStr);
+          if (day) total += day.media.filter(m => m.type === 'audio').length;
+        } catch {}
+      }
     } catch {}
   }
-  return { version: 1, audioCount: 0 };
+  return total;
+}
+
+// `reconciled: true` marca que audioCount ya refleja el conteo real de la
+// cuenta (no solo lo tocado desde que existe este archivo) — sin esto, el
+// audio grabado antes de v1.53, o mientras la cuenta era Pro (antes del
+// fix que sincroniza siempre), quedaría afuera del conteo para siempre.
+// Se escanea una única vez: la primera vez que no está reconciled, y de
+// ahí en más solo se lee el contador cacheado.
+async function loadUsage() {
+  if (!isDriveConnected()) return { version: 1, audioCount: 0, reconciled: false };
+  const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
+  let data = null;
+  if (fileId) {
+    try { data = await readJsonFile(fileId); } catch {}
+  }
+  if (data && data.reconciled) return { version: 1, audioCount: data.audioCount || 0, reconciled: true };
+
+  const audioCount = await computeRealAudioCount();
+  const reconciledUsage = { version: 1, audioCount, reconciled: true };
+  try { await saveUsage(reconciledUsage); } catch {}
+  return reconciledUsage;
 }
 
 async function saveUsage(usage) {
-  await writeJsonFile({ version: 1, audioCount: Math.max(0, usage.audioCount || 0) }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
+  await writeJsonFile({ version: 1, audioCount: Math.max(0, usage.audioCount || 0), reconciled: !!usage.reconciled }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
 }
 
 // ─── ALBUMS ──────────────────────────────────────────────
