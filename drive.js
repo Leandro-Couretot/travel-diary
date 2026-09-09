@@ -228,10 +228,10 @@ function base64ToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
-async function writeJsonFile(obj, name, folderId) {
+async function writeJsonFile(obj, name, folderId, description = null) {
   const existingId = await findFileInFolder(name, folderId);
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
-  return await uploadFile(blob, name, folderId, existingId);
+  return await uploadFile(blob, name, folderId, existingId, description);
 }
 
 // ─── NOMENCLATURA DE ARCHIVOS DE LA APP ──────────────────
@@ -293,6 +293,32 @@ const MEDIA_KIND_LABELS = { image: 'foto', video: 'video', audio: 'audio' };
 const MEDIA_FILE_DESCRIPTION = 'Este archivo es una foto/video/audio de tu diario en la app Travel Diary.';
 function mediaFileName(kind, originalName) {
   return `${APP_NAME_PREFIX} - ${MEDIA_KIND_LABELS[kind] || kind} - ${originalName}`;
+}
+
+// ─── USAGE (gate de audio del plan gratis) ─────────────────
+// Archivo nuevo (sin nombre viejo que migrar) en la raíz de travel-diary/,
+// junto a albums.json. Guarda un único contador: cuántos audios "vivos"
+// tiene la cuenta en total (todos los álbumes propios) — no cuántos se
+// grabaron alguna vez, así que borrar un audio libera cupo de nuevo (ver
+// CLAUDE.md → "Suscripciones"). app.html lo mantiene sincronizado con un
+// delta cada vez que se guarda un día cuya cantidad de audios cambió.
+const USAGE_JSON_NAME = `${APP_NAME_PREFIX} - Uso.json`;
+const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — lleva la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
+
+async function loadUsage() {
+  if (!isDriveConnected()) return { version: 1, audioCount: 0 };
+  const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
+  if (fileId) {
+    try {
+      const data = await readJsonFile(fileId);
+      return { version: 1, audioCount: data.audioCount || 0 };
+    } catch {}
+  }
+  return { version: 1, audioCount: 0 };
+}
+
+async function saveUsage(usage) {
+  await writeJsonFile({ version: 1, audioCount: Math.max(0, usage.audioCount || 0) }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
 }
 
 // ─── ALBUMS ──────────────────────────────────────────────

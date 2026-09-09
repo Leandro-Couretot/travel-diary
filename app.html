@@ -887,6 +887,7 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-section"><div class="help-section-title">🎙 Grabar audio</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
+      <div class="help-tip">Plan gratis: 1 audio a la vez (subido o grabado). Borrá el que tenés para grabar otro, o pasate a Pro para tener varios.</div>
     </div>
     <div class="help-section" id="debug-plan-section">
       <div class="help-section-title">🧪 Debug: forzar plan</div>
@@ -899,7 +900,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.52 ·
+      Versión 1.53 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -938,7 +939,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.52</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.53</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1870,6 +1871,15 @@ let currentDate   = new Date().toISOString().slice(0, 10);
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
 let currentDayOriginalIds = new Set();
+// Gate de audio del plan gratis (ver "Suscripciones" en CLAUDE.md):
+// usageState.audioCount es el total de audios "vivos" en toda la cuenta,
+// sincronizado con Drive (usage.json) por delta cada vez que se guarda un
+// día. currentDayAudioCountAtLoad es cuántos tenía ESTE día al cargarlo —
+// hace falta para no contar dos veces los audios del día que se está
+// editando ahora mismo (ver liveAudioTotal()).
+const AUDIO_FREE_LIMIT = 1; // audios simultáneos permitidos en el plan gratis — borrar uno libera cupo
+let usageState = { version: 1, audioCount: 0 };
+let currentDayAudioCountAtLoad = 0;
 let currentTab    = 'day';
 let allDates      = [];
 let calDayData    = {};
@@ -1885,6 +1895,21 @@ function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
 function isToday(s)  { return s === todayStr(); }
 
+// Total de audios "vivos" en toda la cuenta ahora mismo — combina lo ya
+// guardado en cualquier otro día (usageState.audioCount, sincronizado en
+// cada saveCurrentDay()) con lo que tiene el día que se está editando en
+// memoria en este momento (currentDay.media, todavía sin guardar). Sin
+// esto, grabar 2 audios seguidos en el mismo día sin guardar entre medio
+// pasaría el gate las dos veces porque usageState todavía no se enteró.
+function liveAudioTotal() {
+  const inThisDayNow = currentDay.media.filter(m => m.type === 'audio').length;
+  return Math.max(0, usageState.audioCount - currentDayAudioCountAtLoad) + inThisDayNow;
+}
+function remainingFreeAudioSlots() {
+  if (isPaidUser()) return Infinity;
+  return Math.max(0, AUDIO_FREE_LIMIT - liveAudioTotal());
+}
+
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
   allDates = []; calDayData = {}; bookPages = []; bookDrawer = []; bookPhotoByFileId = new Map();
@@ -1898,6 +1923,11 @@ async function bootstrapDiaryPage() {
     } else {
       albumCanEdit = await canEditFolder(albumFolderId);
     }
+    // Solo hace falta el contador de audio si de verdad se puede grabar/subir
+    // acá (álbum de solo lectura ya oculta esos controles) y si el gate
+    // aplica (un usuario Pro nunca lo consulta, mismo criterio que
+    // countEditableAlbums() para el límite de álbumes).
+    usageState = (albumCanEdit && !isPaidUser()) ? await loadUsage() : { version: 1, audioCount: 0 };
     currentDate = await resolveStartDate();
     renderDiaryPage();
     await loadDay(currentDate);
@@ -1986,6 +2016,7 @@ async function loadDay(dateStr) {
     currentDay = day || emptyDay();
   } catch(e) { setStatus('error', 'Error al cargar'); currentDay = emptyDay(); }
   currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+  currentDayAudioCountAtLoad = currentDay.media.filter(m => m.type === 'audio').length;
   const titleEl = document.getElementById('day-title');
   const notesEl = document.getElementById('day-notes');
   if (titleEl) { titleEl.value = currentDay.title || ''; autoResize(titleEl); }
@@ -1998,11 +2029,30 @@ async function loadDay(dateStr) {
   }
 }
 
+// Recalcula el delta de audios de ESTE día contra lo que tenía al cargarlo
+// y lo suma/resta a usageState.audioCount (persistido en Drive) — cubre
+// tanto grabar/subir (delta positivo) como borrar (delta negativo, ver
+// "¿Se recupera el cupo?" en CLAUDE.md). Solo se sincroniza para usuarios
+// free (Pro nunca cargó usageState de entrada, así que no tiene sentido
+// escribirlo) — si alguien baja de Pro a free después de haber grabado de
+// más, el contador puede arrancar corrido hasta que vuelva a guardar un
+// día con audio; limitación conocida y aceptable para un gate del lado
+// del cliente como este.
+async function syncAudioUsageAfterSave() {
+  const newAudioCount = currentDay.media.filter(m => m.type === 'audio').length;
+  const delta = newAudioCount - currentDayAudioCountAtLoad;
+  currentDayAudioCountAtLoad = newAudioCount;
+  if (delta === 0 || isPaidUser()) return;
+  usageState.audioCount = Math.max(0, usageState.audioCount + delta);
+  try { await saveUsage(usageState); } catch (e) { console.warn('No se pudo actualizar el contador de audio del plan gratis:', e); }
+}
+
 async function saveCurrentDay() {
   setStatus('', 'Guardando...');
   try {
     currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay, currentDayOriginalIds);
     currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+    await syncAudioUsageAfterSave();
     if (albumMeta && !albumMeta.coverFileId) {
       const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
       if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
@@ -2018,6 +2068,7 @@ async function saveCurrentDay() {
       // papelera lo que ya está bien. El mensaje ya viene completo, sin
       // prefijo "Error:" — es un guardado parcial, no una falla total.
       currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+      await syncAudioUsageAfterSave();
       setStatus('error', e.message);
     } else {
       setStatus('error', 'Error: ' + e.message);
@@ -2133,12 +2184,28 @@ function renderMedia() {
 }
 
 // ─── File handling ────────────────────────────────────────
+// Recorta la lista de audios a agregar al cupo gratis disponible — si
+// alcanza para todos los deja pasar tal cual (incluye el caso Pro, que
+// tiene cupo infinito); si no, deja pasar los primeros que entren y avisa
+// del resto con el paywall en vez de subirlos en silencio o bloquear todo.
+function enforceAudioFreeLimit(audioFiles) {
+  if (!audioFiles.length) return audioFiles;
+  const allowedCount = remainingFreeAudioSlots();
+  if (allowedCount >= audioFiles.length) return audioFiles;
+  const kept = audioFiles.slice(0, allowedCount);
+  const blockedCount = audioFiles.length - kept.length;
+  openSubscribeModal(kept.length
+    ? `Se agregó 1 audio — ${blockedCount} más no se subieron porque ya llegaste al cupo gratis de ${AUDIO_FREE_LIMIT} audio a la vez. Pasate a Pro para subir el resto, o borrá el que ya tenés.`
+    : `Ya tenés ${AUDIO_FREE_LIMIT} audio guardado — es el cupo del plan gratis. Borralo si querés subir uno distinto, o pasate a Pro para tener varios a la vez.`);
+  return kept;
+}
+
 async function processFiles(files) {
   const allowed = ['image/', 'audio/', 'video/'];
   const valid = Array.from(files).filter(f => allowed.some(t => f.type.startsWith(t)));
   if (!valid.length) return;
   const imgVid = valid.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
-  const audio  = valid.filter(f => f.type.startsWith('audio/'));
+  const audio  = enforceAudioFreeLimit(valid.filter(f => f.type.startsWith('audio/')));
   if (imgVid.length > 0) {
     const grouped = await groupFilesByDate(imgVid);
     const otherDays = Object.keys(grouped.dated).filter(d => d !== currentDate);
@@ -2148,7 +2215,7 @@ async function processFiles(files) {
       if (confirm(msg)) { await saveFilesToCorrectDays(grouped, audio); return; }
     }
   }
-  addFilesToCurrentDay(valid);
+  addFilesToCurrentDay([...imgVid, ...audio]);
 }
 
 async function saveFilesToCorrectDays(grouped, audioFiles) {
@@ -2922,6 +2989,10 @@ function initRecorder() {
   btnRec.addEventListener('click', () => { if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(); else startRecording(); });
 }
 async function startRecording() {
+  if (remainingFreeAudioSlots() <= 0) {
+    openSubscribeModal(`Ya tenés ${AUDIO_FREE_LIMIT} audio guardado — es el cupo del plan gratis. Borralo si querés grabar uno distinto, o pasate a Pro para tener varios a la vez.`);
+    return;
+  }
   try { recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(e) { document.getElementById('recorder-sub').textContent = 'No se pudo acceder al micrófono'; return; }
   recorderChunks = []; mediaRecorder = new MediaRecorder(recorderStream);
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recorderChunks.push(e.data); };
