@@ -8,7 +8,23 @@
 let sessionToken = localStorage.getItem('td_session') || null;
 let subState = { plan: 'free', status: 'none' };
 
+// ─── Debug: forzar plan localmente, sin tocar Mercado Pago ─────────
+// Con un solo usuario de test (el propio dev) no hay forma de probar el
+// gating free/pro pagándose a sí mismo o creando una segunda cuenta de
+// Google. Este override vive solo en localStorage de este navegador —
+// nunca pisa subState real ni habla con /api/**, así que no afecta la
+// suscripción real ni lo que ve cualquier otro usuario/dispositivo.
+function getDebugPlanOverride() {
+  return localStorage.getItem('td_debug_plan'); // 'free' | 'pro' | null (sin override)
+}
+function setDebugPlanOverride(value) {
+  if (value) localStorage.setItem('td_debug_plan', value);
+  else localStorage.removeItem('td_debug_plan');
+}
+
 function isPaidUser() {
+  const override = getDebugPlanOverride();
+  if (override) return override === 'pro';
   return subState.status === 'authorized';
 }
 
