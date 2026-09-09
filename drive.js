@@ -331,25 +331,24 @@ async function computeRealAudioCount() {
   return total;
 }
 
-// `reconciled: true` marca que audioCount ya refleja el conteo real de la
-// cuenta (no solo lo tocado desde que existe este archivo) — sin esto, el
-// audio grabado antes de v1.53, o mientras la cuenta era Pro (antes del
-// fix que sincroniza siempre), quedaría afuera del conteo para siempre.
-// Se escanea una única vez: la primera vez que no está reconciled, y de
-// ahí en más solo se lee el contador cacheado.
+// Lectura simple — un único GET, nunca escanea. `reconciled` viene tal
+// cual está guardado (false si el archivo no existe todavía, o si nunca
+// se terminó de reconciliar). La reconciliación en sí (el escaneo caro de
+// computeRealAudioCount()) vive aparte, en app.html → maybeReconcileAudioUsage(),
+// para que entrar a un álbum nunca quede bloqueado esperándola — ver
+// CLAUDE.md → "Gate de audio" (bug real de v1.54: el escaneo bloqueante
+// acá adentro hacía que entrar/salir de un álbum varias veces seguidas
+// disparara escaneos completos de la cuenta en paralelo).
 async function loadUsage() {
   if (!isDriveConnected()) return { version: 1, audioCount: 0, reconciled: false };
   const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
-  let data = null;
   if (fileId) {
-    try { data = await readJsonFile(fileId); } catch {}
+    try {
+      const data = await readJsonFile(fileId);
+      return { version: 1, audioCount: data.audioCount || 0, reconciled: !!data.reconciled };
+    } catch {}
   }
-  if (data && data.reconciled) return { version: 1, audioCount: data.audioCount || 0, reconciled: true };
-
-  const audioCount = await computeRealAudioCount();
-  const reconciledUsage = { version: 1, audioCount, reconciled: true };
-  try { await saveUsage(reconciledUsage); } catch {}
-  return reconciledUsage;
+  return { version: 1, audioCount: 0, reconciled: false };
 }
 
 async function saveUsage(usage) {

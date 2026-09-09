@@ -900,7 +900,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.54 ·
+      Versión 1.55 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -939,7 +939,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.54</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.55</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1917,6 +1917,30 @@ function audioLimitMessage() {
   return `Tenés ${total} audio${total === 1 ? '' : 's'} guardado${total === 1 ? '' : 's'} — el plan gratis permite hasta ${AUDIO_FREE_LIMIT}. Borrá alguno para agregar otro, o pasate a Pro para audios ilimitados.`;
 }
 
+// Reconciliación real del contador contra la cuenta (computeRealAudioCount(),
+// en drive.js — recorre todos los álbumes y días, cara de correr). Se
+// dispara en paralelo desde bootstrapDiaryPage() SIN esperarla, y el flag
+// _audioReconcileInFlight evita que entrar/salir de un álbum varias veces
+// seguidas dispare varios escaneos completos al mismo tiempo (el bug real
+// de v1.54: el escaneo corría adentro de loadUsage(), bloqueando la
+// navegación, y cada reintento por una escritura que no llegaba a tiempo
+// sumaba otro escaneo entero en paralelo — con conexión inestable eso
+// saturaba Drive y el loader del día quedaba pegado).
+let _audioReconcileInFlight = false;
+async function maybeReconcileAudioUsage() {
+  if (usageState.reconciled || _audioReconcileInFlight) return;
+  _audioReconcileInFlight = true;
+  try {
+    const audioCount = await computeRealAudioCount();
+    usageState = { version: 1, audioCount, reconciled: true };
+    await saveUsage(usageState);
+  } catch (e) {
+    console.warn('No se pudo reconciliar el contador de audio del plan gratis:', e);
+  } finally {
+    _audioReconcileInFlight = false;
+  }
+}
+
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
   allDates = []; calDayData = {}; bookPages = []; bookDrawer = []; bookPhotoByFileId = new Map();
@@ -1930,12 +1954,15 @@ async function bootstrapDiaryPage() {
     } else {
       albumCanEdit = await canEditFolder(albumFolderId);
     }
-    // Se carga (y, la primera vez, se reconcilia con el conteo real — ver
-    // loadUsage() en drive.js) sin importar el plan: un usuario Pro no
+    // Lectura rápida (un GET), sin importar el plan: un usuario Pro no
     // consulta el gate, pero igual necesitamos que el contador esté al día
     // para el día en que baje a Free y sí importe. Solo se salta en álbumes
-    // de solo lectura, donde ni el drop-zone ni el grabador aparecen.
+    // de solo lectura, donde ni el drop-zone ni el grabador aparecen. La
+    // reconciliación contra el conteo real (cara, escanea toda la cuenta)
+    // se dispara aparte, en paralelo, sin bloquear la navegación — ver
+    // maybeReconcileAudioUsage().
     usageState = albumCanEdit ? await loadUsage() : { version: 1, audioCount: 0, reconciled: false };
+    if (albumCanEdit) maybeReconcileAudioUsage();
     currentDate = await resolveStartDate();
     renderDiaryPage();
     await loadDay(currentDate);
