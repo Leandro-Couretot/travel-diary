@@ -282,16 +282,7 @@ audio { width: 100%; height: 32px; }
 .book-pages::-webkit-scrollbar { display: none; }
 .book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: flex; flex-direction: column; background: white; position: relative; overflow: hidden; }
 .book-photo-area { flex: 1; overflow: hidden; position: relative; }
-.book-layout-1 { display: grid; grid-template-rows: 1fr; height: 100%; }
-.book-layout-2h { display: grid; grid-template-rows: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-2v { display: grid; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-3a { display: grid; grid-template-rows: 1.5fr 1fr; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-3a .bp:first-child { grid-column: 1 / -1; }
-.book-layout-3b { display: grid; grid-template-rows: 1fr 1.5fr; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-3b .bp:last-child { grid-column: 1 / -1; }
-.book-layout-4a { display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-4b { display: grid; grid-template-columns: 1.5fr 1fr; grid-template-rows: 1fr 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-4b .bp:first-child { grid-row: 1 / -1; }
+.book-layout-grid { display: grid; gap: 2px; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
 .bp.dragging { opacity: 0.35; }
@@ -900,7 +891,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.55 ·
+      Versión 1.56 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -939,7 +930,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.55</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.56</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -2453,31 +2444,81 @@ async function renderBook() {
   updateBookCounter();
 }
 
-// Layouts CSS válidos por cantidad de fotos — usado tanto para elegir
-// el automático (pickLayout) como para validar uno forzado guardado en
-// una página (si la cantidad de fotos cambió y ya no corresponde, se
-// vuelve a automático en vez de quedar inconsistente).
-const BOOK_LAYOUTS_BY_COUNT = {
-  1: ['book-layout-1'],
-  2: ['book-layout-2h', 'book-layout-2v'],
-  3: ['book-layout-3a', 'book-layout-3b'],
-  4: ['book-layout-4a', 'book-layout-4b'],
+// Única fuente de verdad de la geometría de cada layout del fotolibro —
+// tanto la pantalla (acá) como, más adelante, el export a PDF van a leer
+// de este mismo registro en vez de tener la geometría duplicada a mano
+// en dos lugares que puedan desincronizarse. Cada entrada describe una
+// grilla CSS como datos: `rows`/`cols` son los mismos números que un
+// `Nfr` (los valores relativos de `grid-template-rows/columns`), y cada
+// `cells[i]` ubica la foto i-ésima con `row`/`col` (0-indexado) y un
+// `rowSpan`/`colSpan` opcional (default 1) — equivalente exacto a lo que
+// hoy logran las reglas `.book-layout-3a .bp:first-child { grid-column:
+// 1 / -1 }`, etc., pero como datos en vez de CSS por selector.
+const BOOK_LAYOUTS = {
+  'book-layout-1': { label: null, rows: [1], cols: [1], cells: [
+    { row: 0, col: 0 },
+  ] },
+  'book-layout-2h': { label: 'Apiladas', rows: [1, 1], cols: [1], cells: [
+    { row: 0, col: 0 }, { row: 1, col: 0 },
+  ] },
+  'book-layout-2v': { label: 'Lado a lado', rows: [1], cols: [1, 1], cells: [
+    { row: 0, col: 0 }, { row: 0, col: 1 },
+  ] },
+  'book-layout-3a': { label: '1 grande arriba', rows: [1.5, 1], cols: [1, 1], cells: [
+    { row: 0, col: 0, colSpan: 2 }, { row: 1, col: 0 }, { row: 1, col: 1 },
+  ] },
+  'book-layout-3b': { label: '1 grande abajo', rows: [1, 1.5], cols: [1, 1], cells: [
+    { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 1, col: 0, colSpan: 2 },
+  ] },
+  'book-layout-4a': { label: 'Grilla pareja', rows: [1, 1], cols: [1, 1], cells: [
+    { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 1, col: 0 }, { row: 1, col: 1 },
+  ] },
+  'book-layout-4b': { label: '1 grande al costado', rows: [1, 1, 1], cols: [1.5, 1], cells: [
+    { row: 0, col: 0, rowSpan: 3 }, { row: 0, col: 1 }, { row: 1, col: 1 }, { row: 2, col: 1 },
+  ] },
 };
+
+function bookLayoutDef(layoutClass) {
+  return BOOK_LAYOUTS[layoutClass] || BOOK_LAYOUTS['book-layout-1'];
+}
+
+// Aplica la geometría de `layoutClass` sobre `gridEl` (que ya tiene la
+// clase genérica `.book-layout-grid`, solo `display:grid; gap:2px` fijo
+// en CSS) y ubica cada elemento de `cellEls` en su celda — ambos arrays
+// deben tener el mismo largo y orden que `def.cells`.
+function applyBookLayoutGrid(gridEl, layoutClass, cellEls) {
+  const def = bookLayoutDef(layoutClass);
+  gridEl.style.gridTemplateRows = def.rows.map(r => `${r}fr`).join(' ');
+  gridEl.style.gridTemplateColumns = def.cols.map(c => `${c}fr`).join(' ');
+  cellEls.forEach((cellEl, i) => {
+    const cell = def.cells[i];
+    if (!cell || !cellEl) return;
+    cellEl.style.gridRow = `${cell.row + 1} / span ${cell.rowSpan || 1}`;
+    cellEl.style.gridColumn = `${cell.col + 1} / span ${cell.colSpan || 1}`;
+  });
+}
+
+// Layouts válidos por cantidad de fotos — derivado del registro de
+// arriba agrupando por cuántas celdas tiene cada uno, usado tanto para
+// elegir el automático (pickLayout) como para validar uno forzado
+// guardado en una página (si la cantidad de fotos cambió y ya no
+// corresponde, se vuelve a automático en vez de quedar inconsistente).
+const BOOK_LAYOUTS_BY_COUNT = {};
+for (const [key, def] of Object.entries(BOOK_LAYOUTS)) {
+  const n = def.cells.length;
+  (BOOK_LAYOUTS_BY_COUNT[n] || (BOOK_LAYOUTS_BY_COUNT[n] = [])).push(key);
+}
 function isValidBookLayout(layout, count) {
   return (BOOK_LAYOUTS_BY_COUNT[count] || []).includes(layout);
 }
 
-// Nombres en criollo de cada layout, para el selector — ver
-// BOOK_LAYOUTS_BY_COUNT para qué combinación de fotos corresponde a
-// cada uno.
-const BOOK_LAYOUT_LABELS = {
-  'book-layout-2h': 'Apiladas',
-  'book-layout-2v': 'Lado a lado',
-  'book-layout-3a': '1 grande arriba',
-  'book-layout-3b': '1 grande abajo',
-  'book-layout-4a': 'Grilla pareja',
-  'book-layout-4b': '1 grande al costado',
-};
+// Nombres en criollo de cada layout, para el selector — derivado del
+// registro de arriba (el de 1 foto no tiene selector, `label` queda
+// `null` y nunca se consulta acá).
+const BOOK_LAYOUT_LABELS = {};
+for (const [key, def] of Object.entries(BOOK_LAYOUTS)) {
+  if (def.label) BOOK_LAYOUT_LABELS[key] = def.label;
+}
 
 // Alterna entre la vista inmersiva (una página a pantalla completa) y
 // una grilla de páginas en miniatura + el drawer de fotos sin ubicar,
@@ -2531,17 +2572,18 @@ function buildBookReorderTile(page, idx) {
   const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
   const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
   const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
-  const grid = document.createElement('div'); grid.className = layoutClass; grid.style.height = '100%';
+  const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   wrap.appendChild(grid);
-  page.images.forEach(id => {
-    const photo = bookPhotoByFileId.get(id); if (!photo) return;
+  const cellEls = imgs.map(photo => {
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
     cell.appendChild(imgEl);
     const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
     cell.appendChild(handle);
     grid.appendChild(cell);
+    return cell;
   });
+  applyBookLayoutGrid(grid, layoutClass, cellEls);
   tile.appendChild(wrap);
   return tile;
 }
@@ -2573,8 +2615,8 @@ function buildBookPage(page, idx) {
   const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
   if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; el.appendChild(photoArea); return el; }
   const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
-  const grid = document.createElement('div'); grid.className = layoutClass; grid.style.height = '100%';
-  imgs.forEach(photo => {
+  const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
+  const cellEls = imgs.map(photo => {
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
     cell.appendChild(imgEl);
@@ -2583,7 +2625,9 @@ function buildBookPage(page, idx) {
     cell.appendChild(chip);
     if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
     grid.appendChild(cell);
+    return cell;
   });
+  applyBookLayoutGrid(grid, layoutClass, cellEls);
   photoArea.appendChild(grid);
   el.appendChild(photoArea);
   return el;
@@ -2639,8 +2683,10 @@ function buildBookLayoutOption(label, previewLayoutClass, count, active, onClick
   btn.type = 'button';
   btn.className = 'book-layout-option' + (active ? ' active' : '');
   const preview = document.createElement('div');
-  preview.className = `book-layout-preview ${previewLayoutClass}`;
-  for (let i = 0; i < count; i++) preview.appendChild(document.createElement('div')).className = 'bp';
+  preview.className = 'book-layout-preview book-layout-grid';
+  const cellEls = [];
+  for (let i = 0; i < count; i++) { const cell = document.createElement('div'); cell.className = 'bp'; preview.appendChild(cell); cellEls.push(cell); }
+  applyBookLayoutGrid(preview, previewLayoutClass, cellEls);
   btn.appendChild(preview);
   const labelEl = document.createElement('div'); labelEl.className = 'book-layout-option-label'; labelEl.textContent = label;
   btn.appendChild(labelEl);
