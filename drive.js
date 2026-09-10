@@ -359,20 +359,38 @@ async function computeRealAudioCount() {
 // CLAUDE.md → "Gate de audio" (bug real de v1.54: el escaneo bloqueante
 // acá adentro hacía que entrar/salir de un álbum varias veces seguidas
 // disparara escaneos completos de la cuenta en paralelo).
+// bookExportMonth/bookExportCount (v1.59): cuántos PDF del fotolibro
+// exportó el usuario free en el mes calendario `bookExportMonth`
+// (formato "YYYY-MM") — el gate en app.html compara contra el mes
+// actual y trata cualquier mes viejo como "0 usados", así el cupo se
+// resetea solo el día 1 sin que haga falta ningún job aparte. `null`/`0`
+// por default para usage.json de antes de este campo.
 async function loadUsage() {
-  if (!isDriveConnected()) return { version: 1, audioCount: 0, reconciled: false };
+  if (!isDriveConnected()) return { version: 1, audioCount: 0, reconciled: false, bookExportMonth: null, bookExportCount: 0 };
   const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
   if (fileId) {
     try {
       const data = await readJsonFile(fileId);
-      return { version: 1, audioCount: data.audioCount || 0, reconciled: !!data.reconciled };
+      return {
+        version: 1,
+        audioCount: data.audioCount || 0,
+        reconciled: !!data.reconciled,
+        bookExportMonth: data.bookExportMonth || null,
+        bookExportCount: data.bookExportCount || 0,
+      };
     } catch {}
   }
-  return { version: 1, audioCount: 0, reconciled: false };
+  return { version: 1, audioCount: 0, reconciled: false, bookExportMonth: null, bookExportCount: 0 };
 }
 
 async function saveUsage(usage) {
-  await writeJsonFile({ version: 1, audioCount: Math.max(0, usage.audioCount || 0), reconciled: !!usage.reconciled }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
+  await writeJsonFile({
+    version: 1,
+    audioCount: Math.max(0, usage.audioCount || 0),
+    reconciled: !!usage.reconciled,
+    bookExportMonth: usage.bookExportMonth || null,
+    bookExportCount: Math.max(0, usage.bookExportCount || 0),
+  }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
 }
 
 // ─── ALBUMS ──────────────────────────────────────────────

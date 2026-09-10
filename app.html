@@ -847,6 +847,8 @@ audio { width: 100%; height: 32px; }
       <div class="plan-compare">
         <div class="plan-compare-row plan-compare-head"><div></div><div>Free</div><div>Pro</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Álbumes</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitados</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Audio</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitado</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
       </div>
       <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar viajes viejos cada vez que sumás uno nuevo.</p>
       <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
@@ -918,6 +920,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Tamaño</strong> elige el tamaño de hoja real — la página adopta esa proporción, igual a como se va a imprimir.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Reordenar</strong> muestra varias páginas a la vez para mover fotos entre ellas o al "sin ubicar".</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño.</span></div>
+      <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
     <div class="help-section" id="debug-plan-section">
       <div class="help-section-title">🧪 Debug: forzar plan</div>
@@ -930,7 +933,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.58 ·
+      Versión 1.59 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -969,7 +972,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.58</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.59</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1948,6 +1951,31 @@ function audioLimitMessage() {
   return `Tenés ${total} audio${total === 1 ? '' : 's'} guardado${total === 1 ? '' : 's'} — el plan gratis permite hasta ${AUDIO_FREE_LIMIT}. Borrá alguno para agregar otro, o pasate a Pro para audios ilimitados.`;
 }
 
+// Gate del fotolibro (v1.59, ver "Suscripciones" en CLAUDE.md): 1 PDF
+// exportado gratis por mes calendario, ilimitado Pro. usageState.
+// bookExportMonth/bookExportCount trackean el mes ("YYYY-MM") y cuántos
+// se exportaron en él — cualquier mes que no sea el actual cuenta como
+// "0 usados todavía", así el cupo se resetea solo el día 1 sin ningún
+// job aparte, mismo espíritu que el reset de AUDIO_FREE_LIMIT al borrar.
+const BOOK_EXPORT_FREE_LIMIT = 1;
+function currentYearMonth() { return new Date().toISOString().slice(0, 7); }
+function bookExportsUsedThisMonth() {
+  return usageState.bookExportMonth === currentYearMonth() ? (usageState.bookExportCount || 0) : 0;
+}
+function remainingFreeBookExports() {
+  if (isPaidUser()) return Infinity;
+  return Math.max(0, BOOK_EXPORT_FREE_LIMIT - bookExportsUsedThisMonth());
+}
+// Se llama recién después de un doc.save() exitoso — nunca antes, un
+// intento que el usuario cancela o que falla no debería gastar el cupo.
+// No-op para Pro (mismo criterio que syncAudioUsageAfterSave(): un plan
+// pago nunca escribe este contador, no tiene sentido).
+async function recordBookExportUsage() {
+  if (isPaidUser()) return;
+  usageState = { ...usageState, bookExportMonth: currentYearMonth(), bookExportCount: bookExportsUsedThisMonth() + 1 };
+  try { await saveUsage(usageState); } catch (e) { console.warn('No se pudo guardar el uso de exportación del fotolibro:', e); }
+}
+
 // Reconciliación real del contador contra la cuenta (computeRealAudioCount(),
 // en drive.js — recorre todos los álbumes y días, cara de correr). Se
 // dispara en paralelo desde bootstrapDiaryPage() SIN esperarla, y el flag
@@ -1985,14 +2013,19 @@ async function bootstrapDiaryPage() {
     } else {
       albumCanEdit = await canEditFolder(albumFolderId);
     }
-    // Lectura rápida (un GET), sin importar el plan: un usuario Pro no
-    // consulta el gate, pero igual necesitamos que el contador esté al día
-    // para el día en que baje a Free y sí importe. Solo se salta en álbumes
-    // de solo lectura, donde ni el drop-zone ni el grabador aparecen. La
-    // reconciliación contra el conteo real (cara, escanea toda la cuenta)
-    // se dispara aparte, en paralelo, sin bloquear la navegación — ver
-    // maybeReconcileAudioUsage().
-    usageState = albumCanEdit ? await loadUsage() : { version: 1, audioCount: 0, reconciled: false };
+    // Lectura rápida (un GET), sin importar el plan ni si el álbum es de
+    // solo lectura: un usuario Pro no consulta el gate, pero igual
+    // necesitamos que el contador esté al día para el día en que baje a
+    // Free y sí importe. Antes se salteaba en álbumes de solo lectura
+    // (ni el drop-zone ni el grabador aparecen ahí) — pero el botón
+    // "Exportar" del fotolibro (v1.58) SÍ es visible en álbumes
+    // compartidos de solo lectura, y su gate (v1.59) también necesita
+    // el usageState real de la cuenta ahí, así que ya no tiene sentido
+    // saltear esta lectura para ningún caso. La reconciliación contra el
+    // conteo real de audio (cara, escanea toda la cuenta) sigue
+    // disparándose aparte, en paralelo, sin bloquear la navegación — ver
+    // maybeReconcileAudioUsage() — y esa sí sigue acotada a álbumes editables.
+    usageState = await loadUsage();
     if (albumCanEdit) maybeReconcileAudioUsage();
     currentDate = await resolveStartDate();
     renderDiaryPage();
@@ -3061,6 +3094,10 @@ async function generateBookPdf(bleedMm, onProgress) {
 let _exportLowResConfirmed = false;
 
 function openBookExportModal() {
+  if (remainingFreeBookExports() <= 0) {
+    openSubscribeModal('Ya usaste tu PDF gratis de este mes — pasate a Pro para exportar el fotolibro sin límite.');
+    return;
+  }
   _exportLowResConfirmed = false;
   document.getElementById('export-page-size-label').textContent = `${bookPageSize.w} × ${bookPageSize.h} cm`;
   document.getElementById('export-bleed').value = 3;
@@ -3112,6 +3149,7 @@ async function startBookExport() {
     const doc = await generateBookPdf(bleedMm, (page, total) => { progressEl.textContent = `Generando PDF... página ${page}/${total}`; });
     const albumName = (document.getElementById('header-subtitle').textContent || 'fotolibro').trim();
     doc.save(`Fotolibro - ${albumName}.pdf`);
+    await recordBookExportUsage();
     closeBookExportModal();
   } catch (e) {
     progressEl.style.display = 'none';
