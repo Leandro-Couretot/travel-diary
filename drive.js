@@ -552,23 +552,41 @@ async function getExistingNamesForDate(albumFolderId, dateStr) {
 // Migra sola desde el v1 (array plano `order`, de versiones
 // anteriores): se agrupa de a 4 en el mismo orden que ya se veía,
 // drawer vacío — no se pierde ni se reordena nada existente.
-async function loadBookLayout(albumFolderId) {
-  const fileId = await findFileInFolderMigrating(BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId);
-  if (!fileId) return null;
-  const data = await readJsonFile(fileId);
-  if (Array.isArray(data?.pages)) {
-    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [] };
-  }
-  if (Array.isArray(data?.order)) {
-    const pages = [];
-    for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
-    return { pages, drawer: [], _migrated: true };
+// `pageSize` (agregado en la migración a proporción real de página, ver
+// CLAUDE.md → "Fotolibro → PDF") describe el tamaño de hoja elegido para
+// ESTE álbum como `{ id, w, h }` — `w`/`h` en cm son la fuente de verdad
+// (de dónde sale el aspect-ratio real de la página en pantalla y, más
+// adelante, del PDF), `id` es solo para que la UI sepa qué opción marcar
+// como activa. Se guardan los cm concretos (no solo el id) para que
+// cambiar los valores del registro `BOOK_PAGE_SIZES` en el futuro nunca
+// altere retroactivamente la proporción de un libro ya armado. Si el
+// archivo no tiene el campo (libros de antes de esta migración), se
+// devuelve `null` — app.html aplica su propio default en ese caso.
+function normalizeBookPageSize(raw) {
+  if (raw && typeof raw.w === 'number' && typeof raw.h === 'number' && raw.w > 0 && raw.h > 0) {
+    return { id: raw.id || 'custom', w: raw.w, h: raw.h };
   }
   return null;
 }
 
-async function saveBookLayout(albumFolderId, { pages, drawer }) {
-  await writeJsonFileMigrating({ version: 2, pages, drawer }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
+async function loadBookLayout(albumFolderId) {
+  const fileId = await findFileInFolderMigrating(BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId);
+  if (!fileId) return null;
+  const data = await readJsonFile(fileId);
+  const pageSize = normalizeBookPageSize(data?.pageSize);
+  if (Array.isArray(data?.pages)) {
+    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [], pageSize };
+  }
+  if (Array.isArray(data?.order)) {
+    const pages = [];
+    for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
+    return { pages, drawer: [], pageSize, _migrated: true };
+  }
+  return null;
+}
+
+async function saveBookLayout(albumFolderId, { pages, drawer, pageSize }) {
+  await writeJsonFileMigrating({ version: 2, pages, drawer, pageSize: normalizeBookPageSize(pageSize) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────

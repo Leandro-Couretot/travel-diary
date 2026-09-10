@@ -280,7 +280,8 @@ audio { width: 100%; height: 32px; }
 .book-page-counter { position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%); font-size: 0.72rem; color: rgba(0,0,0,0.35); letter-spacing: 0.06em; background: rgba(255,255,255,0.7); padding: 0.2rem 0.6rem; border-radius: 10px; backdrop-filter: blur(4px); z-index: 10; white-space: nowrap; }
 .book-pages { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .book-pages::-webkit-scrollbar { display: none; }
-.book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: flex; flex-direction: column; background: white; position: relative; overflow: hidden; }
+.book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: grid; place-items: center; position: relative; overflow: hidden; padding: 1.1rem; box-sizing: border-box; }
+.book-page-card { position: relative; max-width: 100%; max-height: 100%; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; overflow: hidden; }
 .book-photo-area { flex: 1; overflow: hidden; position: relative; }
 .book-layout-grid { display: grid; gap: 2px; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
@@ -319,6 +320,8 @@ audio { width: 100%; height: 32px; }
 .book-layout-preview .bp { background: var(--ink-faint); }
 .book-layout-option-label { font-size: 0.7rem; color: var(--ink-muted); text-align: center; line-height: 1.25; }
 .book-layout-option.active .book-layout-option-label { color: var(--ink); }
+.book-page-size-preview { width: 48px; aspect-ratio: 1; background: var(--ink-faint); border-radius: 3px; }
+.book-page-size-custom { display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .book-drawer { flex: 0 0 auto; max-height: 34%; overflow-y: auto; border-top: 1px solid rgba(0,0,0,0.08); padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom)); background: rgba(255,255,255,0.55); }
 .book-drawer-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin-bottom: 0.5rem; }
 .book-drawer-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 64px; }
@@ -786,6 +789,23 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-book-page-size">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Tamaño de hoja</div><button class="modal-close" onclick="closeBookPageSizeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="book-layout-options" id="book-page-size-options"></div>
+      <div class="book-page-size-custom" id="book-page-size-custom">
+        <div class="date-range">
+          <div class="form-field"><label class="form-label">Ancho (cm)</label><input class="form-input" id="book-page-size-custom-w" type="number" min="1" step="0.1"></div>
+          <div class="form-field"><label class="form-label">Alto (cm)</label><input class="form-input" id="book-page-size-custom-h" type="number" min="1" step="0.1"></div>
+        </div>
+        <button class="btn btn-primary" onclick="applyCustomBookPageSize()">Usar este tamaño</button>
+      </div>
+      <div style="font-size:0.78rem;color:var(--ink-faint);margin-top:0.75rem;line-height:1.5;">Define la proporción de la página en la app — más adelante, también la del PDF que exportes.</div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-share-album">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
@@ -891,7 +911,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.56 ·
+      Versión 1.57 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -930,7 +950,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.56</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.57</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1881,6 +1901,7 @@ let bookPages     = [];          // [{ images: [driveFileId,...], layout: string
 let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
 let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
 let bookReorderMode = false;     // true = grilla de páginas en miniatura + drawer, para reordenar
+let bookPageSize  = null;        // { id, w, h } — tamaño de hoja de ESTE álbum, seteado en renderBook() (ver BOOK_PAGE_SIZES)
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
@@ -2408,6 +2429,7 @@ async function renderBook() {
   const currentIds = allPhotos.map(p => p.driveFileId);
   let saved = null;
   try { saved = await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
+  bookPageSize = (saved && saved.pageSize) || defaultBookPageSize();
 
   if (!saved) {
     bookPages = chunkArray(currentIds, 4).map(images => ({ images, layout: null }));
@@ -2433,15 +2455,36 @@ async function renderBook() {
     bookPages = cleanedPages;
     bookDrawer = [...cleanedDrawer, ...added];
     if (albumCanEdit && changed) {
-      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
+      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
     }
   }
 
   bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
   renderBookPages();
   document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
+}
+
+// Tamaños de hoja habituales para fotolibro impreso (ver el research
+// sobre imprentas en CLAUDE.md → "Fotolibro → PDF"). El álbum guarda su
+// elección en book.json (`pageSize`, ver drive.js) — la página en
+// pantalla adopta esta proporción real (Paso 2 de la exportación
+// imprimible) y, más adelante, el export a PDF va a dibujar a este
+// tamaño exacto en cm. "Personalizado" no vive acá — se arma con los cm
+// que tipee el usuario en el modal (ver applyCustomBookPageSize()).
+const BOOK_PAGE_SIZES = {
+  'square-20': { label: '20 × 20 cm', w: 20, h: 20 },
+  'square-30': { label: '30 × 30 cm', w: 30, h: 30 },
+  'rect-20x30': { label: '20 × 30 cm (vertical)', w: 20, h: 30 },
+  'rect-30x20': { label: '30 × 20 cm (horizontal)', w: 30, h: 20 },
+  'a4-vertical': { label: 'A4 vertical', w: 21, h: 29.7 },
+  'a4-horizontal': { label: 'A4 horizontal', w: 29.7, h: 21 },
+};
+const DEFAULT_BOOK_PAGE_SIZE_ID = 'square-20';
+function defaultBookPageSize() {
+  const def = BOOK_PAGE_SIZES[DEFAULT_BOOK_PAGE_SIZE_ID];
+  return { id: DEFAULT_BOOK_PAGE_SIZE_ID, w: def.w, h: def.h };
 }
 
 // Única fuente de verdad de la geometría de cada layout del fotolibro —
@@ -2570,6 +2613,7 @@ function buildBookReorderTile(page, idx) {
     tile.appendChild(layoutBtn);
   }
   const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
+  wrap.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
   const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
   const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
@@ -2604,16 +2648,55 @@ function renderBookPages() {
   if (!container) return;
   container.innerHTML = '';
   bookPages.forEach((page, idx) => container.appendChild(buildBookPage(page, idx)));
+  fitAllBookPageCards(container);
   if (albumCanEdit) { initBookDragReorder(container); initBookTouchReorder(container); }
   applyBookTextVisibility();
   updateBookCounter();
 }
 
+// La tarjeta de página (.book-page-card) necesita un ancho/alto en PX
+// concretos para que su proporción real (bookPageSize) quede "adentro"
+// del espacio disponible sin recortarse ni deformarse — `aspect-ratio`
+// solo, sin al menos una dimensión definida, no alcanza (un div vacío no
+// tiene tamaño propio del que derivar la otra dimensión, a diferencia de
+// una imagen con `object-fit:contain`, que sí resuelve esto solo pero
+// nunca aplica a un div genérico). Se mide UNA sola vez el espacio
+// disponible (todas las páginas comparten el mismo tamaño de `.book-page`,
+// que es fijo — 100% del carrusel) y se aplica el mismo ancho/alto a
+// todas las tarjetas. `bookPageSize` sigue siendo la fuente de verdad de
+// la PROPORCIÓN — acá solo se resuelve a qué tamaño en pantalla le toca
+// en este momento, nunca al revés.
+function fitAllBookPageCards(container) {
+  if (!bookPageSize) return;
+  const firstPage = container.querySelector('.book-page');
+  if (!firstPage) return;
+  const cs = getComputedStyle(firstPage);
+  const availW = firstPage.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+  const availH = firstPage.clientHeight - parseFloat(cs.paddingTop || 0) - parseFloat(cs.paddingBottom || 0);
+  if (!(availW > 0) || !(availH > 0)) return;
+  const scale = Math.min(availW / bookPageSize.w, availH / bookPageSize.h);
+  const cardW = Math.round(bookPageSize.w * scale);
+  const cardH = Math.round(bookPageSize.h * scale);
+  container.querySelectorAll('.book-page-card').forEach(card => { card.style.width = `${cardW}px`; card.style.height = `${cardH}px`; });
+}
+
+// Recalcula el tamaño de las tarjetas si el usuario rota el celular o
+// cambia el tamaño de la ventana mientras ya está mirando el tab Libro
+// en la vista inmersiva (`renderBook()` ya recalcula solo al re-entrar
+// al tab, esto cubre quedarse adentro).
+window.addEventListener('resize', () => {
+  const container = document.getElementById('book-pages-container');
+  if (container && container.style.display !== 'none' && container.children.length) fitAllBookPageCards(container);
+});
+
 function buildBookPage(page, idx) {
   const el = document.createElement('div'); el.className = 'book-page'; el.dataset.pageIdx = idx;
+  const card = document.createElement('div'); card.className = 'book-page-card';
+  card.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
+  el.appendChild(card);
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
   const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; el.appendChild(photoArea); return el; }
+  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; card.appendChild(photoArea); return el; }
   const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   const cellEls = imgs.map(photo => {
@@ -2629,7 +2712,7 @@ function buildBookPage(page, idx) {
   });
   applyBookLayoutGrid(grid, layoutClass, cellEls);
   photoArea.appendChild(grid);
-  el.appendChild(photoArea);
+  card.appendChild(photoArea);
   return el;
 }
 
@@ -2700,12 +2783,67 @@ function chooseBookLayout(layoutClass) {
   if (page) page.layout = layoutClass; // null = vuelve a automático
   closeBookLayoutModal();
   renderBookReorderGrid();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo guardar el layout:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el layout:', e));
 }
 
 function closeBookLayoutModal() {
   document.getElementById('modal-book-layout').classList.remove('open');
   bookLayoutModalPageIdx = null;
+}
+
+// ─── Fotolibro: tamaño de hoja real (Paso 2 de la exportación a PDF,
+// ver CLAUDE.md → "Fotolibro → PDF") ───────────────────────────────
+// El tamaño elegido queda guardado en book.json (bookPageSize, ver
+// BOOK_PAGE_SIZES) y define la proporción real de la página tanto acá
+// en pantalla (buildBookPage/buildBookReorderTile) como, más adelante,
+// del PDF exportado — de ahí que cambiarlo re-renderice la vista actual
+// y persista de una, igual que un cambio de layout.
+function openBookPageSizeModal() {
+  const container = document.getElementById('book-page-size-options');
+  container.innerHTML = '';
+  Object.entries(BOOK_PAGE_SIZES).forEach(([id, def]) => {
+    container.appendChild(buildBookPageSizeOption(id, def.label, def.w, def.h, bookPageSize.id === id));
+  });
+  container.appendChild(buildBookPageSizeOption('custom', 'Personalizado', bookPageSize.w, bookPageSize.h, bookPageSize.id === 'custom'));
+  document.getElementById('book-page-size-custom-w').value = bookPageSize.w;
+  document.getElementById('book-page-size-custom-h').value = bookPageSize.h;
+  document.getElementById('book-page-size-custom').style.display = bookPageSize.id === 'custom' ? '' : 'none';
+  document.getElementById('modal-book-page-size').classList.add('open');
+}
+
+function buildBookPageSizeOption(id, label, w, h, active) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'book-layout-option' + (active ? ' active' : '');
+  const preview = document.createElement('div');
+  preview.className = 'book-page-size-preview';
+  preview.style.aspectRatio = `${w} / ${h}`;
+  btn.appendChild(preview);
+  const labelEl = document.createElement('div'); labelEl.className = 'book-layout-option-label'; labelEl.textContent = label;
+  btn.appendChild(labelEl);
+  btn.addEventListener('click', () => {
+    if (id === 'custom') { document.getElementById('book-page-size-custom').style.display = ''; document.getElementById('book-page-size-custom-w').focus(); return; }
+    chooseBookPageSize({ id, w, h });
+  });
+  return btn;
+}
+
+function applyCustomBookPageSize() {
+  const w = parseFloat(document.getElementById('book-page-size-custom-w').value);
+  const h = parseFloat(document.getElementById('book-page-size-custom-h').value);
+  if (!(w > 0) || !(h > 0)) return;
+  chooseBookPageSize({ id: 'custom', w, h });
+}
+
+function chooseBookPageSize(sizeObj) {
+  bookPageSize = { id: sizeObj.id, w: sizeObj.w, h: sizeObj.h };
+  closeBookPageSizeModal();
+  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
+}
+
+function closeBookPageSizeModal() {
+  document.getElementById('modal-book-page-size').classList.remove('open');
 }
 
 function toggleBookText() {
@@ -2913,7 +3051,7 @@ function moveBookPhoto(srcId, target) {
     bookDrawer.push(srcId);
   }
 
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
   if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
   const newContainerEl = document.getElementById(containerId);
   const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
