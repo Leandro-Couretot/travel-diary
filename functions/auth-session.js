@@ -81,6 +81,11 @@ exports.authSession = onRequest(
         plan: data.plan,
         status: data.status,
         isPaid: data.status === 'authorized',
+        // Email ya validado arriba contra Google (verified + mismo token que
+        // usa Drive) — el frontend lo usa solo para gatear el toggle de
+        // debug de v1.52 a la cuenta del propio dev, nunca para nada de
+        // negocio real (eso sigue siendo status==='authorized').
+        email: userInfo.email,
       });
     } catch (e) {
       console.error('auth-session error:', e);
