@@ -219,6 +219,26 @@ async function fetchFileAsDataUrl(fileId) {
   return URL.createObjectURL(blob);
 }
 
+// Resolución real (px) de una foto, sin descargar el archivo — solo
+// metadata de Drive (`imageMediaMetadata`, la misma que Drive ya calculó
+// al subir la imagen). Usado por el chequeo de "¿esta foto se va a ver
+// borrosa impresa en su celda?" antes de exportar el fotolibro a PDF —
+// pedir esto para cada foto del libro es mucho más barato que descargar
+// el archivo completo solo para leer sus dimensiones. Devuelve `null`
+// (nunca tira) si la metadata no está disponible por el motivo que sea —
+// el llamador trata una foto "no chequeable" como que no amerita aviso,
+// nunca como un error que corte el resto del chequeo.
+async function getImageDimensions(fileId) {
+  try {
+    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=imageMediaMetadata(width,height)`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const meta = data.imageMediaMetadata;
+    if (meta && meta.width > 0 && meta.height > 0) return { width: meta.width, height: meta.height };
+  } catch {}
+  return null;
+}
+
 function base64ToBlob(dataUrl) {
   const [header, b64] = dataUrl.split(',');
   const mime = header.match(/:(.*?);/)[1];

@@ -273,7 +273,7 @@ audio { width: 100%; height: 32px; }
 
 /* Book tab */
 .book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; }
-.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; gap: 0.5rem; }
+.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; max-width: calc(100% - 1.5rem); }
 .book-btn { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.1); border-radius: 20px; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); transition: all 0.15s; }
 .book-btn:hover { background: white; }
 .book-btn.active { background: var(--ink); color: white; }
@@ -801,7 +801,21 @@ audio { width: 100%; height: 32px; }
         </div>
         <button class="btn btn-primary" onclick="applyCustomBookPageSize()">Usar este tamaño</button>
       </div>
-      <div style="font-size:0.78rem;color:var(--ink-faint);margin-top:0.75rem;line-height:1.5;">Define la proporción de la página en la app — más adelante, también la del PDF que exportes.</div>
+      <div style="font-size:0.78rem;color:var(--ink-faint);margin-top:0.75rem;line-height:1.5;">Define la proporción de la página en la app y del PDF que exportes.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-book-export">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Exportar a PDF</div><button class="modal-close" onclick="closeBookExportModal()">×</button></div>
+    <div class="modal-body">
+      <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;">Tamaño de hoja: <strong id="export-page-size-label"></strong></div>
+      <div class="form-field"><label class="form-label">Sangrado (mm)</label><input class="form-input" id="export-bleed" type="number" min="0" step="0.5" value="3"></div>
+      <div style="font-size:0.78rem;color:var(--ink-faint);margin-bottom:1rem;line-height:1.5;">El sangrado es el margen extra que se recorta al encuadernar — evita que quede un borde blanco si la imprenta corta unos milímetros de más. 3mm es lo habitual.</div>
+      <div id="export-warning" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;line-height:1.5;"></div>
+      <div id="export-progress" style="display:none;font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;"></div>
+      <button class="btn btn-primary" id="export-confirm-btn" onclick="startBookExport()">Exportar</button>
     </div>
   </div>
 </div>
@@ -900,6 +914,11 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
       <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
     </div>
+    <div class="help-section"><div class="help-section-title">📖 Fotolibro</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Tamaño</strong> elige el tamaño de hoja real — la página adopta esa proporción, igual a como se va a imprimir.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Reordenar</strong> muestra varias páginas a la vez para mover fotos entre ellas o al "sin ubicar".</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño.</span></div>
+    </div>
     <div class="help-section" id="debug-plan-section">
       <div class="help-section-title">🧪 Debug: forzar plan</div>
       <div class="help-item"><span>Estado actual: <strong id="debug-plan-status">Real</strong></span></div>
@@ -911,7 +930,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.57 ·
+      Versión 1.58 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -950,7 +969,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.57</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.58</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1841,7 +1860,7 @@ function compressImageFile(file) {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img; const MAX = 1200;
+        let { width, height } = img; const MAX = 2400; // subido de 1200 en el Paso 3 del fotolibro-a-PDF — a 1200px ninguna foto nueva iba a poder llegar a 300 DPI real ni en el tamaño de hoja más chico (20x20cm)
         if (width > MAX || height > MAX) { if (width > height) { height = Math.round(height * MAX / width); width = MAX; } else { width = Math.round(width * MAX / height); height = MAX; } }
         const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
@@ -2310,7 +2329,7 @@ function compressImage(file) {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img; const MAX = 1200;
+        let { width, height } = img; const MAX = 2400; // subido de 1200 en el Paso 3 del fotolibro-a-PDF — a 1200px ninguna foto nueva iba a poder llegar a 300 DPI real ni en el tamaño de hoja más chico (20x20cm)
         if (width > MAX || height > MAX) { if (width > height) { height = Math.round(height * MAX / width); width = MAX; } else { width = Math.round(width * MAX / height); height = MAX; } }
         const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
@@ -2460,7 +2479,7 @@ async function renderBook() {
   }
 
   bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
   renderBookPages();
   document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
@@ -2539,6 +2558,41 @@ function applyBookLayoutGrid(gridEl, layoutClass, cellEls) {
     cellEl.style.gridRow = `${cell.row + 1} / span ${cell.rowSpan || 1}`;
     cellEl.style.gridColumn = `${cell.col + 1} / span ${cell.colSpan || 1}`;
   });
+}
+
+// Tamaño y posición de arranque de cada track (fila o columna), en mm —
+// replica a mano el algoritmo de CSS Grid con `fr` + `gap` fijo: cada
+// track ocupa `(fr/totalFr) * espacioUtilizable`, y el espacio
+// utilizable ya descuenta todos los gaps de antemano. Es la MISMA
+// geometría que ve la pantalla (`applyBookLayoutGrid`/CSS Grid nativo) —
+// esto es lo que hace que el PDF (Paso 3) y la pantalla (Paso 1) nunca
+// puedan desincronizarse: los dos leen `BOOK_LAYOUTS`, uno vía CSS Grid
+// real y el otro recalculando el mismo algoritmo a mano porque un PDF no
+// tiene layout engine propio.
+function bookGridTrackPositions(frs, totalSpaceMm, gapMm) {
+  const totalFr = frs.reduce((a, b) => a + b, 0);
+  const usable = totalSpaceMm - gapMm * (frs.length - 1);
+  const sizes = frs.map(fr => (fr / totalFr) * usable);
+  const starts = [];
+  let acc = 0;
+  for (const size of sizes) { starts.push(acc); acc += size + gapMm; }
+  return { sizes, starts };
+}
+
+// Rectángulo (x/y/w/h, en mm) de la celda `cellIdx` del layout `def`
+// dentro de una página de `pageWmm` x `pageHmm` — misma fuente
+// (BOOK_LAYOUTS) que usa la pantalla, usada tanto por el chequeo de DPI
+// previo a exportar como por el dibujo real del PDF.
+function computeCellRectMm(pageWmm, pageHmm, def, cellIdx, gapMm) {
+  const colsT = bookGridTrackPositions(def.cols, pageWmm, gapMm);
+  const rowsT = bookGridTrackPositions(def.rows, pageHmm, gapMm);
+  const cell = def.cells[cellIdx];
+  const colSpan = cell.colSpan || 1, rowSpan = cell.rowSpan || 1;
+  const x = colsT.starts[cell.col];
+  const y = rowsT.starts[cell.row];
+  let w = 0; for (let i = 0; i < colSpan; i++) { w += colsT.sizes[cell.col + i]; if (i < colSpan - 1) w += gapMm; }
+  let h = 0; for (let i = 0; i < rowSpan; i++) { h += rowsT.sizes[cell.row + i]; if (i < rowSpan - 1) h += gapMm; }
+  return { x, y, w, h };
 }
 
 // Layouts válidos por cantidad de fotos — derivado del registro de
@@ -2856,6 +2910,216 @@ function toggleBookText() {
 // el estado del toggle sobreviva a un re-render de las páginas.
 function applyBookTextVisibility() {
   document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; });
+}
+
+// ─── Fotolibro → PDF (Paso 3 de la exportación imprimible) ─────────
+// Separación entre celdas EN LA IMPRESIÓN — deliberadamente fija y chica
+// (no derivada de los 2px de pantalla, que no tienen ningún significado
+// físico al pasar a mm de papel real).
+const EXPORT_GAP_MM = 1;
+// Piso de calidad para el aviso previo a exportar: 300 DPI es el ideal
+// citado por las imprentas (ver research en CLAUDE.md), pero es exigente
+// para fotos de celular reales — 200 DPI es el piso que se suele citar
+// como "todavía aceptable" para fotolibro visto a distancia normal. Por
+// debajo de eso, avisamos (sin bloquear nunca la exportación).
+const EXPORT_MIN_DPI = 200;
+
+// DPI real que efectivamente se imprime cuando una foto de `imgPx` (su
+// resolución nativa) se estira/recorta "cover" (igual que `.bp img {
+// object-fit:cover }` en pantalla — llena la celda entera, recortando lo
+// que sobre) dentro de una celda de `cellMm` (mm). Con cover, el eje que
+// queda MÁS ajustado es el que manda la resolución real lograda — por
+// eso es el mínimo entre los dos ejes, no un promedio.
+function effectiveDpiForCell(imgPx, cellMm) {
+  const cellWIn = cellMm.w / 25.4, cellHIn = cellMm.h / 25.4;
+  return Math.min(imgPx.width / cellWIn, imgPx.height / cellHIn);
+}
+
+// Recorre bookPages (nunca el drawer — esas fotos no forman parte del
+// libro impreso) y arma una lista plana de cada foto colocada, con todo
+// lo que hace falta para ubicarla: a qué página/celda pertenece y qué
+// layout tiene esa página. Fuente única para el chequeo de DPI y para
+// el dibujo real del PDF — así nunca pueden mirar cosas distintas.
+function collectBookExportPhotos() {
+  const out = [];
+  bookPages.forEach((page, pageIdx) => {
+    const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+    if (!imgs.length) return;
+    const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+    imgs.forEach((photo, cellIdx) => out.push({ photo, pageIdx, cellIdx, layoutClass }));
+  });
+  return out;
+}
+
+// Chequeo previo a exportar: para cada foto del libro, compara su
+// resolución real (metadata de Drive, sin descargar el archivo) contra
+// el DPI que efectivamente va a lograr en su celda al tamaño de hoja +
+// sangrado elegidos. Devuelve solo las que quedan por debajo del piso —
+// nunca bloquea nada, es un aviso (ver openBookExportModal()). Una foto
+// cuya metadata no se pudo leer (`getImageDimensions` devolvió `null`)
+// se trata como "no chequeable", nunca como sospechosa.
+async function checkBookExportResolution(pageWmm, pageHmm) {
+  const placed = collectBookExportPhotos();
+  const results = await runWithConcurrency(placed, 5, async ({ photo, pageIdx, cellIdx, layoutClass }) => {
+    const dims = await getImageDimensions(photo.driveFileId);
+    if (!dims) return null;
+    const def = bookLayoutDef(layoutClass);
+    const rect = computeCellRectMm(pageWmm, pageHmm, def, cellIdx, EXPORT_GAP_MM);
+    const dpi = effectiveDpiForCell(dims, rect);
+    return dpi < EXPORT_MIN_DPI ? { photo, pageIdx, dpi: Math.round(dpi) } : null;
+  });
+  return results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+}
+
+// jsPDF se carga solo la primera vez que hace falta (nadie que no use
+// "Exportar a PDF" tiene por qué bajarlo) — memoizado para que dos
+// exportaciones seguidas no lo carguen dos veces.
+let _jsPdfLoadPromise = null;
+function ensureJsPdfLoaded() {
+  if (window.jspdf) return Promise.resolve();
+  if (_jsPdfLoadPromise) return _jsPdfLoadPromise;
+  _jsPdfLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { _jsPdfLoadPromise = null; reject(new Error('No se pudo cargar el generador de PDF. Revisá tu conexión.')); };
+    document.head.appendChild(script);
+  });
+  return _jsPdfLoadPromise;
+}
+
+function loadImageElementFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar una foto para el PDF'));
+    img.src = url;
+  });
+}
+
+// Recorta `imgEl` a `targetAspect` (ancho/alto) centrado, igual que
+// `object-fit:cover` — que es exactamente cómo se ve `.bp img` en
+// pantalla (ver CSS) — para que el PDF nunca deforme una foto que en la
+// app se ve recortada, no estirada. Devuelve un <canvas> ya recortado a
+// su resolución nativa (no la reduce), listo para `doc.addImage()`.
+function coverCropToCanvas(imgEl, targetAspect) {
+  const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+  const srcAspect = iw / ih;
+  let sx = 0, sy = 0, sw = iw, sh = ih;
+  if (srcAspect > targetAspect) { sw = ih * targetAspect; sx = (iw - sw) / 2; }
+  else { sh = iw / targetAspect; sy = (ih - sh) / 2; }
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(sw); canvas.height = Math.round(sh);
+  canvas.getContext('2d').drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+// El exportador en sí: arma un PDF con una página por cada página del
+// libro (nunca el drawer), del tamaño de `bookPageSize` + `bleedMm` de
+// sangrado en cada borde — mismo `BOOK_LAYOUTS`/`computeCellRectMm` que
+// ve la pantalla, así el PDF es geométricamente idéntico a lo que el
+// usuario ya vio armar. `onProgress(pagina, total)` es opcional, para
+// que la UI muestre progreso mientras descarga cada foto en resolución
+// completa (nunca la miniatura de pantalla) desde Drive.
+async function generateBookPdf(bleedMm, onProgress) {
+  await ensureJsPdfLoaded();
+  const { jsPDF } = window.jspdf;
+  const pageWmm = bookPageSize.w * 10 + bleedMm * 2;
+  const pageHmm = bookPageSize.h * 10 + bleedMm * 2;
+  const pagesWithPhotos = bookPages.filter(p => p.images.some(id => bookPhotoByFileId.has(id)));
+  if (!pagesWithPhotos.length) throw new Error('El libro no tiene fotos para exportar');
+  const doc = new jsPDF({ unit: 'mm', format: [pageWmm, pageHmm], compress: true });
+  for (let i = 0; i < pagesWithPhotos.length; i++) {
+    if (i > 0) doc.addPage([pageWmm, pageHmm]);
+    if (onProgress) onProgress(i + 1, pagesWithPhotos.length);
+    const page = pagesWithPhotos[i];
+    const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+    const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+    const def = bookLayoutDef(layoutClass);
+    for (let c = 0; c < imgs.length; c++) {
+      const rect = computeCellRectMm(pageWmm, pageHmm, def, c, EXPORT_GAP_MM);
+      const blobUrl = await fetchFileAsDataUrl(imgs[c].driveFileId);
+      try {
+        const imgEl = await loadImageElementFromUrl(blobUrl);
+        const canvas = coverCropToCanvas(imgEl, rect.w / rect.h);
+        doc.addImage(canvas, 'JPEG', rect.x, rect.y, rect.w, rect.h);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+    }
+  }
+  return doc;
+}
+
+// Flujo del modal de export: primer toque en "Exportar" corre el
+// chequeo de resolución (checkBookExportResolution) — si encuentra
+// fotos por debajo del piso, avisa y cambia el botón a "Exportar de
+// todos modos" en vez de generar directamente (mismo criterio de "avisa
+// pero no bloquea, deja elegir" que ya usa el aviso de duplicados de la
+// carga masiva). Un segundo toque (o el primero, si no hubo nada que
+// avisar) genera el PDF de una.
+let _exportLowResConfirmed = false;
+
+function openBookExportModal() {
+  _exportLowResConfirmed = false;
+  document.getElementById('export-page-size-label').textContent = `${bookPageSize.w} × ${bookPageSize.h} cm`;
+  document.getElementById('export-bleed').value = 3;
+  document.getElementById('export-warning').style.display = 'none';
+  document.getElementById('export-progress').style.display = 'none';
+  const btn = document.getElementById('export-confirm-btn');
+  btn.textContent = 'Exportar'; btn.disabled = false;
+  document.getElementById('modal-book-export').classList.add('open');
+}
+
+function closeBookExportModal() {
+  document.getElementById('modal-book-export').classList.remove('open');
+}
+
+async function startBookExport() {
+  const btn = document.getElementById('export-confirm-btn');
+  const warnEl = document.getElementById('export-warning');
+  const progressEl = document.getElementById('export-progress');
+  const bleedMm = parseFloat(document.getElementById('export-bleed').value);
+  if (!(bleedMm >= 0)) {
+    warnEl.style.display = ''; warnEl.textContent = 'El sangrado tiene que ser un número (podés poner 0 si no querés sangrado).';
+    return;
+  }
+
+  if (!_exportLowResConfirmed) {
+    btn.disabled = true;
+    warnEl.style.display = 'none';
+    progressEl.style.display = ''; progressEl.textContent = 'Comprobando la calidad de las fotos...';
+    const pageWmm = bookPageSize.w * 10 + bleedMm * 2;
+    const pageHmm = bookPageSize.h * 10 + bleedMm * 2;
+    let lowRes = [];
+    try { lowRes = await checkBookExportResolution(pageWmm, pageHmm); } catch (e) { console.warn('No se pudo completar el chequeo de resolución, se sigue igual:', e); }
+    progressEl.style.display = 'none';
+    btn.disabled = false;
+    if (lowRes.length) {
+      const n = lowRes.length;
+      warnEl.style.display = '';
+      warnEl.textContent = `${n} foto${n > 1 ? 's' : ''} se ${n > 1 ? 'van' : 'va'} a ver borrosa${n > 1 ? 's' : ''} impresa${n > 1 ? 's' : ''} a este tamaño (menos de ${EXPORT_MIN_DPI} DPI). Podés exportar igual si no te importa.`;
+      _exportLowResConfirmed = true;
+      btn.textContent = 'Exportar de todos modos';
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  warnEl.style.display = 'none';
+  progressEl.style.display = ''; progressEl.textContent = 'Generando PDF...';
+  try {
+    const doc = await generateBookPdf(bleedMm, (page, total) => { progressEl.textContent = `Generando PDF... página ${page}/${total}`; });
+    const albumName = (document.getElementById('header-subtitle').textContent || 'fotolibro').trim();
+    doc.save(`Fotolibro - ${albumName}.pdf`);
+    closeBookExportModal();
+  } catch (e) {
+    progressEl.style.display = 'none';
+    warnEl.style.display = ''; warnEl.textContent = e.message || 'No se pudo generar el PDF. Probá de nuevo.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Exportar';
+    _exportLowResConfirmed = false;
+  }
 }
 
 // ─── Fotolibro: reordenar arrastrando (independiente de la fecha) ──
