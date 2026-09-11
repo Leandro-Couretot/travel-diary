@@ -36,7 +36,7 @@ dónde se la invoca.
 
 ---
 
-## Fase 1 — Onboarding: "Crear álbum" → explicación breve → login con Google
+## Fase 1 — Onboarding: "Crear álbum" → explicación breve → login con Google ✅ (v1.61)
 
 ### Qué cambia
 

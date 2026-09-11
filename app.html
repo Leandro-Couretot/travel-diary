@@ -780,6 +780,18 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-onboarding">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Así funciona Travel Diary</div><button class="modal-close" onclick="closeOnboardingModal()">×</button></div>
+    <div class="modal-body">
+      <div class="help-item"><span class="help-item-dot">📷</span><span>Guardá cada día de tu viaje con fotos, videos, notas y audio.</span></div>
+      <div class="help-item"><span class="help-item-dot">☁️</span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
+      <div class="help-item"><span class="help-item-dot">📖</span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="startOnboardingLogin()">Continuar con Google</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-book-layout">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Layout de la página</div><button class="modal-close" onclick="closeBookLayoutModal()">×</button></div>
@@ -933,7 +945,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.60 ·
+      Versión 1.61 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -972,7 +984,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.60</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.61</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1231,9 +1243,24 @@ function renderDisconnected() {
   document.getElementById('home-main').innerHTML = `
     <div class="connect-state fade-up">
       <h2>Tu diario de viaje</h2>
-      <p>Conectá Google Drive para acceder a tus álbumes desde cualquier dispositivo.</p>
-      <button class="btn btn-primary" onclick="handleDriveBtn()">Conectar con Google Drive</button>
+      <p>Registrá cada día de tus viajes con fotos, videos, notas y audio, todo en un solo lugar.</p>
+      <button class="btn btn-primary" onclick="openOnboardingModal()">Crear mi primer álbum</button>
     </div>`;
+}
+
+// Modal explicativo (Fase 1 de GROWTH_PLAN.md): antes se pedía Google Drive
+// de entrada; ahora se explica brevemente la app primero y recién ahí se
+// pide conectar. handleDriveBtn() no cambió en nada, solo se lo invoca
+// desde un lugar distinto.
+function openOnboardingModal() {
+  document.getElementById('modal-onboarding').classList.add('open');
+}
+function closeOnboardingModal() {
+  document.getElementById('modal-onboarding').classList.remove('open');
+}
+function startOnboardingLogin() {
+  closeOnboardingModal();
+  handleDriveBtn();
 }
 
 function renderJoinPending(albumName) {
@@ -3908,6 +3935,7 @@ document.getElementById('modal-subscribe').addEventListener('click', e => { if (
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
 document.getElementById('modal-help').addEventListener('click', e => { if (e.target === e.currentTarget) closeHelp(); });
+document.getElementById('modal-onboarding').addEventListener('click', e => { if (e.target === e.currentTarget) closeOnboardingModal(); });
 document.getElementById('bulk-drop-zone').addEventListener('click', () => document.getElementById('bulk-file-input').click());
 document.getElementById('bulk-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
 document.getElementById('bulk-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
