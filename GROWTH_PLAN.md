@@ -108,6 +108,37 @@ Fase 1.
   `photo_count`/`has_title`/`has_notes`), `tab_viewed`, `album_shared`,
   `error`.
 
+### Batching — pensado como eficiente desde el diseño, no como optimización después
+
+Cada invocación de una Cloud Function se cobra por cantidad de invocaciones +
+tiempo de cómputo, con un overhead fijo por request (arrancar, autenticar,
+conectar a Supabase) que se paga aunque el trabajo real sea mínimo. `tab_viewed`
+en particular puede dispararse varias veces por sesión — mandar un POST por
+evento sería N invocaciones por sesión. Se diseña `track-event.js` desde el
+día uno para recibir un **array** de eventos en un solo request en vez de uno
+por evento — no cuesta más trabajo hacerlo así de entrada y evita un rediseño
+después:
+
+- **Body de `track-event.js`**: `{ events: [{ event_name, event_props, occurred_at_client }, ...] }`
+  en vez de un evento suelto. Inserta todos con un solo `.insert([...])` a
+  Supabase (una sola ida y vuelta a Postgres para todo el lote, no una por
+  evento).
+- **Buffer del lado del cliente** (`app.html`): un array en memoria donde se
+  van empujando los eventos (`login`, `tab_viewed`, etc.) en vez de mandarlos
+  al toque. Se vacía (flush) en dos casos: (a) cada ~10-15s si hay algo
+  pendiente, con un `setInterval`/`setTimeout` encadenado — mismo criterio de
+  "no bloquear nada" que ya usan `establishSessionAndEnforceLimit()` o
+  `maybeReconcileAudioUsage()`; (b) al ocultar/cerrar la pestaña
+  (`visibilitychange` a `hidden`, o `pagehide`), usando
+  `navigator.sendBeacon()` en vez de `fetch()` — `sendBeacon` está pensado
+  justo para esto: manda el request aunque la página ya se esté cerrando,
+  algo que un `fetch()` normal puede cortar a mitad de camino (mismo tipo de
+  escenario de conexión/app cortada que ya motivó el guardado parcial de
+  v1.21).
+- **No aplica a Meta Conversions API (Fase 3)**: los eventos de ahí (signup,
+  pago confirmado) son de bajo volumen y conviene que salgan al toque, no
+  vale la pena demorarlos por juntarlos con otros.
+
 ### Eventos nuevos que suma esta fase (no estaban en el plan original)
 
 - `onboarding_viewed`: se abrió el modal de la Fase 1.
