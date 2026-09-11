@@ -64,6 +64,10 @@ async function establishSession(googleAccessToken) {
     localStorage.setItem('td_session', sessionToken);
     subState = { plan: data.plan, status: data.status };
     currentUserEmail = data.email || null;
+    // Uno por sesión (cada vez que se resuelve establishSession, sea recién
+    // conectado o una sesión restaurada al abrir la app), no por request —
+    // ver ANALYTICS_PLAN.md, tabla AARRR.
+    trackEvent('login');
   } catch (e) {
     console.warn('No se pudo establecer la sesión de suscripción:', e);
   }
@@ -96,6 +100,59 @@ async function startCheckout(planType) {
     alert('No se pudo iniciar la suscripción: ' + e.message);
   }
 }
+
+// ─── Track de uso (Fase 2 de GROWTH_PLAN.md, diseño en ANALYTICS_PLAN.md) ──
+// Cada invocación de Cloud Function se cobra por cantidad + tiempo de
+// cómputo, con un overhead fijo por request que se paga aunque el trabajo
+// real sea mínimo — un evento como tab_viewed puede dispararse varias veces
+// por sesión, así que en vez de un POST por evento se juntan en un buffer y
+// se mandan en un solo request cada TRACK_FLUSH_MS, o antes si la pestaña se
+// oculta/cierra (vía sendBeacon, que sigue viajando aunque la página ya se
+// esté cerrando — algo que un fetch() normal puede cortar a mitad de camino).
+const TRACK_FLUSH_MS = 12000;
+// Mismo set que ANON_ALLOWED_EVENTS en functions/track-event.js — el
+// arranque del embudo de registro (modal de onboarding) ocurre antes de que
+// exista sesión, así que son los únicos que tiene sentido mandar sin login.
+const TRACK_ANON_EVENTS = ['onboarding_viewed', 'signup_started'];
+let _eventBuffer = [];
+let _trackFlushTimer = null;
+
+function trackEvent(eventName, eventProps = {}) {
+  _eventBuffer.push({ event_name: eventName, event_props: eventProps });
+  if (!_trackFlushTimer) _trackFlushTimer = setTimeout(() => flushTrackEvents(), TRACK_FLUSH_MS);
+}
+
+async function flushTrackEvents(useBeacon = false) {
+  if (_trackFlushTimer) { clearTimeout(_trackFlushTimer); _trackFlushTimer = null; }
+  if (!_eventBuffer.length) return;
+  // Sin sesión todavía, solo los eventos del embudo pre-login tienen sentido
+  // mandarse — cualquier otro evento en el buffer se descarta en vez de
+  // acumularse esperando un login que puede no llegar nunca (alguien que
+  // cierra el modal de onboarding sin conectar Google, por ejemplo).
+  const events = sessionToken ? _eventBuffer : _eventBuffer.filter(e => TRACK_ANON_EVENTS.includes(e.event_name));
+  _eventBuffer = [];
+  if (!events.length) return;
+  try {
+    if (useBeacon && navigator.sendBeacon) {
+      // sendBeacon() no permite mandar headers custom (Authorization) — el
+      // token viaja en el body como fallback exclusivamente para este caso;
+      // track-event.js lo acepta ahí solo cuando no hay header.
+      const payload = sessionToken ? { events, session_token: sessionToken } : { events };
+      navigator.sendBeacon('/api/track', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+      return;
+    }
+    await fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}) },
+      body: JSON.stringify({ events }),
+    });
+  } catch (e) {
+    console.warn('No se pudieron mandar los eventos de uso:', e);
+  }
+}
+
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushTrackEvents(true); });
+window.addEventListener('pagehide', () => flushTrackEvents(true));
 
 // Vuelta desde el checkout de Mercado Pago (back_url=/app.html?mp_return=1).
 // El webhook puede tardar unos segundos más que el propio redirect, así que

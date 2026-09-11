@@ -61,8 +61,19 @@ exports.authSession = onRequest(
       }
 
       // 3) Crea la fila si es la primera vez (plan='free' por default de la
-      //    tabla) o solo refresca el email si ya existía.
+      //    tabla) o solo refresca el email si ya existía. Se chequea ANTES
+      //    del upsert si la fila ya existía — es la única forma limpia de
+      //    saber "es un usuario nuevo" (un upsert no lo distingue solo), y
+      //    eso es lo que dispara el evento signup_completed de la Fase 2 de
+      //    GROWTH_PLAN.md.
       const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
+      const { data: existing } = await supabase
+        .from('subscriptions')
+        .select('google_sub')
+        .eq('google_sub', userInfo.sub)
+        .maybeSingle();
+      const isNewUser = !existing;
+
       const { data, error } = await supabase
         .from('subscriptions')
         .upsert({ google_sub: userInfo.sub, email: userInfo.email }, { onConflict: 'google_sub' })
@@ -73,6 +84,17 @@ exports.authSession = onRequest(
         console.error('Supabase upsert error:', error);
         res.status(500).json({ error: 'subscription_lookup_failed' });
         return;
+      }
+
+      if (isNewUser) {
+        // Best-effort, nunca bloquea ni rompe el login real si falla —
+        // mismo criterio que el resto de los gates de esta app (el
+        // tracking de uso es secundario a que la persona pueda entrar).
+        try {
+          await supabase.from('usage_events').insert({ google_sub: userInfo.sub, event_name: 'signup_completed' });
+        } catch (e) {
+          console.warn('No se pudo registrar signup_completed:', e);
+        }
       }
 
       const token = signSession(SESSION_JWT_SECRET.value(), { sub: userInfo.sub, email: userInfo.email });

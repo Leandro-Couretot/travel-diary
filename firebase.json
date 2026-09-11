@@ -14,7 +14,8 @@
       { "source": "/api/auth/session", "function": "authSession" },
       { "source": "/api/checkout/create", "function": "checkoutCreate" },
       { "source": "/api/subscription/status", "function": "subscriptionStatus" },
-      { "source": "/api/webhooks/mercadopago", "function": "webhookMercadopago" }
+      { "source": "/api/webhooks/mercadopago", "function": "webhookMercadopago" },
+      { "source": "/api/track", "function": "trackEvent" }
     ],
     "headers": [
       {

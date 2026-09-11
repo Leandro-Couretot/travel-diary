@@ -4,3 +4,4 @@ exports.authSession = require('./auth-session').authSession;
 exports.checkoutCreate = require('./checkout-create').checkoutCreate;
 exports.subscriptionStatus = require('./subscription-status').subscriptionStatus;
 exports.webhookMercadopago = require('./webhook-mercadopago').webhookMercadopago;
+exports.trackEvent = require('./track-event').trackEvent;

@@ -53,8 +53,27 @@ create table if not exists travel_diary.subscription_events (
   received_at    timestamptz not null default now()
 );
 
+-- Log de eventos de producto (Fase 2 de GROWTH_PLAN.md) — insert-only, nunca
+-- se pisa, a diferencia de `subscriptions`. Separado de `subscription_events`
+-- porque esa es específicamente la auditoría de lo que dice Mercado Pago, no
+-- un lugar para mezclar clicks de UI. google_sub queda null para los pocos
+-- eventos que se pueden mandar sin sesión todavía (ver track-event.js,
+-- ANON_ALLOWED_EVENTS) — el arranque del embudo de registro, antes de que
+-- exista ningún login. Nunca se manda contenido del diario acá, solo
+-- conteos/booleanos (ver ANALYTICS_PLAN.md, "Principio rector").
+create table if not exists travel_diary.usage_events (
+  id           bigserial primary key,
+  google_sub   text references travel_diary.subscriptions(google_sub),
+  event_name   text not null,
+  event_props  jsonb not null default '{}',
+  occurred_at  timestamptz not null default now()
+);
+create index if not exists usage_events_google_sub_idx on travel_diary.usage_events (google_sub);
+create index if not exists usage_events_event_name_idx on travel_diary.usage_events (event_name);
+
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
+alter table travel_diary.usage_events enable row level security;
 -- Sin policies = solo la service_role key (usada por las Cloud Functions)
 -- puede leer/escribir. Igual que en cualquier otro cliente de la agencia.
 

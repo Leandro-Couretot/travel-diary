@@ -88,7 +88,7 @@ pushear, deployar.
 
 ---
 
-## Fase 2 — Métricas de producto (ejecutar `ANALYTICS_PLAN.md`)
+## Fase 2 — Métricas de producto (ejecutar `ANALYTICS_PLAN.md`) ✅ (v1.62)
 
 El diseño técnico completo ya está escrito y revisado — ver
 [`ANALYTICS_PLAN.md`](./ANALYTICS_PLAN.md) para el detalle (tabla, función,
