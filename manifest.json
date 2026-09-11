@@ -1,6 +1,6 @@
 {
-  "name": "旅 — Travel diary",
-  "short_name": "旅 Travel diary",
+  "name": "Legado",
+  "short_name": "Legado",
   "start_url": "/app.html",
   "display": "standalone",
   "background_color": "#f7f5f0",

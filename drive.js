@@ -1,7 +1,8 @@
 // ─── DRIVE CONFIG ────────────────────────────────────────
 const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
 const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
-const ROOT_FOLDER     = 'travel-diary';
+const ROOT_FOLDER     = 'legado';
+const ROOT_FOLDER_OLD = 'travel-diary'; // nombre de antes del rebrand — ver getOrCreateFolderMigrating()
 const SCOPE_VERSION   = 4; // bumped: + userinfo.email (identidad estable para suscripciones)
 
 // ─── STATE ───────────────────────────────────────────────
@@ -29,7 +30,7 @@ function initDrive(onConnectedCallback, onFailureCallback) {
 
 async function _bootstrapDrive() {
   try {
-    rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+    rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
     if (_onConnected) await _onConnected();
   } catch(e) {
     console.warn('Drive bootstrap error:', e);
@@ -126,6 +127,34 @@ async function getOrCreateFolder(name, parentId) {
   if (data.files && data.files.length) return data.files[0].id;
   const create = await driveReq('POST', 'https://www.googleapis.com/drive/v3/files',
     { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] });
+  const folder = await create.json();
+  return folder.id;
+}
+
+// Igual que getOrCreateFolder(), pero para la carpeta raíz tras el rebrand
+// a Legado (ROOT_FOLDER pasó de 'travel-diary' a 'legado'): busca primero
+// con el nombre nuevo; si no existe, busca la carpeta vieja y la renombra
+// in place (un PATCH de nombre — no mueve ni toca ningún archivo de
+// adentro, mismo criterio que writeJsonFileMigrating() ya usa para
+// archivos sueltos); recién si ninguna de las dos existe, crea una nueva
+// (cuenta nueva, sin nada que migrar).
+async function getOrCreateFolderMigrating(newName, oldName, parentId) {
+  const qNew = `name='${newName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+  const resNew = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qNew)}&fields=files(id,name)`);
+  const dataNew = await resNew.json();
+  if (dataNew.files && dataNew.files.length) return dataNew.files[0].id;
+
+  const qOld = `name='${oldName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+  const resOld = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qOld)}&fields=files(id,name)`);
+  const dataOld = await resOld.json();
+  if (dataOld.files && dataOld.files.length) {
+    const oldId = dataOld.files[0].id;
+    await driveReq('PATCH', `https://www.googleapis.com/drive/v3/files/${oldId}`, { name: newName });
+    return oldId;
+  }
+
+  const create = await driveReq('POST', 'https://www.googleapis.com/drive/v3/files',
+    { name: newName, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] });
   const folder = await create.json();
   return folder.id;
 }
@@ -255,68 +284,89 @@ async function writeJsonFile(obj, name, folderId, description = null) {
 }
 
 // ─── NOMENCLATURA DE ARCHIVOS DE LA APP ──────────────────
-// Los archivos que crea la app en Drive llevan el prefijo "[Travel
-// Diary]" para que se puedan identificar de un vistazo (ej. en la
-// vista "Recientes" de Drive, donde aparecen sueltos sin la carpeta
-// que les da contexto) y no se borren por accidente pensando que son
-// basura. Migración deliberadamente lazy: NO se renombran en bloque
-// los archivos ya existentes con el nombre viejo — se siguen
-// reconociendo (findFileInFolderMigrating) y recién se renombran la
-// próxima vez que ese archivo puntual se escribe
-// (writeJsonFileMigrating), mismo criterio que ya se usó para migrar
-// book.json v1→v2.
-const APP_NAME_PREFIX = '[Travel Diary]';
+// Los archivos que crea la app en Drive llevan un prefijo para que se
+// puedan identificar de un vistazo (ej. en la vista "Recientes" de
+// Drive, donde aparecen sueltos sin la carpeta que les da contexto) y
+// no se borren por accidente pensando que son basura. Migración
+// deliberadamente lazy: NO se renombran en bloque los archivos ya
+// existentes con un nombre viejo — se siguen reconociendo
+// (findFileInFolderMigrating) y recién se renombran la próxima vez que
+// ese archivo puntual se escribe (writeJsonFileMigrating), mismo
+// criterio que ya se usó para migrar book.json v1→v2.
+//
+// El rebrand a Legado suma una SEGUNDA generación de nombre viejo: un
+// archivo puede estar en el nombre plano original (pre-v1.36), en
+// "[Travel Diary] - ..." (v1.36-v1.63), o ya en "[Legado] - ...". Por
+// eso los *_OLD_NAMES de abajo son arrays — findFileInFolderMigrating/
+// writeJsonFileMigrating prueban el nombre nuevo y después cada nombre
+// viejo en orden, así que un archivo de cualquier generación se sigue
+// encontrando sin importar hace cuánto no se toca.
+const APP_NAME_PREFIX = '[Legado]';
+const APP_NAME_PREFIX_OLD = '[Travel Diary]'; // generación anterior del prefijo, antes del rebrand
 
-// Busca primero con el nombre nuevo; si no aparece, cae al nombre viejo
-// (archivo creado antes de este cambio, todavía sin migrar).
-async function findFileInFolderMigrating(newName, oldName, folderId) {
+// Busca primero con el nombre nuevo; si no aparece, prueba cada nombre
+// viejo en orden (oldNames puede ser un string suelto o un array).
+async function findFileInFolderMigrating(newName, oldNames, folderId) {
   const id = await findFileInFolder(newName, folderId);
   if (id) return id;
-  return await findFileInFolder(oldName, folderId);
+  for (const oldName of (Array.isArray(oldNames) ? oldNames : [oldNames])) {
+    const oldId = await findFileInFolder(oldName, folderId);
+    if (oldId) return oldId;
+  }
+  return null;
 }
 
 // Escribe con el nombre nuevo. Si ya existe un archivo con el nombre
-// nuevo lo actualiza; si no, pero existe uno con el nombre viejo, lo
-// actualiza Y renombra en el mismo pedido (uploadFile hace PATCH del
-// name además del contenido); si no existe ninguno, crea uno nuevo.
-async function writeJsonFileMigrating(obj, newName, oldName, folderId, description) {
+// nuevo lo actualiza; si no, pero existe uno con alguno de los nombres
+// viejos (probados en orden), lo actualiza Y renombra en el mismo
+// pedido (uploadFile hace PATCH del name además del contenido); si no
+// existe ninguno, crea uno nuevo.
+async function writeJsonFileMigrating(obj, newName, oldNames, folderId, description) {
   let existingId = await findFileInFolder(newName, folderId);
-  if (!existingId) existingId = await findFileInFolder(oldName, folderId);
+  if (!existingId) {
+    for (const oldName of (Array.isArray(oldNames) ? oldNames : [oldNames])) {
+      existingId = await findFileInFolder(oldName, folderId);
+      if (existingId) break;
+    }
+  }
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
   return await uploadFile(blob, newName, folderId, existingId, description);
 }
 
 const ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Mis álbumes.json`;
-const ALBUMS_JSON_OLD_NAME = 'albums.json';
-const ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — es el índice de todos tus álbumes. Borrarlo no borra tus fotos, pero hace que la app deje de encontrarlas hasta que se reconstruya solo.';
+const ALBUMS_JSON_OLD_NAME = [`${APP_NAME_PREFIX_OLD} - Mis álbumes.json`, 'albums.json'];
+const ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — es el índice de todos tus álbumes. Borrarlo no borra tus fotos, pero hace que la app deje de encontrarlas hasta que se reconstruya solo.';
 
 const SHARED_ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Álbumes compartidos.json`;
-const SHARED_ALBUMS_JSON_OLD_NAME = 'shared-albums.json';
-const SHARED_ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — es la lista de álbumes que otras personas compartieron con vos. Borrarlo no afecta tus propios álbumes.';
+const SHARED_ALBUMS_JSON_OLD_NAME = [`${APP_NAME_PREFIX_OLD} - Álbumes compartidos.json`, 'shared-albums.json'];
+const SHARED_ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — es la lista de álbumes que otras personas compartieron con vos. Borrarlo no afecta tus propios álbumes.';
 
 const BOOK_JSON_NAME = `${APP_NAME_PREFIX} - Fotolibro.json`;
-const BOOK_JSON_OLD_NAME = 'book.json';
-const BOOK_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — guarda el orden manual del fotolibro de este álbum. Borrarlo no borra ninguna foto, solo se pierde el orden elegido.';
+const BOOK_JSON_OLD_NAME = [`${APP_NAME_PREFIX_OLD} - Fotolibro.json`, 'book.json'];
+const BOOK_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — guarda el orden manual del fotolibro de este álbum. Borrarlo no borra ninguna foto, solo se pierde el orden elegido.';
 
 function dayJsonName(dateStr) { return `${APP_NAME_PREFIX} - Día ${dateStr}.json`; }
-const DAY_JSON_OLD_NAME = 'day.json';
-const DAY_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary. Borrarlo puede hacer que pierdas el título/notas de este día (las fotos no se pierden).';
+function dayJsonNameOld(dateStr) { return `${APP_NAME_PREFIX_OLD} - Día ${dateStr}.json`; }
+const DAY_JSON_OLD_NAME_LEGACY = 'day.json';
+const DAY_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado. Borrarlo puede hacer que pierdas el título/notas de este día (las fotos no se pierden).';
 
 async function findDayJsonId(dayFolderId, dateStr) {
-  return await findFileInFolderMigrating(dayJsonName(dateStr), DAY_JSON_OLD_NAME, dayFolderId);
+  return await findFileInFolderMigrating(dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId);
 }
 async function saveDayJson(dayFolderId, dateStr, dayJson) {
-  return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), DAY_JSON_OLD_NAME, dayFolderId, DAY_JSON_DESCRIPTION);
+  return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId, DAY_JSON_DESCRIPTION);
 }
 
 const MEDIA_KIND_LABELS = { image: 'foto', video: 'video', audio: 'audio' };
-const MEDIA_FILE_DESCRIPTION = 'Este archivo es una foto/video/audio de tu diario en la app Travel Diary.';
+const MEDIA_FILE_DESCRIPTION = 'Este archivo es una foto/video/audio de tu diario en la app Legado.';
 function mediaFileName(kind, originalName) {
   return `${APP_NAME_PREFIX} - ${MEDIA_KIND_LABELS[kind] || kind} - ${originalName}`;
 }
 
+const USAGE_JSON_OLD_NAME = `${APP_NAME_PREFIX_OLD} - Uso.json`; // usage.json nunca tuvo un nombre plano de antes de v1.36
+
 // ─── USAGE (gate de audio del plan gratis) ─────────────────
-// Archivo nuevo (sin nombre viejo que migrar) en la raíz de travel-diary/,
+// Vive en la raíz de la carpeta del álbum (legado/ tras el rebrand),
 // junto a albums.json. Guarda un único contador: cuántos audios "vivos"
 // tiene la cuenta en total (todos los álbumes propios) — no cuántos se
 // grabaron alguna vez, así que borrar un audio libera cupo de nuevo (ver
@@ -325,7 +375,7 @@ function mediaFileName(kind, originalName) {
 // sin importar el plan — así el conteo nunca queda desactualizado si la
 // cuenta pasa de Pro a Free más adelante (ver el flag `reconciled` abajo).
 const USAGE_JSON_NAME = `${APP_NAME_PREFIX} - Uso.json`;
-const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — lleva la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
+const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — lleva la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
 
 // Recorre los álbumes propios (activos Y archivados — el audio sigue ahí
 // igual) y cuenta los audios reales de cada day.json. Cara de correr (una
@@ -367,7 +417,7 @@ async function computeRealAudioCount() {
 // por default para usage.json de antes de este campo.
 async function loadUsage() {
   if (!isDriveConnected()) return { version: 1, audioCount: 0, reconciled: false, bookExportMonth: null, bookExportCount: 0 };
-  const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
+  const fileId = await findFileInFolderMigrating(USAGE_JSON_NAME, USAGE_JSON_OLD_NAME, rootFolderId);
   if (fileId) {
     try {
       const data = await readJsonFile(fileId);
@@ -384,13 +434,13 @@ async function loadUsage() {
 }
 
 async function saveUsage(usage) {
-  await writeJsonFile({
+  await writeJsonFileMigrating({
     version: 1,
     audioCount: Math.max(0, usage.audioCount || 0),
     reconciled: !!usage.reconciled,
     bookExportMonth: usage.bookExportMonth || null,
     bookExportCount: Math.max(0, usage.bookExportCount || 0),
-  }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
+  }, USAGE_JSON_NAME, USAGE_JSON_OLD_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
 }
 
 // ─── ALBUMS ──────────────────────────────────────────────

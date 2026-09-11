@@ -42,7 +42,7 @@ const SHELL_FILES = [
 
 const OFFLINE_FALLBACK = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>旅 — Sin conexión</title>
+<title>Legado — Sin conexión</title>
 <style>
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
     background:#f7f5f0;color:#1a1a18;font-family:-apple-system,'DM Sans',sans-serif;
@@ -50,7 +50,7 @@ const OFFLINE_FALLBACK = `<!DOCTYPE html><html lang="es"><head><meta charset="UT
   .mark{font-size:2.5rem;color:#c8a96e;margin-bottom:0.5rem;}
   p{color:#8a8880;max-width:28ch;margin:0 auto;}
 </style></head>
-<body><div><div class="mark">旅</div><p>Sin conexión y todavía no hay nada guardado para mostrar. Probá de nuevo cuando tengas señal.</p></div></body></html>`;
+<body><div><div class="mark">L</div><p>Sin conexión y todavía no hay nada guardado para mostrar. Probá de nuevo cuando tengas señal.</p></div></body></html>`;
 
 self.addEventListener('install', event => {
   self.skipWaiting();

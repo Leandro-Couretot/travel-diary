@@ -1,6 +1,6 @@
 {
   "name": "travel-diary-functions",
-  "description": "Backend de suscripciones (Mercado Pago + Supabase) para Travel Diary",
+  "description": "Backend de suscripciones (Mercado Pago + Supabase) para Legado",
   "private": true,
   "engines": {
     "node": "22"

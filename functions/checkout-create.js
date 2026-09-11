@@ -49,7 +49,7 @@ exports.checkoutCreate = onRequest(
 
     try {
       const preapprovalBody = {
-        reason: `Travel Diary — Plan ${planType === 'monthly' ? 'mensual' : 'anual'}`,
+        reason: `Legado — Plan ${planType === 'monthly' ? 'mensual' : 'anual'}`,
         external_reference: session.sub,
         payer_email: session.email,
         auto_recurring: {

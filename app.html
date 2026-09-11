@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="旅 Travel diary">
+<meta name="apple-mobile-web-app-title" content="Legado">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="google-site-verification" content="G10N0krZt4q1WQjXYiY7mPFfwOxXTLbGGI3ZU5sFL7A" />
-<title>旅 — Travel diary</title>
+<title>Legado</title>
 <link rel="stylesheet" href="style.css">
 <script src="debug.js"></script>
 <script src="https://accounts.google.com/gsi/client" async></script>
@@ -599,7 +599,7 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── INSTALL BANNER ─── -->
 <div id="install-banner" style="display:none;" class="install-banner">
-  <div class="install-banner-icon">旅</div>
+  <div class="install-banner-icon">L</div>
   <div class="install-banner-text">
     <div class="install-banner-title">Instalá la app</div>
     <div class="install-banner-sub" id="install-banner-sub">Accedé sin el browser, más rápido</div>
@@ -630,7 +630,7 @@ audio { width: 100%; height: 32px; }
       </div>
       <div class="ios-step">
         <div class="ios-step-num">4</div>
-        <div>¡Listo! El ícono 旅 aparece en tu pantalla de inicio</div>
+        <div>¡Listo! El ícono de Legado aparece en tu pantalla de inicio</div>
       </div>
       <p style="font-size:0.78rem;color:var(--ink-muted);margin-top:0.5rem;line-height:1.5;">
         Asegurate de estar usando <strong>Safari</strong> — otros browsers en iPhone no soportan la instalación.
@@ -641,7 +641,7 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── SHARED HEADER ─── -->
 <header class="app-header" id="app-header">
-  <div class="app-logo" id="app-logo" style="cursor:pointer;" onclick="navigateTo('home')">旅 <span id="header-subtitle">mis viajes</span></div>
+  <div class="app-logo" id="app-logo" style="cursor:pointer;" onclick="navigateTo('home')">Legado <span id="header-subtitle">mis recuerdos</span></div>
   <div style="display:flex;gap:0.5rem;align-items:center;" id="header-actions">
     <!-- populated by router -->
   </div>
@@ -753,7 +753,7 @@ audio { width: 100%; height: 32px; }
   <div class="modal">
     <div class="modal-header"><div class="modal-title" id="album-modal-title">Nuevo álbum</div><button class="modal-close" onclick="closeNewAlbumModal()">×</button></div>
     <div class="modal-body">
-      <div class="form-field"><label class="form-label">Nombre del viaje</label><input class="form-input" id="album-name" type="text" placeholder="Ej: Japón 2026"></div>
+      <div class="form-field"><label class="form-label">Nombre del álbum</label><input class="form-input" id="album-name" type="text" placeholder="Ej: Japón 2026"></div>
       <div class="date-range">
         <div class="form-field"><label class="form-label">Desde</label><input class="form-input" id="album-from" type="date"></div>
         <div class="form-field"><label class="form-label">Hasta</label><input class="form-input" id="album-to" type="date"></div>
@@ -782,9 +782,9 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-onboarding">
   <div class="modal">
-    <div class="modal-header"><div class="modal-title">Así funciona Travel Diary</div><button class="modal-close" onclick="closeOnboardingModal()">×</button></div>
+    <div class="modal-header"><div class="modal-title">Así funciona Legado</div><button class="modal-close" onclick="closeOnboardingModal()">×</button></div>
     <div class="modal-body">
-      <div class="help-item"><span class="help-item-dot">📷</span><span>Guardá cada día de tu viaje con fotos, videos, notas y audio.</span></div>
+      <div class="help-item"><span class="help-item-dot">📷</span><span>Guardá cada día con fotos, videos, notas y audio.</span></div>
       <div class="help-item"><span class="help-item-dot">☁️</span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
       <div class="help-item"><span class="help-item-dot">📖</span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
       <button class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="startOnboardingLogin()">Continuar con Google</button>
@@ -862,7 +862,7 @@ audio { width: 100%; height: 32px; }
         <div class="plan-compare-row"><div class="plan-compare-label">Audio</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitado</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
       </div>
-      <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar viajes viejos cada vez que sumás uno nuevo.</p>
+      <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar álbumes viejos cada vez que sumás uno nuevo.</p>
       <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
       <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual — $14.000/mes</button>
       <button class="btn btn-primary" style="width:100%;line-height:1.4;" onclick="startCheckout('annual')">Anual — $11.200/mes<br><span style="font-size:0.8em;font-weight:400;opacity:0.85;">$134.400/año en un solo pago · 20% off</span></button>
@@ -911,7 +911,7 @@ audio { width: 100%; height: 32px; }
   <div class="modal help-modal">
     <div class="modal-header"><div class="modal-title">¿Cómo usar la app?</div><button class="modal-close" onclick="closeHelp()">×</button></div>
     <div class="help-section"><div class="help-section-title">🗂 Tus álbumes</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Cada viaje es un álbum. Tocá <strong>Nuevo álbum</strong> para crear uno.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Cada álbum agrupa los recuerdos que quieras. Tocá <strong>Nuevo álbum</strong> para crear uno.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá la tarjeta de un álbum para entrar al diario.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>↗</strong> para compartir el álbum. Tocá <strong>▶</strong> para el slideshow.</span></div>
     </div>
@@ -945,7 +945,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.63 ·
+      Versión 1.64 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -968,7 +968,7 @@ function navigateTo(view, params = {}) {
   if (view === 'home') {
     document.querySelector('.save-bar').style.display = 'none';
     dirty = false;
-    document.getElementById('header-subtitle').textContent = 'mis viajes';
+    document.getElementById('header-subtitle').textContent = 'mis recuerdos';
     renderHomeHeader();
     updateDriveBtn(); // renderHomeHeader() resetea el botón al texto default — corregirlo al estado real
     renderAlbums();
@@ -984,7 +984,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.63</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.64</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -1177,7 +1177,7 @@ async function initGoogleAuth() {
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
         saveTokenExpiry(response.expires_in);
         establishSessionAndEnforceLimit(driveToken); // en paralelo, no bloquea el flujo de Drive
-        rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
+        rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
         if (_onConnected) { await _onConnected(); return; }
         const sp2 = new URLSearchParams(location.search);
         const jId = sp2.get('join');
@@ -1248,8 +1248,8 @@ function renderDisconnected() {
   if (header) header.style.display = 'none';
   document.getElementById('home-main').innerHTML = `
     <div class="connect-state fade-up">
-      <h2>Tu diario de viaje</h2>
-      <p>Registrá cada día de tus viajes con fotos, videos, notas y audio, todo en un solo lugar.</p>
+      <h2>Legado</h2>
+      <p>Guardá tus recuerdos en fotos, videos, audios y notas. Todo en tu Google Drive.</p>
       <button class="btn btn-primary" onclick="openOnboardingModal()">Crear mi primer álbum</button>
     </div>`;
 }
@@ -1292,7 +1292,7 @@ async function handleJoin(folderId, albumName, dateFrom, dateTo) {
     history.replaceState({}, '', location.pathname);
     updateDriveBtn(); await renderAlbums(); await checkMigratable();
   } catch(e) {
-    main.innerHTML = `<div class="connect-state fade-up"><h2>No se pudo unir al álbum</h2><p>${escHtml(e.message)}</p><button class="btn btn-primary" onclick="navigateTo('home')">Ir a mis viajes</button></div>`;
+    main.innerHTML = `<div class="connect-state fade-up"><h2>No se pudo unir al álbum</h2><p>${escHtml(e.message)}</p><button class="btn btn-primary" onclick="navigateTo('home')">Ir a mis recuerdos</button></div>`;
   }
 }
 
@@ -1322,7 +1322,7 @@ async function renderAlbums() {
 
   if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `
-      <div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1><p>Cada viaje es un álbum. Creá el primero para empezar.</p></div>
+      <div class="home-intro fade-up"><h1>Tus <em>recuerdos</em></h1><p>Creá tu primer álbum para empezar.</p></div>
       <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
     return;
   }
@@ -1330,7 +1330,7 @@ async function renderAlbums() {
   const reconstructedNotice = wasReconstructed
     ? `<div class="reconstructed-notice">⚠️ No encontramos el índice de tus álbumes, así que lo reconstruimos a partir de tus carpetas en Drive — tus fotos siguen todas ahí. Se perdieron las fechas manuales de "Desde/Hasta" (podés volver a cargarlas con ✎).</div>`
     : '';
-  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
+  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>recuerdos</em></h1></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
 
   const ownGrid = document.createElement('div');
   ownGrid.className = 'albums-grid';
@@ -1345,7 +1345,7 @@ async function renderAlbums() {
     card.style.animationDelay = `${idx * 0.07}s`;
     const coverHtml = album.coverFileId
       ? `<img class="album-cover" id="cover-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
-      : `<div class="album-cover-empty">旅</div>`;
+      : `<div class="album-cover-empty">L</div>`;
     card.innerHTML = `
       <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">▶</button></div>
       <div class="album-info">
@@ -1390,7 +1390,7 @@ async function renderAlbums() {
       card.style.animationDelay = `${idx * 0.07}s`;
       const coverHtml = album.coverFileId
         ? `<img class="album-cover" id="cover-sh-${escHtml(album.folderDriveId)}" alt="${escHtml(album.name)}" loading="lazy">`
-        : `<div class="album-cover-empty">旅</div>`;
+        : `<div class="album-cover-empty">L</div>`;
       card.innerHTML = `
         <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">▶</button></div>
         <div class="album-info">
@@ -1435,7 +1435,7 @@ async function renderAlbums() {
       card.className = 'album-card archived';
       const coverHtml = album.coverFileId
         ? `<img class="album-cover" id="cover-arch-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
-        : `<div class="album-cover-empty">旅</div>`;
+        : `<div class="album-cover-empty">L</div>`;
       card.innerHTML = `
         <div class="album-cover-wrap">${coverHtml}</div>
         <div class="album-info">
@@ -3509,7 +3509,7 @@ function renderAlbumPage() {
     heroEl.innerHTML = `<img id="album-hero-img" alt=""><div class="album-photo-nav"><div class="album-photo-prev" onclick="albumPhotoNav(-1)"></div><div class="album-photo-next" onclick="albumPhotoNav(1)"></div></div>${caption}${dots}`;
     const heroImg = document.getElementById('album-hero-img');
     if (photo.data) heroImg.src = photo.data; else if (photo.driveFileId) setAuthImg(heroImg, photo.driveFileId, 'w1200');
-  } else { heroEl.innerHTML = `<div class="album-hero-empty">旅</div>`; }
+  } else { heroEl.innerHTML = `<div class="album-hero-empty">L</div>`; }
   document.getElementById('album-label').textContent = formatDate(day.date);
   const titleEl = document.getElementById('album-title'); titleEl.textContent = day.title || 'Sin título'; titleEl.className = 'album-title' + (day.title ? '' : ' no-title');
   document.getElementById('album-notes').textContent = day.notes || '';

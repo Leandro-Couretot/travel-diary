@@ -1,4 +1,4 @@
-# 旅 Travel Diary — CLAUDE.md
+# Legado — CLAUDE.md
 
 Contexto para Claude Code. Leer antes de tocar cualquier archivo.
 
@@ -6,7 +6,9 @@ Contexto para Claude Code. Leer antes de tocar cualquier archivo.
 
 ## Qué es
 
-App web de diario de viaje personal. El usuario registra cada día con fotos, videos, audios y notas. Todo se almacena en Google Drive del usuario. PWA instalable.
+App web para guardar recuerdos (fotos, videos, audios y notas) organizados en álbumes. El usuario registra cada día — de un viaje o de cualquier otro momento que quiera guardar — y todo se almacena en Google Drive del usuario. PWA instalable.
+
+**Nombre de cara al usuario: "Legado"** (rebrand v1.64, hasta entonces "Travel Diary") — la app dejó de encuadrarse como "diario de viaje" para hablar de "recuerdos" en general (álbumes de cualquier tipo, no solo viajes), y el nombre cambió en todo lo que el usuario ve: título, header, textos de la landing, carpeta raíz en su Drive (`legado/`), nombre de los archivos que la app crea ahí, y el copy de Mercado Pago en el checkout. **Deliberadamente sin cambiar** (identificadores internos, invisibles para el usuario, cambiarlos hubiera sido puro riesgo sin ningún beneficio real): el nombre del repo de GitHub (`travel-diary`), el proyecto de Google Cloud/Firebase (`family-fotos-491610`), el schema de Supabase (`travel_diary`), y el nombre del paquete npm de `functions/` (`travel-diary-functions`). Ver la entrada de v1.64 en "Funcionando bien" para el detalle completo de qué se tocó y cómo se migró sin riesgo el contenido ya existente en Drive.
 
 **Ya migrada de "app familiar" a producto con suscripción** (freemium + pago mensual/anual vía Mercado Pago) — ver la sección "Suscripciones" más abajo. **El corte a Firebase ya se hizo**: Firebase Hosting es la producción real (Blaze activado, SQL de Supabase corrido, secrets cargados, webhook de Mercado Pago configurado). GitHub Pages sigue existiendo y sigue actualizándose sola en cada push a `main` (GitHub Pages sirve directo desde el repo, no hay forma de "apagarla" sin borrar el sitio), pero **es una URL vieja que ya nadie usa como app real** — no confundirla con producción.
 
@@ -24,7 +26,7 @@ App web de diario de viaje personal. El usuario registra cada día con fotos, vi
 - Google Drive API v3 para persistencia de fotos/videos/notas (sigue siendo la única "base de datos" del contenido del diario — eso no cambia con la suscripción)
 - Google Identity Services (GSI) para OAuth, con `userinfo.email` sumado al scope para tener una identidad estable (ver "Suscripciones")
 - **Backend nuevo** (`functions/`): Node.js sobre Firebase Cloud Functions — antes la app no tenía backend propio, esto es exclusivamente para la lógica de suscripciones/pagos, no para el contenido del diario
-- Firebase Hosting (reemplaza a GitHub Pages una vez cortada la migración) + Supabase (Postgres, estado de suscripciones — proyecto compartido `pluxow-clients`, schema propio `travel_diary`, ver "Suscripciones") + Mercado Pago (cobros)
+- Firebase Hosting (reemplaza a GitHub Pages una vez cortada la migración) + Supabase (Postgres, estado de suscripciones — proyecto compartido `pluxow-clients`, schema propio `travel_diary` — nombre interno, no cambió con el rebrand a Legado, ver "Qué es" — ver "Suscripciones") + Mercado Pago (cobros)
 - PWA instalable (manifest.json)
 
 ---
@@ -73,18 +75,20 @@ La navegación entre vistas es JS puro (`classList.add/remove('active')`), sin `
 
 ```
 Google Drive/
-└── travel-diary/
-    ├── albums.json              ← índice de álbumes propios
-    ├── shared-albums.json       ← álbumes compartidos con este usuario
-    ├── usage.json               ← contador de audios "vivos" en la cuenta, para el gate de audio del plan gratis (v1.53, ver "Suscripciones")
-    ├── japon-2026/              ← carpeta por álbum (id = slug del nombre)
-    │   ├── book.json             ← páginas + drawer + tamaño de hoja del fotolibro (ver "Diario" → Tab Libro), opcional
-    │   └── 2026-03-24/          ← carpeta por día
-    │       ├── day.json         ← { version, title, notes, media[] }
-    │       ├── foto.jpg
-    │       └── grabacion.webm
+└── legado/
+    ├── [Legado] - Mis álbumes.json           ← índice de álbumes propios
+    ├── [Legado] - Álbumes compartidos.json   ← álbumes compartidos con este usuario
+    ├── [Legado] - Uso.json                   ← contador de audios "vivos" en la cuenta, para el gate de audio del plan gratis (v1.53, ver "Suscripciones")
+    ├── japon-2026/                           ← carpeta por álbum (id = slug del nombre)
+    │   ├── [Legado] - Fotolibro.json          ← páginas + drawer + tamaño de hoja del fotolibro (ver "Diario" → Tab Libro), opcional
+    │   └── 2026-03-24/                       ← carpeta por día
+    │       ├── [Legado] - Día 2026-03-24.json ← { version, title, notes, media[] }
+    │       ├── [Legado] - foto - IMG_1699.jpeg
+    │       └── [Legado] - audio - grabacion.webm
     └── otro-viaje/
 ```
+
+Nombres de carpeta/archivo tal como se ven hoy (post-rebrand v1.64, ver esa entrada en "Funcionando bien"). Una cuenta que usa la app desde antes de ese deploy puede tener todavía la carpeta raíz como `travel-diary/` y/o archivos con el prefijo `[Travel Diary] - ...` (v1.36-v1.63) o incluso sin ningún prefijo (pre-v1.36, ej. `albums.json` a secas) — la app los sigue encontrando igual (`getOrCreateFolderMigrating`/`findFileInFolderMigrating` en `drive.js`, mismo patrón de migración lazy que ya existía) y los renombra en el momento en que vuelve a escribir cada uno, sin ningún paso de migración en bloque ni riesgo para el contenido ya guardado.
 
 ### `albums.json` estructura
 ```json
@@ -221,6 +225,13 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 ## Estado actual y pendientes
 
 ### Funcionando bien
+- **Rebrand a "Legado"** (v1.64): la app dejó de llamarse "旅 Travel Diary" y encuadrarse como diario de viaje para llamarse **Legado** y hablar de "recuerdos" en general (álbumes de cualquier tipo, no solo viajes) — pedido explícito del usuario ("la home cuente de qué trata... no sé si hablar de álbumes"). El alcance quedó definido en dos partes tras una pregunta directa al usuario: **de cara al usuario, sí** (título, header, textos, carpeta/archivos en su Drive, checkout de Mercado Pago); **identificadores puramente internos, no** (repo de GitHub `travel-diary`, proyecto de Google Cloud/Firebase `family-fotos-491610`, schema de Supabase `travel_diary`, paquete npm `travel-diary-functions`) — cambiarlos no aporta nada visible y sí arriesga romper referencias externas (URLs de Firebase, config de Supabase) sin necesidad.
+  - **Copy y branding** (`app.html`, `manifest.json`, `index.html`, `diary.html`, `sw.js`, `privacy.html`, `terms.html`): título de la pestaña, `apple-mobile-web-app-title`, nombre del manifest PWA, logo del header ("Legado" en vez de "旅", con "mis recuerdos" como subtítulo en vez de "mis viajes"), landing de desconectado ("Legado" / "Guardá tus recuerdos en fotos, videos, audios y notas. Todo en tu Google Drive." — copy que el usuario propuso y se adoptó tal cual), modal de onboarding, textos de Home ("Tus recuerdos" en vez de "Tus viajes", "Nombre del álbum" en vez de "Nombre del viaje"), modal de ayuda, y el ícono `L` como monograma chico en vez del kanji `旅` en todos los placeholders (portada vacía, banner de instalación, ícono de "sin conexión" de `sw.js`) — decisión confirmada explícitamente por el usuario tras preguntar si sacar el kanji del todo ("Sacarlo, queda solo 'Legado'"). El checkout de Mercado Pago (`functions/checkout-create.js`, campo `reason`, lo único de ese texto que el usuario ve durante el pago real) pasa a `Legado — Plan mensual/anual`.
+  - **Carpeta raíz y nombres de archivo en Drive** (`drive.js`) — la parte técnicamente delicada, porque el único usuario real de la app ya tiene contenido guardado bajo los nombres viejos y **no podía arriesgarse nada de eso**: `ROOT_FOLDER` pasa de `'travel-diary'` a `'legado'`, y el prefijo de archivo `APP_NAME_PREFIX` (v1.36) de `'[Travel Diary]'` a `'[Legado]'`. Se resolvió con el mismo criterio de migración lazy que ya se usó para migrar `book.json` v1→v2 (v1.26) y para introducir el prefijo de nombre en primer lugar (v1.36): **nunca renombrar en bloque**, buscar primero por el nombre nuevo y recién si no aparece caer al viejo, renombrando recién la próxima vez que ese archivo puntual se vuelve a escribir.
+    - **Carpeta raíz**: `getOrCreateFolderMigrating(newName, oldName, parentId)` (función nueva) busca primero una carpeta `legado` dentro de `root`; si no existe, busca `travel-diary` y, si la encuentra, la **renombra en el lugar** (`PATCH` del `name`, un pedido que no mueve ni toca ningún archivo de adentro — cambiar el nombre de una carpeta en Drive es metadata pura) en vez de crear una carpeta `legado` vacía y dejar `travel-diary` con todo el contenido real huérfano; si tampoco existe ninguna de las dos, recién ahí crea `legado` de cero (cuenta nueva, post-rebrand). `_bootstrapDrive()` la usa para resolver `rootFolderId`, y el callback de conexión de Drive en `app.html` también.
+    - **Nombres de archivo — ahora hay TRES generaciones posibles**: el nombre plano original (pre-v1.36, ej. `albums.json`), la generación `[Travel Diary] - ...` (v1.36-v1.63), y la actual `[Legado] - ...`. `findFileInFolderMigrating`/`writeJsonFileMigrating` (existían desde v1.36) se generalizaron para aceptar `oldNames` como un array además de un string suelto, probando cada nombre viejo **en orden** — así un archivo de cualquier generación se sigue encontrando y, al volver a escribirlo, se renombra en el mismo pedido (mismo mecanismo de `PATCH` que ya usaba `writeJsonFileMigrating`) sin crear un duplicado. Todas las constantes `*_OLD_NAME(S)` de `albums.json`/`shared-albums.json`/`book.json`/`day.json` pasan a listar ambas generaciones viejas; `usage.json` (v1.53, posterior al prefijo) solo tiene una generación vieja para chequear (`[Travel Diary] - Uso.json`), nunca existió con nombre plano.
+  - **Riesgo real evaluado y descartado**: como el único usuario de la app tiene meses de álbumes/fotos/audio ya guardados bajo `travel-diary/` con nombres `[Travel Diary] - ...` (y algunos posiblemente todavía con nombre plano, de antes de v1.36), cualquier enfoque que no fuera 100% lazy/lookup-primero hubiera arriesgado ese contenido real. El enfoque elegido no borra, mueve ni duplica nada — en el peor caso (un archivo que nunca se vuelve a tocar) simplemente sigue viviendo con su nombre viejo para siempre, perfectamente legible por la app, sin romper nada.
+  - **Deliberadamente fuera de este rebrand** (flaggeado al usuario, no resuelto acá): la pantalla de consentimiento de OAuth de Google (Google Cloud Console, fuera de este repo) probablemente todavía diga "Travel Diary" — no se puede tocar desde el código; `japan-diary.html`, un prototipo legacy de 1624 líneas que no se referencia desde ningún lado de la app y tiene su propio branding viejo, quedó sin tocar a la espera de que el usuario decida si conservarlo o borrarlo; el aviso "hosteada en GitHub Pages" en el pie de `privacy.html`/`terms.html` ya era información vieja antes de este rebrand (la producción real es Firebase Hosting desde hace tiempo, ver "Qué es") — se dejó igual por ser un problema preexistente y no parte de un rebrand puramente de nombres.
 - **Onboarding: la pantalla de "Crear mi primer álbum" ya no muestra el chrome de la app** (v1.63): el usuario probó v1.62 en el celular y mandó un screenshot — antes de conectar Drive, la home ya mostraba el header completo (logo "旅 mis viajes", número de versión, botón ✨ de suscripción, botón ? de ayuda, botón "Conectar Drive") encima de la pantalla de bienvenida, aunque nada de eso tiene sentido todavía sin álbumes ni cuenta conectada. `renderDisconnected()` ahora oculta `#app-header` entero (`style.display = 'none'`) antes de pintar la pantalla de bienvenida, dejando una landing limpia con solo el título, el texto explicativo y "Crear mi primer álbum". `renderAlbums()` — el único lugar al que se llega ya conectado de verdad a Drive (se llama desde el callback de conectar, desde la sesión restaurada, y desde `handleJoin()` al aceptar una invitación) — lo vuelve a mostrar. Como el header es compartido entre Home y Diario, y al Diario solo se llega después de pasar por Home ya conectado, no hizo falta tocar nada del lado del diario. `renderJoinPending()` (la pantalla de "te invitaron a un álbum") se dejó sin tocar a propósito, mismo criterio que en v1.61 — no era parte de lo que se pidió.
 - **Métricas de producto: tabla `usage_events` + `track-event.js`, Fase 2 de `GROWTH_PLAN.md`** (v1.62): ejecuta por fin el diseño de `ANALYTICS_PLAN.md` (sin cambios sobre ese diseño) más los eventos nuevos del onboarding de la Fase 1.
   - **`functions/schema.sql`**: tabla `usage_events` (insert-only, `google_sub` nullable — ver más abajo) + índices por `google_sub` y `event_name`. Como el schema `travel_diary` ya tiene `alter default privileges ... grant all on tables to service_role` desde que se armó, esta tabla nueva hereda el GRANT sola, sin correr nada a mano — pero **igual hace falta activarla en Data API → Exposed tables** (el schema expuesto no alcanza, cada tabla se prende aparte, mismo aviso de siempre).
