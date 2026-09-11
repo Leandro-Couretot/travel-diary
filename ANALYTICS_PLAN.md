@@ -6,6 +6,12 @@ del frontend. Se guarda en el repo para poder retomarlo cuando haga falta,
 revisando primero si sigue vigente (puede que para entonces se sepa más sobre
 qué funciones quedan pagas, cuántos usuarios reales hay, etc.).
 
+**Actualización**: el usuario decidió retomarlo ya (Fase 2 de
+[`GROWTH_PLAN.md`](./GROWTH_PLAN.md)), sin esperar a la decena de usuarios
+mencionada en "Cuándo retomarlo" más abajo — el diseño técnico de este
+documento sigue vigente tal cual está, `GROWTH_PLAN.md` solo agrega el orden
+de ejecución y un par de eventos nuevos del onboarding.
+
 ---
 
 ## Por qué esto no es "agregar una tabla más"
