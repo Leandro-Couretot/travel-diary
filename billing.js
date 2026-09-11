@@ -7,8 +7,45 @@
 
 let sessionToken = localStorage.getItem('td_session') || null;
 let subState = { plan: 'free', status: 'none' };
+let currentUserEmail = null; // se llena en establishSession(), viene ya validado por el servidor
+
+// ─── Debug: forzar plan localmente, sin tocar Mercado Pago ─────────
+// Con un solo usuario de test (el propio dev) no hay forma de probar el
+// gating free/pro pagándose a sí mismo o creando una segunda cuenta de
+// Google. Este override vive solo en localStorage de este navegador —
+// nunca pisa subState real ni habla con /api/**, así que no afecta la
+// suscripción real ni lo que ve cualquier otro usuario/dispositivo.
+//
+// v1.60: antes cualquiera que abriera el modal de ayuda podía forzarse
+// Pro y saltear todos los paywalls para siempre (riesgo real documentado
+// desde v1.52, sin cerrar hasta ahora). Se restringe a la cuenta del
+// propio dev: el override solo tiene efecto si el email de la cuenta de
+// Google conectada (currentUserEmail, que sale de establishSession() —
+// el servidor ya lo validó contra Google antes de devolverlo, así que no
+// es algo que el cliente pueda inventar) está en esta lista. Para
+// cualquier otra cuenta, el botón puede seguir estando en localStorage
+// de antes (o alguien podría setearlo a mano desde devtools) pero
+// isPaidUser() lo ignora igual — la UI además se oculta del todo para
+// esas cuentas (ver updateDebugPlanStatus() en app.html).
+const DEBUG_PLAN_ALLOWED_EMAILS = ['lcouretot@gmail.com'];
+
+function isDebugPlanAllowed() {
+  return !!currentUserEmail && DEBUG_PLAN_ALLOWED_EMAILS.includes(currentUserEmail.toLowerCase());
+}
+
+function getDebugPlanOverride() {
+  return localStorage.getItem('td_debug_plan'); // 'free' | 'pro' | null (sin override)
+}
+function setDebugPlanOverride(value) {
+  if (value) localStorage.setItem('td_debug_plan', value);
+  else localStorage.removeItem('td_debug_plan');
+}
 
 function isPaidUser() {
+  if (isDebugPlanAllowed()) {
+    const override = getDebugPlanOverride();
+    if (override) return override === 'pro';
+  }
   return subState.status === 'authorized';
 }
 
@@ -26,6 +63,7 @@ async function establishSession(googleAccessToken) {
     sessionToken = data.token;
     localStorage.setItem('td_session', sessionToken);
     subState = { plan: data.plan, status: data.status };
+    currentUserEmail = data.email || null;
   } catch (e) {
     console.warn('No se pudo establecer la sesión de suscripción:', e);
   }

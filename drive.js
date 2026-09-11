@@ -76,15 +76,35 @@ const DRIVE_MAX_RETRIES = 3;
 async function driveReq(method, url, body) {
   const headers = { 'Authorization': `Bearer ${driveToken}` };
   const opts = { method, headers };
-  if (body instanceof FormData) {
+  const isUpload = body instanceof FormData;
+  if (isUpload) {
     opts.body = body;
   } else if (body) {
     headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
+  // Subidas de archivo pueden tardar de verdad en una conexión lenta — se les
+  // da más margen antes de considerar el pedido colgado que a un JSON chico.
+  const timeoutMs = isUpload ? 120000 : 20000;
 
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, opts);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(url, { ...opts, signal: controller.signal });
+    } catch (err) {
+      // v1.31: sin esto, un fetch que ni resuelve ni falla (conexión
+      // inestable) dejaba la promesa colgada para siempre — el botón se
+      // quedaba en "Guardando..." sin ningún aviso ni forma de reintentar.
+      if (attempt >= DRIVE_MAX_RETRIES) {
+        throw new Error(err.name === 'AbortError' ? 'La conexión con Drive tardó demasiado. Probá de nuevo.' : err.message);
+      }
+      await new Promise(r => setTimeout(r, (2 ** attempt) * 500 + Math.random() * 250));
+      continue;
+    } finally {
+      clearTimeout(timer);
+    }
     if (res.status === 401) {
       driveToken = null; rootFolderId = null;
       localStorage.removeItem('drive_token');
@@ -161,8 +181,9 @@ async function listDayFolders(albumFolderId) {
 }
 
 // ─── FILE HELPERS ────────────────────────────────────────
-async function uploadFile(blob, name, folderId, existingId = null) {
+async function uploadFile(blob, name, folderId, existingId = null, description = null) {
   const meta = { name };
+  if (description) meta.description = description;
   if (!existingId) meta.parents = [folderId];
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
@@ -198,6 +219,26 @@ async function fetchFileAsDataUrl(fileId) {
   return URL.createObjectURL(blob);
 }
 
+// Resolución real (px) de una foto, sin descargar el archivo — solo
+// metadata de Drive (`imageMediaMetadata`, la misma que Drive ya calculó
+// al subir la imagen). Usado por el chequeo de "¿esta foto se va a ver
+// borrosa impresa en su celda?" antes de exportar el fotolibro a PDF —
+// pedir esto para cada foto del libro es mucho más barato que descargar
+// el archivo completo solo para leer sus dimensiones. Devuelve `null`
+// (nunca tira) si la metadata no está disponible por el motivo que sea —
+// el llamador trata una foto "no chequeable" como que no amerita aviso,
+// nunca como un error que corte el resto del chequeo.
+async function getImageDimensions(fileId) {
+  try {
+    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=imageMediaMetadata(width,height)`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const meta = data.imageMediaMetadata;
+    if (meta && meta.width > 0 && meta.height > 0) return { width: meta.width, height: meta.height };
+  } catch {}
+  return null;
+}
+
 function base64ToBlob(dataUrl) {
   const [header, b64] = dataUrl.split(',');
   const mime = header.match(/:(.*?);/)[1];
@@ -207,10 +248,149 @@ function base64ToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
-async function writeJsonFile(obj, name, folderId) {
+async function writeJsonFile(obj, name, folderId, description = null) {
   const existingId = await findFileInFolder(name, folderId);
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
-  return await uploadFile(blob, name, folderId, existingId);
+  return await uploadFile(blob, name, folderId, existingId, description);
+}
+
+// ─── NOMENCLATURA DE ARCHIVOS DE LA APP ──────────────────
+// Los archivos que crea la app en Drive llevan el prefijo "[Travel
+// Diary]" para que se puedan identificar de un vistazo (ej. en la
+// vista "Recientes" de Drive, donde aparecen sueltos sin la carpeta
+// que les da contexto) y no se borren por accidente pensando que son
+// basura. Migración deliberadamente lazy: NO se renombran en bloque
+// los archivos ya existentes con el nombre viejo — se siguen
+// reconociendo (findFileInFolderMigrating) y recién se renombran la
+// próxima vez que ese archivo puntual se escribe
+// (writeJsonFileMigrating), mismo criterio que ya se usó para migrar
+// book.json v1→v2.
+const APP_NAME_PREFIX = '[Travel Diary]';
+
+// Busca primero con el nombre nuevo; si no aparece, cae al nombre viejo
+// (archivo creado antes de este cambio, todavía sin migrar).
+async function findFileInFolderMigrating(newName, oldName, folderId) {
+  const id = await findFileInFolder(newName, folderId);
+  if (id) return id;
+  return await findFileInFolder(oldName, folderId);
+}
+
+// Escribe con el nombre nuevo. Si ya existe un archivo con el nombre
+// nuevo lo actualiza; si no, pero existe uno con el nombre viejo, lo
+// actualiza Y renombra en el mismo pedido (uploadFile hace PATCH del
+// name además del contenido); si no existe ninguno, crea uno nuevo.
+async function writeJsonFileMigrating(obj, newName, oldName, folderId, description) {
+  let existingId = await findFileInFolder(newName, folderId);
+  if (!existingId) existingId = await findFileInFolder(oldName, folderId);
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  return await uploadFile(blob, newName, folderId, existingId, description);
+}
+
+const ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Mis álbumes.json`;
+const ALBUMS_JSON_OLD_NAME = 'albums.json';
+const ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — es el índice de todos tus álbumes. Borrarlo no borra tus fotos, pero hace que la app deje de encontrarlas hasta que se reconstruya solo.';
+
+const SHARED_ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Álbumes compartidos.json`;
+const SHARED_ALBUMS_JSON_OLD_NAME = 'shared-albums.json';
+const SHARED_ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — es la lista de álbumes que otras personas compartieron con vos. Borrarlo no afecta tus propios álbumes.';
+
+const BOOK_JSON_NAME = `${APP_NAME_PREFIX} - Fotolibro.json`;
+const BOOK_JSON_OLD_NAME = 'book.json';
+const BOOK_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — guarda el orden manual del fotolibro de este álbum. Borrarlo no borra ninguna foto, solo se pierde el orden elegido.';
+
+function dayJsonName(dateStr) { return `${APP_NAME_PREFIX} - Día ${dateStr}.json`; }
+const DAY_JSON_OLD_NAME = 'day.json';
+const DAY_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary. Borrarlo puede hacer que pierdas el título/notas de este día (las fotos no se pierden).';
+
+async function findDayJsonId(dayFolderId, dateStr) {
+  return await findFileInFolderMigrating(dayJsonName(dateStr), DAY_JSON_OLD_NAME, dayFolderId);
+}
+async function saveDayJson(dayFolderId, dateStr, dayJson) {
+  return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), DAY_JSON_OLD_NAME, dayFolderId, DAY_JSON_DESCRIPTION);
+}
+
+const MEDIA_KIND_LABELS = { image: 'foto', video: 'video', audio: 'audio' };
+const MEDIA_FILE_DESCRIPTION = 'Este archivo es una foto/video/audio de tu diario en la app Travel Diary.';
+function mediaFileName(kind, originalName) {
+  return `${APP_NAME_PREFIX} - ${MEDIA_KIND_LABELS[kind] || kind} - ${originalName}`;
+}
+
+// ─── USAGE (gate de audio del plan gratis) ─────────────────
+// Archivo nuevo (sin nombre viejo que migrar) en la raíz de travel-diary/,
+// junto a albums.json. Guarda un único contador: cuántos audios "vivos"
+// tiene la cuenta en total (todos los álbumes propios) — no cuántos se
+// grabaron alguna vez, así que borrar un audio libera cupo de nuevo (ver
+// CLAUDE.md → "Suscripciones"). app.html lo mantiene sincronizado con un
+// delta cada vez que se guarda un día cuya cantidad de audios cambió,
+// sin importar el plan — así el conteo nunca queda desactualizado si la
+// cuenta pasa de Pro a Free más adelante (ver el flag `reconciled` abajo).
+const USAGE_JSON_NAME = `${APP_NAME_PREFIX} - Uso.json`;
+const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Travel Diary — lleva la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
+
+// Recorre los álbumes propios (activos Y archivados — el audio sigue ahí
+// igual) y cuenta los audios reales de cada day.json. Cara de correr (una
+// ronda de Drive por día de cada álbum) — solo se usa para la
+// reconciliación única de loadUsage(), nunca en el chequeo del gate en sí.
+// No cuenta audio de álbumes compartidos donde el usuario es editor —
+// limitación conocida, ver CLAUDE.md.
+async function computeRealAudioCount() {
+  const albums = await loadAlbums();
+  let total = 0;
+  for (const album of albums) {
+    try {
+      const folderId = await getAlbumFolderId(album.id);
+      const dates = await listDayFolders(folderId);
+      for (const dateStr of dates) {
+        try {
+          const day = await loadDayFromDrive(folderId, dateStr);
+          if (day) total += day.media.filter(m => m.type === 'audio').length;
+        } catch {}
+      }
+    } catch {}
+  }
+  return total;
+}
+
+// Lectura simple — un único GET, nunca escanea. `reconciled` viene tal
+// cual está guardado (false si el archivo no existe todavía, o si nunca
+// se terminó de reconciliar). La reconciliación en sí (el escaneo caro de
+// computeRealAudioCount()) vive aparte, en app.html → maybeReconcileAudioUsage(),
+// para que entrar a un álbum nunca quede bloqueado esperándola — ver
+// CLAUDE.md → "Gate de audio" (bug real de v1.54: el escaneo bloqueante
+// acá adentro hacía que entrar/salir de un álbum varias veces seguidas
+// disparara escaneos completos de la cuenta en paralelo).
+// bookExportMonth/bookExportCount (v1.59): cuántos PDF del fotolibro
+// exportó el usuario free en el mes calendario `bookExportMonth`
+// (formato "YYYY-MM") — el gate en app.html compara contra el mes
+// actual y trata cualquier mes viejo como "0 usados", así el cupo se
+// resetea solo el día 1 sin que haga falta ningún job aparte. `null`/`0`
+// por default para usage.json de antes de este campo.
+async function loadUsage() {
+  if (!isDriveConnected()) return { version: 1, audioCount: 0, reconciled: false, bookExportMonth: null, bookExportCount: 0 };
+  const fileId = await findFileInFolder(USAGE_JSON_NAME, rootFolderId);
+  if (fileId) {
+    try {
+      const data = await readJsonFile(fileId);
+      return {
+        version: 1,
+        audioCount: data.audioCount || 0,
+        reconciled: !!data.reconciled,
+        bookExportMonth: data.bookExportMonth || null,
+        bookExportCount: data.bookExportCount || 0,
+      };
+    } catch {}
+  }
+  return { version: 1, audioCount: 0, reconciled: false, bookExportMonth: null, bookExportCount: 0 };
+}
+
+async function saveUsage(usage) {
+  await writeJsonFile({
+    version: 1,
+    audioCount: Math.max(0, usage.audioCount || 0),
+    reconciled: !!usage.reconciled,
+    bookExportMonth: usage.bookExportMonth || null,
+    bookExportCount: Math.max(0, usage.bookExportCount || 0),
+  }, USAGE_JSON_NAME, rootFolderId, USAGE_JSON_DESCRIPTION);
 }
 
 // ─── ALBUMS ──────────────────────────────────────────────
@@ -218,16 +398,47 @@ async function writeJsonFile(obj, name, folderId) {
 // albums.json lives at root: { albums: [ { id, name, dateFrom, dateTo, coverFileId } ] }
 async function loadAlbums() {
   if (!isDriveConnected()) return [];
-  const fileId = await findFileInFolder('albums.json', rootFolderId);
-  if (!fileId) return [];
-  try {
-    const data = await readJsonFile(fileId);
-    return data.albums || [];
-  } catch { return []; }
+  const fileId = await findFileInFolderMigrating(ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId);
+  if (fileId) {
+    try {
+      const data = await readJsonFile(fileId);
+      if (data.albums) return data.albums;
+    } catch {}
+  }
+  // albums.json no existe o no se pudo leer — pero las carpetas de cada
+  // álbum (con sus días y fotos) pueden seguir 100% intactas en Drive.
+  // En vez de mostrar "no tenés álbumes" con el contenido real todavía
+  // ahí, se reconstruye el índice escaneando esas carpetas (mismo
+  // criterio que la reconstrucción de day.json — ver CLAUDE.md). Se
+  // pierden las fechas manuales (solo vivían en el JSON borrado) y el
+  // nombre queda aproximado desde el slug de la carpeta, pero ningún
+  // álbum desaparece.
+  const reconstructed = await reconstructAlbumsFromFolders();
+  if (reconstructed.length) {
+    await saveAlbums(reconstructed.map(({ _reconstructed, ...a }) => a));
+  }
+  return reconstructed;
+}
+
+async function reconstructAlbumsFromFolders() {
+  const folders = await listFolders(rootFolderId);
+  // Las carpetas con nombre de fecha son días sueltos de la estructura
+  // plana vieja (pre-álbumes, ver migrateOldDaysToAlbum) — no álbumes.
+  const albumFolders = folders.filter(f => !/^\d{4}-\d{2}-\d{2}$/.test(f.name));
+  return albumFolders.map(f => ({
+    id: f.name,
+    name: prettifyFolderName(f.name),
+    dateFrom: null, dateTo: null, coverFileId: null,
+    _reconstructed: true,
+  }));
+}
+
+function prettifyFolderName(slug) {
+  return slug.split('-').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ');
 }
 
 async function saveAlbums(albums) {
-  await writeJsonFile({ version: 1, albums }, 'albums.json', rootFolderId);
+  await writeJsonFileMigrating({ version: 1, albums }, ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId, ALBUMS_JSON_DESCRIPTION);
 }
 
 async function createAlbum(album) {
@@ -252,6 +463,93 @@ async function updateAlbumMeta(albumId, patch) {
 async function getAlbumFolderId(albumId) {
   if (!rootFolderId) throw new Error('rootFolderId no disponible todavía');
   return await getOrCreateFolder(albumId, rootFolderId);
+}
+
+// Cuenta cuántos álbumes puede editar el usuario actual DESDE LA APP —
+// usado para el límite de álbumes gratis (ver CLAUDE.md → "Suscripciones").
+// Cuenta: álbumes propios activos (no archivados) + álbumes compartidos
+// donde el usuario es editor AHORA MISMO (rol real de Drive, consultado
+// en vivo con canEditFolder — shared-albums.json no guarda el rol, así
+// que no se puede cachear). Los archivados y los compartidos donde solo
+// puede ver no cuentan — evita que alguien junte cupo gratis en varias
+// cuentas compartiéndose álbumes de solo lectura entre sí.
+async function countEditableAlbums() {
+  const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
+  const ownActiveCount = ownAlbums.filter(a => !a.archived).length;
+  const sharedAlbums = sharedData.sharedAlbums || [];
+  const canEditFlags = await Promise.all(sharedAlbums.map(a => canEditFolder(a.folderDriveId)));
+  const sharedEditableCount = canEditFlags.filter(Boolean).length;
+  return ownActiveCount + sharedEditableCount;
+}
+
+// Un álbum propio es "elegible gratis" si está entre los primeros
+// `freeLimit` creados (orden de `albums.json`, nunca se reordena salvo
+// que se elimine uno) que TODAVÍA existen — no importa si está activo o
+// archivado, solo su posición de creación. Deliberadamente por
+// IDENTIDAD y no por cantidad activa en este momento: si fuera por
+// cantidad, un usuario gratis podría alternar cuál archiva/reactiva y
+// terminar editando más de `freeLimit` álbumes con el tiempo sin pagar
+// nunca — cada vez que "libera" un lugar archivando uno, reactiva otro.
+// Con este criterio, archivar un álbum de los primeros `freeLimit`
+// nunca le cede el lugar a uno más nuevo (sigue ocupando su posición);
+// solo **eliminarlo** de verdad corre a los demás y deja entrar al
+// siguiente.
+function isFreeEligibleAlbum(albums, albumId, freeLimit) {
+  const idx = albums.findIndex(a => a.id === albumId);
+  return idx !== -1 && idx < freeLimit;
+}
+
+// Aplica el downgrade automático (Paso 4 del modelo freemium — ver
+// CLAUDE.md → "Suscripciones"): si el usuario ya NO es Pro, archiva
+// cualquier álbum propio activo que no sea "elegible gratis" (ver
+// isFreeEligibleAlbum) marcándolo con `archivedByDowngrade:true` —
+// reusa el archivado del Paso 1, misma experiencia ("Archivados" + link
+// a Drive), solo que disparada sola en vez de a mano. Si el usuario SÍ
+// es Pro, desarchiva automáticamente SOLO los álbumes con ese flag —
+// nunca uno que el usuario archivó a mano (esos no tienen el flag, así
+// que no se tocan). Devuelve true si cambió algo (para que el llamador
+// sepa si hace falta re-renderizar Home).
+async function enforceAlbumLimit(isPaid, freeLimit) {
+  const albums = await loadAlbums();
+  let changed = false;
+  if (isPaid) {
+    albums.forEach(a => {
+      if (a.archivedByDowngrade) { a.archived = false; a.archivedByDowngrade = false; changed = true; }
+    });
+  } else {
+    albums.forEach((a, idx) => {
+      if (!a.archived && idx >= freeLimit) { a.archived = true; a.archivedByDowngrade = true; changed = true; }
+    });
+  }
+  if (changed) await saveAlbums(albums);
+  return changed;
+}
+
+// Elimina un álbum propio de verdad: manda la carpeta completa (con todo
+// su contenido) a la papelera de Drive (trashed:true, recuperable 30 días
+// desde Drive — mismo criterio que archivos individuales desde v1.9) y
+// saca la entrada de albums.json. A diferencia de archivar, esto sí
+// compromete el contenido — el llamador debe confirmar explícitamente
+// con el usuario antes de invocarla.
+async function deleteAlbum(albumId) {
+  const albums = await loadAlbums();
+  const idx = albums.findIndex(a => a.id === albumId);
+  if (idx < 0) throw new Error('Álbum no encontrado');
+  const folderId = await getAlbumFolderId(albumId);
+  await driveReq('PATCH', `https://www.googleapis.com/drive/v3/files/${folderId}`, { trashed: true });
+  albums.splice(idx, 1);
+  await saveAlbums(albums);
+}
+
+// Saca un álbum compartido de la propia lista (shared-albums.json) — NO
+// revoca el permiso real que dio el dueño en Drive, solo deja de
+// aparecer en el Home de este usuario. El dueño puede seguir viendo que
+// el permiso sigue activo del lado de Drive; si de verdad quiere cortar
+// el acceso, tiene que sacarlo desde el panel de compartir de la carpeta.
+async function leaveSharedAlbum(folderDriveId) {
+  const stored = await loadSharedAlbums();
+  stored.sharedAlbums = stored.sharedAlbums.filter(a => a.folderDriveId !== folderDriveId);
+  await saveSharedAlbums(stored);
 }
 
 // Consulta a Drive si el usuario actual puede editar esta carpeta
@@ -292,23 +590,41 @@ async function getExistingNamesForDate(albumFolderId, dateStr) {
 // Migra sola desde el v1 (array plano `order`, de versiones
 // anteriores): se agrupa de a 4 en el mismo orden que ya se veía,
 // drawer vacío — no se pierde ni se reordena nada existente.
-async function loadBookLayout(albumFolderId) {
-  const fileId = await findFileInFolder('book.json', albumFolderId);
-  if (!fileId) return null;
-  const data = await readJsonFile(fileId);
-  if (Array.isArray(data?.pages)) {
-    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [] };
-  }
-  if (Array.isArray(data?.order)) {
-    const pages = [];
-    for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
-    return { pages, drawer: [], _migrated: true };
+// `pageSize` (agregado en la migración a proporción real de página, ver
+// CLAUDE.md → "Fotolibro → PDF") describe el tamaño de hoja elegido para
+// ESTE álbum como `{ id, w, h }` — `w`/`h` en cm son la fuente de verdad
+// (de dónde sale el aspect-ratio real de la página en pantalla y, más
+// adelante, del PDF), `id` es solo para que la UI sepa qué opción marcar
+// como activa. Se guardan los cm concretos (no solo el id) para que
+// cambiar los valores del registro `BOOK_PAGE_SIZES` en el futuro nunca
+// altere retroactivamente la proporción de un libro ya armado. Si el
+// archivo no tiene el campo (libros de antes de esta migración), se
+// devuelve `null` — app.html aplica su propio default en ese caso.
+function normalizeBookPageSize(raw) {
+  if (raw && typeof raw.w === 'number' && typeof raw.h === 'number' && raw.w > 0 && raw.h > 0) {
+    return { id: raw.id || 'custom', w: raw.w, h: raw.h };
   }
   return null;
 }
 
-async function saveBookLayout(albumFolderId, { pages, drawer }) {
-  await writeJsonFile({ version: 2, pages, drawer }, 'book.json', albumFolderId);
+async function loadBookLayout(albumFolderId) {
+  const fileId = await findFileInFolderMigrating(BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId);
+  if (!fileId) return null;
+  const data = await readJsonFile(fileId);
+  const pageSize = normalizeBookPageSize(data?.pageSize);
+  if (Array.isArray(data?.pages)) {
+    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [], pageSize };
+  }
+  if (Array.isArray(data?.order)) {
+    const pages = [];
+    for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
+    return { pages, drawer: [], pageSize, _migrated: true };
+  }
+  return null;
+}
+
+async function saveBookLayout(albumFolderId, { pages, drawer, pageSize }) {
+  await writeJsonFileMigrating({ version: 2, pages, drawer, pageSize: normalizeBookPageSize(pageSize) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
@@ -333,7 +649,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
         continue; // blob URL or no data — skip
       }
       try {
-        item.driveFileId = await uploadFile(blob, item.name, dayFolderId);
+        item.driveFileId = await uploadFile(blob, mediaFileName(item.type, item.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION);
         if (item._file) {
           // Replace blob URL with Drive thumbnail reference, free memory
           URL.revokeObjectURL(item.data);
@@ -365,7 +681,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
       caption: m.caption || ''
     }))
   };
-  await writeJsonFile(dayJson, 'day.json', dayFolderId);
+  await saveDayJson(dayFolderId, dateStr, dayJson);
   _dayCache[_dayKey(albumFolderId, dateStr)] = { folderId: dayFolderId, json: { title: dayJson.title, notes: dayJson.notes, media: dayJson.media } };
   if (failedItems.length) {
     const isQuota = failedItems.some(e => e instanceof DriveQuotaExceededError);
@@ -398,7 +714,7 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
       if (!data.files || !data.files.length) return null;
       dayFolderId = data.files[0].id;
     }
-    const jsonId = await findFileInFolder('day.json', dayFolderId);
+    const jsonId = await findDayJsonId(dayFolderId, dateStr);
     let result;
     if (!jsonId) {
       // day.json no existe pero la carpeta puede seguir teniendo archivos
@@ -461,7 +777,7 @@ function generateShareLink(folderId, name, dateFrom, dateTo) {
 
 async function loadSharedAlbums() {
   if (!isDriveConnected()) return { version: 1, sharedAlbums: [] };
-  const fileId = await findFileInFolder('shared-albums.json', rootFolderId);
+  const fileId = await findFileInFolderMigrating(SHARED_ALBUMS_JSON_NAME, SHARED_ALBUMS_JSON_OLD_NAME, rootFolderId);
   if (!fileId) return { version: 1, sharedAlbums: [] };
   try {
     const data = await readJsonFile(fileId);
@@ -470,7 +786,7 @@ async function loadSharedAlbums() {
 }
 
 async function saveSharedAlbums(data) {
-  await writeJsonFile(data, 'shared-albums.json', rootFolderId);
+  await writeJsonFileMigrating(data, SHARED_ALBUMS_JSON_NAME, SHARED_ALBUMS_JSON_OLD_NAME, rootFolderId, SHARED_ALBUMS_JSON_DESCRIPTION);
 }
 
 async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
@@ -556,6 +872,24 @@ const MEDIA_UNAVAILABLE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 // placeholder en vez del ícono roto del navegador.
 function setAuthImg(imgEl, fileId, size = 'w800') {
   if (!fileId || !imgEl) return;
+  // Evita el ícono nativo de "imagen rota/cargando" del navegador durante el
+  // instante entre insertar el <img> sin src todavía cargado y que la miniatura
+  // de Drive (o su fallback) termine de llegar — se saca solo con onload, sea
+  // cual sea la rama que termine resolviendo el src (ver v1.27 en CLAUDE.md).
+  imgEl.classList.add('auth-img-loading');
+  let revealed = false;
+  const reveal = () => {
+    if (revealed) return;
+    revealed = true;
+    clearTimeout(stuckTimer);
+    imgEl.classList.remove('auth-img-loading');
+  };
+  imgEl.onload = reveal;
+  // Red de seguridad (v1.29): en una conexión inestable el pedido puede quedar
+  // colgado sin disparar load NI error nunca — sin esto la foto quedaba
+  // invisible para siempre en vez de mostrar aunque sea el ícono roto (ver
+  // CLAUDE.md). Si no resolvió en 8s, se muestra igual.
+  const stuckTimer = setTimeout(reveal, 8000);
   const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
   imgEl.src = thumbUrl;
   imgEl.onerror = async () => {

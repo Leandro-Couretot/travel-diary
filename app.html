@@ -30,6 +30,11 @@
   padding: 3rem 1.5rem 6rem;
 }
 .home-intro { margin-bottom: 3rem; }
+.reconstructed-notice {
+  background: var(--accent-light); border-radius: var(--radius);
+  padding: 0.9rem 1.1rem; font-size: 0.85rem; color: var(--ink-muted);
+  line-height: 1.5; margin: -1.5rem 0 2rem;
+}
 .home-intro h1 {
   font-family: 'DM Serif Display', serif;
   font-size: clamp(2rem, 5vw, 3rem);
@@ -41,6 +46,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1.5rem;
+  align-items: start; /* deja que cada tarjeta ocupe su alto real en vez de estirarse a la fila — necesario para que el corrimiento por tarjeta (albumStaggerOffset) se vea */
 }
 .album-card {
   background: var(--surface); border-radius: 10px; overflow: hidden;
@@ -50,6 +56,8 @@
   animation: fadeUp 0.35s ease both;
 }
 .album-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+img { transition: opacity 0.25s ease; }
+.auth-img-loading { opacity: 0; }
 .album-cover { width: 100%; aspect-ratio: 3/2; object-fit: cover; display: block; background: var(--accent-light); }
 .album-cover-empty {
   width: 100%; aspect-ratio: 3/2; background: var(--accent-light);
@@ -62,6 +70,19 @@
 .album-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .album-days-count { font-size: 0.75rem; color: var(--ink-muted); }
 .album-arrow { font-size: 0.9rem; color: var(--ink-faint); transition: color 0.15s, transform 0.15s; }
+.album-card.archived { cursor: default; }
+.album-card.archived:hover { transform: none; box-shadow: var(--shadow); }
+.btn-spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid currentColor; border-top-color: transparent;
+  border-radius: 50%; opacity: 0.6; animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+.archived-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
+.archived-actions .btn {
+  flex: 1; min-width: 0; font-size: 0.78rem; padding: 0.45rem 0.4rem;
+  white-space: normal; text-align: center; line-height: 1.25;
+}
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 .album-card-wrapper { position: relative; }
 .album-share-btn {
@@ -73,6 +94,24 @@
 }
 .album-card-wrapper:hover .album-share-btn { opacity: 1; }
 @media (hover: none) { .album-share-btn { opacity: 1; } }
+.album-edit-btn {
+  position: absolute; top: 0.5rem; right: 2.4rem; z-index: 2;
+  background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
+  color: #fff; cursor: pointer; font-size: 0.8rem;
+  padding: 0.25rem 0.5rem; line-height: 1;
+  opacity: 0; transition: opacity 0.2s;
+}
+.album-card-wrapper:hover .album-edit-btn { opacity: 1; }
+@media (hover: none) { .album-edit-btn { opacity: 1; } }
+.album-leave-btn {
+  position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
+  background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
+  color: #fff; cursor: pointer; font-size: 0.8rem;
+  padding: 0.25rem 0.5rem; line-height: 1;
+  opacity: 0; transition: opacity 0.2s;
+}
+.album-card-wrapper:hover .album-leave-btn { opacity: 1; }
+@media (hover: none) { .album-leave-btn { opacity: 1; } }
 .album-cover-wrap { position: relative; display: block; }
 .album-play-btn {
   position: absolute; bottom: 0.6rem; right: 0.6rem;
@@ -234,25 +273,17 @@ audio { width: 100%; height: 32px; }
 
 /* Book tab */
 .book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; }
-.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; gap: 0.5rem; }
+.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; max-width: calc(100% - 1.5rem); }
 .book-btn { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.1); border-radius: 20px; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); transition: all 0.15s; }
 .book-btn:hover { background: white; }
 .book-btn.active { background: var(--ink); color: white; }
 .book-page-counter { position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%); font-size: 0.72rem; color: rgba(0,0,0,0.35); letter-spacing: 0.06em; background: rgba(255,255,255,0.7); padding: 0.2rem 0.6rem; border-radius: 10px; backdrop-filter: blur(4px); z-index: 10; white-space: nowrap; }
 .book-pages { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .book-pages::-webkit-scrollbar { display: none; }
-.book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: flex; flex-direction: column; background: white; position: relative; overflow: hidden; }
+.book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: grid; place-items: center; position: relative; overflow: hidden; padding: 1.1rem; box-sizing: border-box; }
+.book-page-card { position: relative; max-width: 100%; max-height: 100%; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; overflow: hidden; }
 .book-photo-area { flex: 1; overflow: hidden; position: relative; }
-.book-layout-1 { display: grid; grid-template-rows: 1fr; height: 100%; }
-.book-layout-2h { display: grid; grid-template-rows: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-2v { display: grid; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-3a { display: grid; grid-template-rows: 1.5fr 1fr; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-3a .bp:first-child { grid-column: 1 / -1; }
-.book-layout-3b { display: grid; grid-template-rows: 1fr 1.5fr; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-3b .bp:last-child { grid-column: 1 / -1; }
-.book-layout-4a { display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-4b { display: grid; grid-template-columns: 1.5fr 1fr; grid-template-rows: 1fr 1fr 1fr; height: 100%; gap: 2px; }
-.book-layout-4b .bp:first-child { grid-row: 1 / -1; }
+.book-layout-grid { display: grid; gap: 2px; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
 .bp.dragging { opacity: 0.35; }
@@ -266,9 +297,31 @@ audio { width: 100%; height: 32px; }
 .book-reorder-area { display: flex; flex-direction: column; height: 100%; }
 .book-reorder-grid { flex: 1; min-height: 0; display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
 .book-reorder-grid::-webkit-scrollbar { display: none; }
-.book-reorder-tile { flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+.book-reorder-tile { position: relative; flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
 .book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-.book-reorder-tile-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 2px; aspect-ratio: 1; }
+.book-reorder-tile-grid { aspect-ratio: 1; overflow: hidden; }
+.book-reorder-layout-btn {
+  position: absolute; top: 0.3rem; right: 0.3rem; z-index: 2;
+  width: 22px; height: 22px; border-radius: 4px; border: none;
+  background: rgba(26,26,24,0.55); color: #fff;
+  font-size: 0.8rem; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.book-reorder-layout-btn:hover { background: rgba(26,26,24,0.8); }
+.book-layout-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 0.75rem; }
+.book-layout-option {
+  display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+  background: none; border: 1px solid var(--ink-faint); border-radius: var(--radius);
+  padding: 0.6rem 0.4rem; cursor: pointer; font-family: 'DM Sans', sans-serif;
+}
+.book-layout-option:hover { border-color: var(--accent); }
+.book-layout-option.active { border-color: var(--accent); background: var(--accent-light); }
+.book-layout-preview { width: 64px; height: 48px; border-radius: 3px; overflow: hidden; }
+.book-layout-preview .bp { background: var(--ink-faint); }
+.book-layout-option-label { font-size: 0.7rem; color: var(--ink-muted); text-align: center; line-height: 1.25; }
+.book-layout-option.active .book-layout-option-label { color: var(--ink); }
+.book-page-size-preview { width: 48px; aspect-ratio: 1; background: var(--ink-faint); border-radius: 3px; }
+.book-page-size-custom { display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .book-drawer { flex: 0 0 auto; max-height: 34%; overflow-y: auto; border-top: 1px solid rgba(0,0,0,0.08); padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom)); background: rgba(255,255,255,0.55); }
 .book-drawer-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin-bottom: 0.5rem; }
 .book-drawer-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 64px; }
@@ -352,6 +405,36 @@ audio { width: 100%; height: 32px; }
 /* Bulk upload */
 .modal-body { padding: 1.25rem 1.5rem 1.5rem; }
 .date-range { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.btn-archive-album {
+  display: block; width: 100%; margin-top: 0.75rem;
+  background: none; border: none; color: var(--ink-faint);
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+  text-decoration: underline; cursor: pointer; padding: 0.4rem;
+}
+.btn-archive-album:hover { color: var(--ink); }
+.btn-delete-album {
+  display: block; width: 100%; margin-top: 0.35rem;
+  background: none; border: none; color: var(--red);
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem;
+  text-decoration: underline; cursor: pointer; padding: 0.4rem;
+}
+.btn-delete-album:hover { opacity: 0.7; }
+.confirm-message { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.5; margin-bottom: 1.25rem; }
+.confirm-actions { display: flex; gap: 0.75rem; }
+.confirm-actions .btn { flex: 1; }
+.subscribe-context {
+  background: var(--accent-light); border-radius: var(--radius);
+  padding: 0.65rem 0.8rem; font-size: 0.8rem; color: var(--ink-muted);
+  line-height: 1.5; margin-bottom: 1.25rem;
+}
+.plan-compare { border: 1px solid var(--ink-faint); border-radius: var(--radius); overflow: hidden; }
+.plan-compare-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr; align-items: center; padding: 0.55rem 0.75rem; font-size: 0.82rem; }
+.plan-compare-row + .plan-compare-row { border-top: 1px solid var(--ink-faint); }
+.plan-compare-head { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); background: var(--bg); }
+.plan-compare-head div:nth-child(2), .plan-compare-head div:nth-child(3) { text-align: center; }
+.plan-compare-label { color: var(--ink); font-weight: 500; }
+.plan-compare-free { text-align: center; color: var(--ink-muted); }
+.plan-compare-pro { text-align: center; color: var(--accent); font-weight: 700; }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
 .bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
@@ -374,7 +457,16 @@ audio { width: 100%; height: 32px; }
 .bulk-progress.error { color: var(--red); }
 .bulk-day-dupes { flex-basis: 100%; margin-top: 0.4rem; padding: 0.5rem 0.6rem; background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); }
 .bulk-dupe-warning { font-size: 0.75rem; color: var(--red); margin-bottom: 0.35rem; }
-.bulk-dupe-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--ink-muted); padding: 0.15rem 0; cursor: pointer; }
+.bulk-dupe-list { margin: 0 0 0.5rem; padding-left: 1.1rem; font-size: 0.78rem; color: var(--ink-muted); }
+.bulk-dupe-list li { padding: 0.1rem 0; }
+.bulk-dupe-actions { display: flex; gap: 0.5rem; }
+.bulk-dupe-btn {
+  flex: 1; min-width: 0; padding: 0.4rem 0.5rem; font-size: 0.76rem;
+  border: 1px solid var(--ink-faint); border-radius: var(--radius);
+  background: none; color: var(--ink-muted); cursor: pointer;
+  font-family: 'DM Sans', sans-serif; white-space: normal; text-align: center;
+}
+.bulk-dupe-btn.active { border-color: var(--accent); color: var(--ink); background: var(--accent-light); font-weight: 500; }
 .bulk-upload-hint { margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
 /* Page loading */
@@ -659,7 +751,7 @@ audio { width: 100%; height: 32px; }
 <!-- ─── MODALS ─── -->
 <div class="modal-overlay" id="modal-new-album">
   <div class="modal">
-    <div class="modal-header"><div class="modal-title">Nuevo álbum</div><button class="modal-close" onclick="closeNewAlbumModal()">×</button></div>
+    <div class="modal-header"><div class="modal-title" id="album-modal-title">Nuevo álbum</div><button class="modal-close" onclick="closeNewAlbumModal()">×</button></div>
     <div class="modal-body">
       <div class="form-field"><label class="form-label">Nombre del viaje</label><input class="form-input" id="album-name" type="text" placeholder="Ej: Japón 2026"></div>
       <div class="date-range">
@@ -669,6 +761,61 @@ audio { width: 100%; height: 32px; }
       <div id="migrate-notice" style="display:none;font-size:0.8rem;color:var(--accent);margin-bottom:1rem;line-height:1.5;">✓ Se van a migrar los días que ya tenés guardados a este álbum.</div>
       <div id="album-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
       <button class="btn btn-primary" style="width:100%;" onclick="submitNewAlbum()">Crear álbum</button>
+      <button class="btn-archive-album" id="btn-archive-album" style="display:none;" onclick="archiveCurrentAlbum()">Archivar álbum</button>
+      <button class="btn-delete-album" id="btn-delete-album" style="display:none;" onclick="deleteCurrentAlbum()">Eliminar álbum</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="confirm-title">Confirmar</div><button class="modal-close" id="confirm-close-x">×</button></div>
+    <div class="modal-body">
+      <div class="confirm-message" id="confirm-message"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" id="confirm-cancel-btn">Cancelar</button>
+        <button class="btn btn-primary" id="confirm-ok-btn">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-book-layout">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Layout de la página</div><button class="modal-close" onclick="closeBookLayoutModal()">×</button></div>
+    <div class="modal-body">
+      <div class="book-layout-options" id="book-layout-options"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-book-page-size">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Tamaño de hoja</div><button class="modal-close" onclick="closeBookPageSizeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="book-layout-options" id="book-page-size-options"></div>
+      <div class="book-page-size-custom" id="book-page-size-custom">
+        <div class="date-range">
+          <div class="form-field"><label class="form-label">Ancho (cm)</label><input class="form-input" id="book-page-size-custom-w" type="number" min="1" step="0.1"></div>
+          <div class="form-field"><label class="form-label">Alto (cm)</label><input class="form-input" id="book-page-size-custom-h" type="number" min="1" step="0.1"></div>
+        </div>
+        <button class="btn btn-primary" onclick="applyCustomBookPageSize()">Usar este tamaño</button>
+      </div>
+      <div style="font-size:0.78rem;color:var(--ink-faint);margin-top:0.75rem;line-height:1.5;">Define la proporción de la página en la app y del PDF que exportes.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-book-export">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Exportar a PDF</div><button class="modal-close" onclick="closeBookExportModal()">×</button></div>
+    <div class="modal-body">
+      <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;">Tamaño de hoja: <strong id="export-page-size-label"></strong></div>
+      <div class="form-field"><label class="form-label">Sangrado (mm)</label><input class="form-input" id="export-bleed" type="number" min="0" step="0.5" value="3"></div>
+      <div style="font-size:0.78rem;color:var(--ink-faint);margin-bottom:1rem;line-height:1.5;">El sangrado es el margen extra que se recorta al encuadernar — evita que quede un borde blanco si la imprenta corta unos milímetros de más. 3mm es lo habitual.</div>
+      <div id="export-warning" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;line-height:1.5;"></div>
+      <div id="export-progress" style="display:none;font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;"></div>
+      <button class="btn btn-primary" id="export-confirm-btn" onclick="startBookExport()">Exportar</button>
     </div>
   </div>
 </div>
@@ -694,9 +841,16 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-subscribe">
   <div class="modal">
-    <div class="modal-header"><div class="modal-title">Suscribirme</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
+    <div class="modal-header"><div class="modal-title">Pasar a Pro</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
     <div class="modal-body">
-      <p style="margin-bottom:1.25rem;color:var(--ink-muted);font-size:0.9rem;">Elegí cómo pagar. Vas a terminar de cargar tu tarjeta en Mercado Pago.</p>
+      <div id="subscribe-context" class="subscribe-context" style="display:none;"></div>
+      <div class="plan-compare">
+        <div class="plan-compare-row plan-compare-head"><div></div><div>Free</div><div>Pro</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Álbumes</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitados</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Audio</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitado</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
+      </div>
+      <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar viajes viejos cada vez que sumás uno nuevo.</p>
       <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
       <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual — $14.000/mes</button>
       <button class="btn btn-primary" style="width:100%;line-height:1.4;" onclick="startCheckout('annual')">Anual — $11.200/mes<br><span style="font-size:0.8em;font-weight:400;opacity:0.85;">$134.400/año en un solo pago · 20% off</span></button>
@@ -760,9 +914,26 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-section"><div class="help-section-title">🎙 Grabar audio</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
+      <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
+    </div>
+    <div class="help-section"><div class="help-section-title">📖 Fotolibro</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Tamaño</strong> elige el tamaño de hoja real — la página adopta esa proporción, igual a como se va a imprimir.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Reordenar</strong> muestra varias páginas a la vez para mover fotos entre ellas o al "sin ubicar".</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño.</span></div>
+      <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
+    </div>
+    <div class="help-section" id="debug-plan-section">
+      <div class="help-section-title">🧪 Debug: forzar plan</div>
+      <div class="help-item"><span>Estado actual: <strong id="debug-plan-status">Real</strong></span></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+        <button type="button" class="btn btn-secondary" style="flex:1;padding:0.4rem;font-size:0.78rem;" onclick="setDebugPlan(null)">Real</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;padding:0.4rem;font-size:0.78rem;" onclick="setDebugPlan('free')">Forzar Free</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;padding:0.4rem;font-size:0.78rem;" onclick="setDebugPlan('pro')">Forzar Pro</button>
+      </div>
+      <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.26 ·
+      Versión 1.60 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -801,14 +972,19 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.26</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.60</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
     <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
 }
 
-function openSubscribeModal() { document.getElementById('modal-subscribe').classList.add('open'); }
+function openSubscribeModal(context) {
+  const ctxEl = document.getElementById('subscribe-context');
+  if (context) { ctxEl.textContent = context; ctxEl.style.display = 'block'; }
+  else { ctxEl.style.display = 'none'; }
+  document.getElementById('modal-subscribe').classList.add('open');
+}
 function closeSubscribeModal() { document.getElementById('modal-subscribe').classList.remove('open'); }
 
 function renderDiaryHeader() {
@@ -824,6 +1000,61 @@ let hasMigratable = false;
 let shareTargetAlbum = null;
 let bulkGrouped = null;
 let bulkUndatedDates = {};
+let coverObserver = null;
+const EAGER_COVER_COUNT = 6; // portadas que se piden ya mismo; el resto espera a entrar en pantalla
+const FREE_ALBUM_LIMIT = 4; // álbumes editables gratis (propios activos + compartidos-editor) — ver CLAUDE.md → "Suscripciones"
+
+// ─── Downgrade automático (Paso 4 del límite de álbumes) ──────────
+// establishSession()/refreshSubscriptionStatus() corren "en paralelo,
+// no bloquean" el flujo normal de Drive (ver initGoogleAuth) — por eso
+// isPaidUser() puede devolver un estado todavía no actualizado en el
+// primer instante. enforceAlbumLimit() (drive.js) archiva/desarchiva
+// según isPaidUser(), así que hay que esperar a que la sesión de
+// suscripción resuelva ANTES de aplicarlo — nunca antes, para no
+// archivar por error los álbumes de un usuario Pro real mientras su
+// estado todavía no llegó. Se encadena después de la llamada existente
+// (sigue sin bloquear el resto del flujo) y solo re-renderiza Home si
+// de verdad cambió algo.
+async function maybeEnforceAlbumLimit() {
+  if (!isDriveConnected()) return;
+  try {
+    const changed = await enforceAlbumLimit(isPaidUser(), FREE_ALBUM_LIMIT);
+    if (changed && currentView === 'home') await renderAlbums();
+  } catch (e) { console.warn('No se pudo aplicar el límite de álbumes:', e); }
+}
+async function establishSessionAndEnforceLimit(token) {
+  await establishSession(token);
+  await maybeEnforceAlbumLimit();
+}
+async function refreshSubscriptionAndEnforceLimit() {
+  await refreshSubscriptionStatus();
+  await maybeEnforceAlbumLimit();
+}
+
+function sortAlbumsByTripDateDesc(list) {
+  return list.slice().sort((a, b) => (b.dateFrom || '').localeCompare(a.dateFrom || ''));
+}
+
+// Corrimiento vertical chico y estable por álbum (mismo hash simple que
+// usa pickLayout() para el fotolibro) — el mismo álbum siempre cae en el
+// mismo lugar entre recargas, no es un random que salta. Es margin-top
+// real (no transform), así el alto de cada fila de .albums-grid lo
+// absorbe solo sin arriesgar que una tarjeta pise la fila de abajo.
+function albumStaggerOffset(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return (Math.abs(hash) % 3) * 16; // 0, 16 o 32px
+}
+
+// Portadas más allá de EAGER_COVER_COUNT no piden su miniatura de Drive hasta
+// que la tarjeta entra en pantalla (o está por entrar, rootMargin) — evita que
+// todas las portadas compitan por red al mismo tiempo en álbumes con muchas.
+function scheduleCoverLoad(imgEl, fileId, size, idx) {
+  if (idx < EAGER_COVER_COUNT) { setAuthImg(imgEl, fileId, size); return; }
+  imgEl.dataset.coverFileId = fileId;
+  imgEl.dataset.coverSize = size;
+  coverObserver.observe(imgEl);
+}
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -933,7 +1164,7 @@ async function initGoogleAuth() {
         localStorage.setItem('drive_token', driveToken);
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
         saveTokenExpiry(response.expires_in);
-        establishSession(driveToken); // en paralelo, no bloquea el flujo de Drive
+        establishSessionAndEnforceLimit(driveToken); // en paralelo, no bloquea el flujo de Drive
         rootFolderId = await getOrCreateFolder(ROOT_FOLDER, 'root');
         if (_onConnected) { await _onConnected(); return; }
         const sp2 = new URLSearchParams(location.search);
@@ -950,7 +1181,7 @@ async function initGoogleAuth() {
 
   initDrive(async () => {
     scheduleSilentRefresh(); // por si el token guardado ya está por vencer
-    if (sessionToken) refreshSubscriptionStatus(); else establishSession(driveToken); // en paralelo
+    if (sessionToken) refreshSubscriptionAndEnforceLimit(); else establishSessionAndEnforceLimit(driveToken); // en paralelo
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
     updateDriveBtn(); await renderAlbums(); await checkMigratable();
   }, () => {
@@ -1036,17 +1267,31 @@ async function renderAlbums() {
   main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Cargando álbumes...</div>`;
 
   const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
-  albums = ownAlbums;
-  const sharedAlbums = sharedData.sharedAlbums || [];
+  const wasReconstructed = ownAlbums.some(a => a._reconstructed);
+  const archivedOwnAlbums = ownAlbums.filter(a => a.archived);
+  albums = sortAlbumsByTripDateDesc(ownAlbums.filter(a => !a.archived));
+  const sharedAlbums = sortAlbumsByTripDateDesc(sharedData.sharedAlbums || []);
 
-  if (!albums.length && !sharedAlbums.length) {
+  if (coverObserver) coverObserver.disconnect();
+  coverObserver = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      setAuthImg(entry.target, entry.target.dataset.coverFileId, entry.target.dataset.coverSize);
+    });
+  }, { rootMargin: '300px 0px' });
+
+  if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `
       <div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1><p>Cada viaje es un álbum. Creá el primero para empezar.</p></div>
       <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
     return;
   }
 
-  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div><div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}`;
+  const reconstructedNotice = wasReconstructed
+    ? `<div class="reconstructed-notice">⚠️ No encontramos el índice de tus álbumes, así que lo reconstruimos a partir de tus carpetas en Drive — tus fotos siguen todas ahí. Se perdieron las fechas manuales de "Desde/Hasta" (podés volver a cargarlas con ✎).</div>`
+    : '';
+  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>viajes</em></h1></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
 
   const ownGrid = document.createElement('div');
   ownGrid.className = 'albums-grid';
@@ -1055,6 +1300,7 @@ async function renderAlbums() {
   albums.forEach((album, idx) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'album-card-wrapper';
+    wrapper.style.marginTop = `${albumStaggerOffset(album.id)}px`;
     const card = document.createElement('div');
     card.className = 'album-card';
     card.style.animationDelay = `${idx * 0.07}s`;
@@ -1065,20 +1311,23 @@ async function renderAlbums() {
       <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">▶</button></div>
       <div class="album-info">
         <div class="album-name">${escHtml(album.name)}</div>
-        <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+        <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
         <div class="album-meta"><div class="album-days-count" id="days-count-${album.id}">—</div><div class="album-arrow">→</div></div>
       </div>`;
-    if (album.coverFileId) setAuthImg(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600');
+    if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600', idx);
     card.addEventListener('click', e => {
-      if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn')) return;
+      if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn') || e.target.closest('.album-edit-btn')) return;
       openAlbumDiary(album);
     });
     card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow(album); });
     const shareBtn = document.createElement('button');
     shareBtn.className = 'album-share-btn'; shareBtn.title = 'Compartir álbum'; shareBtn.textContent = '↗';
     shareBtn.addEventListener('click', e => openShareModal(e, album));
-    wrapper.appendChild(card); wrapper.appendChild(shareBtn); ownGrid.appendChild(wrapper);
-    loadDayCount(album.id);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'album-edit-btn'; editBtn.title = 'Editar álbum'; editBtn.textContent = '✎';
+    editBtn.addEventListener('click', e => openEditAlbumModal(e, album));
+    wrapper.appendChild(card); wrapper.appendChild(shareBtn); wrapper.appendChild(editBtn); ownGrid.appendChild(wrapper);
+    loadAlbumDaysInfo(album);
   });
 
   const newCard = document.createElement('button');
@@ -1095,6 +1344,8 @@ async function renderAlbums() {
     sharedGrid.className = 'albums-grid';
     sharedSection.appendChild(sharedGrid);
     sharedAlbums.forEach((album, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'album-card-wrapper';
       const card = document.createElement('div');
       card.className = 'album-card';
       card.style.animationDelay = `${idx * 0.07}s`;
@@ -1109,13 +1360,82 @@ async function renderAlbums() {
           <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
           <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
         </div>`;
-      if (album.coverFileId) setAuthImg(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600');
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600', albums.length + idx);
       card.addEventListener('click', e => {
-        if (e.target.closest('.album-play-btn')) return;
+        if (e.target.closest('.album-play-btn') || e.target.closest('.album-leave-btn')) return;
         openSharedAlbumDiary(album);
       });
       card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true }); });
-      sharedGrid.appendChild(card);
+      const leaveBtn = document.createElement('button');
+      leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.textContent = '✕';
+      leaveBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const ok = await customConfirm(
+          `Vas a dejar de ver "${album.name}" en tu Home. Esto no le saca el permiso a nadie más — si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
+          { title: 'Salir del álbum', confirmLabel: 'Salir' }
+        );
+        if (!ok) return;
+        await leaveSharedAlbum(album.folderDriveId);
+        await renderAlbums();
+      });
+      wrapper.appendChild(card); wrapper.appendChild(leaveBtn);
+      sharedGrid.appendChild(wrapper);
+    });
+  }
+
+  if (archivedOwnAlbums.length) {
+    const archivedSection = document.getElementById('section-archived');
+    archivedSection.innerHTML = `<h2 class="section-heading">Archivados</h2>`;
+    const archivedGrid = document.createElement('div');
+    archivedGrid.className = 'albums-grid';
+    archivedSection.appendChild(archivedGrid);
+    const folderIds = await Promise.all(archivedOwnAlbums.map(a => getAlbumFolderId(a.id)));
+    archivedOwnAlbums.forEach((album, i) => {
+      const folderId = folderIds[i];
+      const card = document.createElement('div');
+      card.className = 'album-card archived';
+      const coverHtml = album.coverFileId
+        ? `<img class="album-cover" id="cover-arch-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
+        : `<div class="album-cover-empty">旅</div>`;
+      card.innerHTML = `
+        <div class="album-cover-wrap">${coverHtml}</div>
+        <div class="album-info">
+          <div class="album-name">${escHtml(album.name)}</div>
+          <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+          <div class="archived-actions">
+            <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}">Abrir en Drive</a>
+            <button class="btn btn-secondary btn-unarchive">Reactivar</button>
+          </div>
+          <button class="btn-delete-album btn-delete-archived">Eliminar álbum</button>
+        </div>`;
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w600', albums.length + i);
+      card.querySelector('.btn-unarchive').addEventListener('click', async (e) => {
+        const btn = e.target;
+        const originalLabel = btn.textContent;
+        btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span>';
+        if (!isPaidUser()) {
+          const currentOwnAlbums = await loadAlbums();
+          if (!isFreeEligibleAlbum(currentOwnAlbums, album.id, FREE_ALBUM_LIMIT)) {
+            btn.textContent = originalLabel; btn.disabled = false;
+            openSubscribeModal(`"${escHtml(album.name)}" quedó fuera de tu cupo gratis de ${FREE_ALBUM_LIMIT} — archivar otro álbum no le cede el lugar, hace falta eliminar alguno de tus primeros ${FREE_ALBUM_LIMIT}, o pasar a Pro para reactivarlo.`);
+            return;
+          }
+        }
+        await updateAlbumMeta(album.id, { archived: false, archivedByDowngrade: false });
+        await renderAlbums();
+      });
+      card.querySelector('.btn-delete-archived').addEventListener('click', async (e) => {
+        const ok = await customConfirm(
+          'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+          { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
+        );
+        if (!ok) return;
+        const btn = e.target;
+        btn.textContent = 'Eliminando...'; btn.disabled = true;
+        await deleteAlbum(album.id);
+        await renderAlbums();
+      });
+      archivedGrid.appendChild(card);
     });
   }
 }
@@ -1127,38 +1447,159 @@ function openSharedAlbumDiary(album) {
   navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId });
 }
 
-async function loadDayCount(albumId) {
+// Duración de un viaje entre dos fechas (YYYY-MM-DD), incluyendo ambos
+// extremos — ej. 1 ene a 13 ene son 13 días, no 12.
+function daysBetweenInclusive(fromStr, toStr) {
+  const from = new Date(fromStr + 'T12:00:00');
+  const to = new Date(toStr + 'T12:00:00');
+  return Math.round((to - from) / 86400000) + 1;
+}
+
+async function loadAlbumDaysInfo(album) {
   try {
-    const fid = await getAlbumFolderId(albumId);
+    const fid = await getAlbumFolderId(album.id);
     const days = await listDayFolders(fid);
-    const el = document.getElementById(`days-count-${albumId}`);
-    if (el) el.textContent = days.length ? `${days.length} día${days.length > 1 ? 's' : ''}` : 'Sin días aún';
+    const countEl = document.getElementById(`days-count-${album.id}`);
+    if (!days.length) {
+      if (countEl) countEl.textContent = 'Sin días aún';
+      return;
+    }
+    // "Días" = duración real del viaje (primer día con contenido → último),
+    // no la fecha manual de "Desde/Hasta" ni la cantidad de días con diario
+    // escrito — un día de viaje sin nada cargado igual cuenta en el rango.
+    const first = days[0], last = days[days.length - 1];
+    const duration = daysBetweenInclusive(first, last);
+    if (countEl) countEl.textContent = `${duration} día${duration > 1 ? 's' : ''}`;
+    const datesEl = document.getElementById(`dates-${album.id}`);
+    if (datesEl) datesEl.textContent = `${formatDate(first)} — ${formatDate(last)}`;
   } catch {}
 }
 
+// ─── Confirmación propia (reemplaza confirm() nativo) ────────
+// Devuelve una Promise<boolean> — usar con await en vez de confirm().
+function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar' } = {}) {
+  return new Promise(resolve => {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-ok-btn').textContent = confirmLabel;
+    const modal = document.getElementById('modal-confirm');
+    const okBtn = document.getElementById('confirm-ok-btn');
+    const cancelBtn = document.getElementById('confirm-cancel-btn');
+    const closeBtn = document.getElementById('confirm-close-x');
+    const finish = (result) => {
+      modal.classList.remove('open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      closeBtn.removeEventListener('click', onCancel);
+      resolve(result);
+    };
+    const onOk = () => finish(true);
+    const onCancel = () => finish(false);
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+    modal.classList.add('open');
+  });
+}
+
 // ─── Album modals ─────────────────────────────────────────
+let editingAlbumId = null;
+
 function openNewAlbumModal() {
   if (!isDriveConnected()) { handleDriveBtn(); return; }
+  editingAlbumId = null;
+  document.getElementById('album-modal-title').textContent = 'Nuevo álbum';
+  document.querySelector('#modal-new-album .btn-primary').textContent = 'Crear álbum';
   document.getElementById('album-name').value = '';
   document.getElementById('album-from').value = '';
   document.getElementById('album-to').value = '';
   document.getElementById('album-error').style.display = 'none';
   document.getElementById('migrate-notice').style.display = hasMigratable ? 'block' : 'none';
+  document.getElementById('btn-archive-album').style.display = 'none';
+  document.getElementById('btn-delete-album').style.display = 'none';
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
 }
-function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); }
+function openEditAlbumModal(event, album) {
+  event.preventDefault(); event.stopPropagation();
+  editingAlbumId = album.id;
+  document.getElementById('album-modal-title').textContent = 'Editar álbum';
+  document.querySelector('#modal-new-album .btn-primary').textContent = 'Guardar cambios';
+  document.getElementById('album-name').value = album.name || '';
+  document.getElementById('album-from').value = album.dateFrom || '';
+  document.getElementById('album-to').value = album.dateTo || '';
+  document.getElementById('album-error').style.display = 'none';
+  document.getElementById('migrate-notice').style.display = 'none';
+  const archiveBtn = document.getElementById('btn-archive-album');
+  archiveBtn.style.display = 'block'; archiveBtn.textContent = 'Archivar álbum'; archiveBtn.disabled = false;
+  const deleteBtn = document.getElementById('btn-delete-album');
+  deleteBtn.style.display = 'block'; deleteBtn.textContent = 'Eliminar álbum'; deleteBtn.disabled = false;
+  document.getElementById('modal-new-album').classList.add('open');
+  setTimeout(() => document.getElementById('album-name').focus(), 100);
+}
+async function deleteCurrentAlbum() {
+  if (!editingAlbumId) return;
+  const ok = await customConfirm(
+    'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+    { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
+  );
+  if (!ok) return;
+  const btn = document.getElementById('btn-delete-album');
+  btn.textContent = 'Eliminando...'; btn.disabled = true;
+  try {
+    await deleteAlbum(editingAlbumId);
+    closeNewAlbumModal(); await renderAlbums();
+  } catch(e) {
+    showAlbumError(e.message);
+    btn.textContent = 'Eliminar álbum'; btn.disabled = false;
+  }
+}
+async function archiveCurrentAlbum() {
+  if (!editingAlbumId) return;
+  const ok = await customConfirm(
+    'Vas a poder abrirlo desde Drive cuando quieras, pero no vas a poder seguir editándolo desde la app hasta que lo reactives.',
+    { title: 'Archivar álbum', confirmLabel: 'Archivar' }
+  );
+  if (!ok) return;
+  const btn = document.getElementById('btn-archive-album');
+  btn.textContent = 'Archivando...'; btn.disabled = true;
+  try {
+    await updateAlbumMeta(editingAlbumId, { archived: true });
+    closeNewAlbumModal(); await renderAlbums();
+  } catch(e) {
+    showAlbumError(e.message);
+    btn.textContent = 'Archivar álbum'; btn.disabled = false;
+  }
+}
+function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); editingAlbumId = null; }
 
 async function submitNewAlbum() {
   const name = document.getElementById('album-name').value.trim();
   const dateFrom = document.getElementById('album-from').value;
   const dateTo   = document.getElementById('album-to').value;
   if (!name) { showAlbumError('El nombre es obligatorio'); return; }
-  const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   document.getElementById('album-error').style.display = 'none';
   const btn = document.querySelector('#modal-new-album .btn-primary');
-  btn.textContent = 'Creando...'; btn.disabled = true;
+  if (editingAlbumId) {
+    btn.textContent = 'Guardando...'; btn.disabled = true;
+    try {
+      await updateAlbumMeta(editingAlbumId, { name, dateFrom, dateTo });
+      closeNewAlbumModal(); await renderAlbums();
+    } catch(e) { showAlbumError(e.message); btn.textContent = 'Guardar cambios'; btn.disabled = false; }
+    return;
+  }
+  const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  btn.textContent = 'Verificando...'; btn.disabled = true;
   try {
+    if (!isPaidUser()) {
+      const editableCount = await countEditableAlbums();
+      if (editableCount >= FREE_ALBUM_LIMIT) {
+        showAlbumError(`Llegaste al límite de ${FREE_ALBUM_LIMIT} álbumes editables del plan gratis. Archivá, eliminá o salí de alguno para liberar lugar, o pasate a Pro para álbumes ilimitados.`);
+        btn.textContent = 'Crear álbum'; btn.disabled = false;
+        return;
+      }
+    }
+    btn.textContent = 'Creando...';
     await createAlbum({ id, name, dateFrom, dateTo });
     if (hasMigratable) { btn.textContent = 'Migrando días...'; await migrateOldDaysToAlbum(id); }
     closeNewAlbumModal(); await renderAlbums(); await checkMigratable();
@@ -1248,19 +1689,30 @@ function renderBulkDatedList(datedList, grouped) {
     const dupes = files.filter(f => f._dup);
     if (dupes.length) {
       const warnText = dupes.length === 1
-        ? '⚠ Este archivo ya podría estar subido (destildado por default):'
-        : '⚠ Estos archivos ya podrían estar subidos (destildados por default):';
+        ? '⚠ Se registra el siguiente archivo con el mismo nombre:'
+        : '⚠ Se registran los siguientes archivos con el mismo nombre:';
+      const allOmitted = dupes.every(f => f._excluded);
       const dupBox = document.createElement('div'); dupBox.className = 'bulk-day-dupes';
-      dupBox.innerHTML = `<div class="bulk-dupe-warning">${warnText}</div>` +
-        dupes.map(f => `<label class="bulk-dupe-item"><input type="checkbox" data-date="${date}" data-filename="${escHtml(f.name)}" ${f._excluded ? '' : 'checked'}> ${escHtml(f.name)}</label>`).join('');
+      dupBox.innerHTML = `
+        <div class="bulk-dupe-warning">${warnText}</div>
+        <ul class="bulk-dupe-list">${dupes.map(f => `<li>${escHtml(f.name)}</li>`).join('')}</ul>
+        <div class="bulk-dupe-actions">
+          <button type="button" class="bulk-dupe-btn${allOmitted ? ' active' : ''}" data-date="${date}" data-action="omit">Omitir estas</button>
+          <button type="button" class="bulk-dupe-btn${allOmitted ? '' : ' active'}" data-date="${date}" data-action="include">Subir de todos modos</button>
+        </div>`;
       row.appendChild(dupBox);
     }
     datedList.appendChild(row);
   });
-  datedList.querySelectorAll('.bulk-dupe-item input').forEach(cb => cb.addEventListener('change', e => {
-    const { date, filename } = e.target.dataset;
-    const file = grouped.dated[date]?.find(f => f.name === filename);
-    if (file) file._excluded = !e.target.checked;
+  // Decisión por fecha (omitir/subir), no por archivo individual — se
+  // simplificó el checkbox por-archivo a un choice binario por fecha,
+  // pedido explícito del usuario tras probar v1.22 (más claro que un
+  // checkbox pelado al lado de cada nombre de archivo).
+  datedList.querySelectorAll('.bulk-dupe-btn').forEach(btn => btn.addEventListener('click', e => {
+    const { date, action } = e.target.dataset;
+    const exclude = action === 'omit';
+    (grouped.dated[date] || []).forEach(f => { if (f._dup) f._excluded = exclude; });
+    renderBulkDatedList(datedList, grouped);
   }));
 }
 
@@ -1328,12 +1780,16 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
   const total = tasks.length;
   let done = 0;
   const newMediaByDate = {};
+  // Mostrar "0/N" apenas arranca, no recién cuando termina el primer
+  // archivo — antes el texto solo se actualizaba en el callback de "listo",
+  // así que quedaba en blanco todo lo que tarda comprimir+subir el primero.
+  progressEl.textContent = `Subiendo... ${done}/${total}`;
 
   const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }) => {
     const isImg = file.type.startsWith('image/');
     let blob = file;
     if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
-    const fileId = await uploadFile(blob, file.name, dayFolderIds[date]);
+    const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION);
     if (!newMediaByDate[date]) newMediaByDate[date] = [];
     newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
     done++; progressEl.textContent = `Subiendo... ${done}/${total}`;
@@ -1345,7 +1801,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
   for (const date of Object.keys(newMediaByDate)) {
     const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
     day.media.push(...newMediaByDate[date]);
-    await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderIds[date]);
+    await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media });
     invalidateDayCache(albumFolderId, date);
   }
 
@@ -1384,6 +1840,7 @@ async function confirmBulkUpload() {
   const btn = document.getElementById('bulk-confirm-btn');
   const progress = document.getElementById('bulk-progress');
   btn.disabled = true;
+  progress.textContent = 'Preparando...'; // feedback inmediato al tocar — antes quedaba en blanco varios segundos
   try {
     const albumFolderId = await getAlbumFolderId(albumId);
     const allGroups = {};
@@ -1406,7 +1863,7 @@ function compressImageFile(file) {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img; const MAX = 1200;
+        let { width, height } = img; const MAX = 2400; // subido de 1200 en el Paso 3 del fotolibro-a-PDF — a 1200px ninguna foto nueva iba a poder llegar a 300 DPI real ni en el tamaño de hoja más chico (20x20cm)
         if (width > MAX || height > MAX) { if (width > height) { height = Math.round(height * MAX / width); width = MAX; } else { width = Math.round(width * MAX / height); height = MAX; } }
         const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
@@ -1419,8 +1876,27 @@ function compressImageFile(file) {
 }
 
 // ─── Help & modals ────────────────────────────────────────
-function openHelp()  { document.getElementById('modal-help').classList.add('open'); }
+function openHelp()  { updateDebugPlanStatus(); document.getElementById('modal-help').classList.add('open'); }
 function closeHelp() { document.getElementById('modal-help').classList.remove('open'); }
+
+// ─── Debug: forzar plan (ver billing.js) ───────────────────────────
+function setDebugPlan(value) {
+  setDebugPlanOverride(value);
+  updateDebugPlanStatus();
+  if (currentView === 'home') renderAlbums();
+}
+function updateDebugPlanStatus() {
+  // v1.60: la sección entera solo se muestra para la cuenta del dev
+  // (isDebugPlanAllowed(), billing.js) — para cualquier otra cuenta el
+  // override ya no tiene efecto real en isPaidUser(), así que mostrar el
+  // botón sería una promesa vacía.
+  const section = document.getElementById('debug-plan-section');
+  if (section) section.style.display = isDebugPlanAllowed() ? '' : 'none';
+  const el = document.getElementById('debug-plan-status');
+  if (!el) return;
+  const override = getDebugPlanOverride();
+  el.textContent = override === 'pro' ? 'Pro (forzado)' : override === 'free' ? 'Free (forzado)' : 'Real';
+}
 
 // ═══════════════════════════════════════════════════════════
 // ─── DIARY STATE ────────────────────────────────────────
@@ -1434,6 +1910,15 @@ let currentDate   = new Date().toISOString().slice(0, 10);
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
 let currentDayOriginalIds = new Set();
+// Gate de audio del plan gratis (ver "Suscripciones" en CLAUDE.md):
+// usageState.audioCount es el total de audios "vivos" en toda la cuenta,
+// sincronizado con Drive (usage.json) por delta cada vez que se guarda un
+// día. currentDayAudioCountAtLoad es cuántos tenía ESTE día al cargarlo —
+// hace falta para no contar dos veces los audios del día que se está
+// editando ahora mismo (ver liveAudioTotal()).
+const AUDIO_FREE_LIMIT = 4; // audios simultáneos permitidos en el plan gratis — borrar uno libera cupo
+let usageState = { version: 1, audioCount: 0, reconciled: false };
+let currentDayAudioCountAtLoad = 0;
 let currentTab    = 'day';
 let allDates      = [];
 let calDayData    = {};
@@ -1444,10 +1929,82 @@ let bookPages     = [];          // [{ images: [driveFileId,...], layout: string
 let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
 let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
 let bookReorderMode = false;     // true = grilla de páginas en miniatura + drawer, para reordenar
+let bookPageSize  = null;        // { id, w, h } — tamaño de hoja de ESTE álbum, seteado en renderBook() (ver BOOK_PAGE_SIZES)
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
 function isToday(s)  { return s === todayStr(); }
+
+// Total de audios "vivos" en toda la cuenta ahora mismo — combina lo ya
+// guardado en cualquier otro día (usageState.audioCount, sincronizado en
+// cada saveCurrentDay()) con lo que tiene el día que se está editando en
+// memoria en este momento (currentDay.media, todavía sin guardar). Sin
+// esto, grabar 2 audios seguidos en el mismo día sin guardar entre medio
+// pasaría el gate las dos veces porque usageState todavía no se enteró.
+function liveAudioTotal() {
+  const inThisDayNow = currentDay.media.filter(m => m.type === 'audio').length;
+  return Math.max(0, usageState.audioCount - currentDayAudioCountAtLoad) + inThisDayNow;
+}
+function remainingFreeAudioSlots() {
+  if (isPaidUser()) return Infinity;
+  return Math.max(0, AUDIO_FREE_LIMIT - liveAudioTotal());
+}
+// Mensaje del paywall cuando ya no hay cupo — muestra el total real en vez
+// de asumir que siempre está justo en el límite (una cuenta que bajó de
+// Pro con más de 4 audios puede tener bastantes más).
+function audioLimitMessage() {
+  const total = liveAudioTotal();
+  return `Tenés ${total} audio${total === 1 ? '' : 's'} guardado${total === 1 ? '' : 's'} — el plan gratis permite hasta ${AUDIO_FREE_LIMIT}. Borrá alguno para agregar otro, o pasate a Pro para audios ilimitados.`;
+}
+
+// Gate del fotolibro (v1.59, ver "Suscripciones" en CLAUDE.md): 1 PDF
+// exportado gratis por mes calendario, ilimitado Pro. usageState.
+// bookExportMonth/bookExportCount trackean el mes ("YYYY-MM") y cuántos
+// se exportaron en él — cualquier mes que no sea el actual cuenta como
+// "0 usados todavía", así el cupo se resetea solo el día 1 sin ningún
+// job aparte, mismo espíritu que el reset de AUDIO_FREE_LIMIT al borrar.
+const BOOK_EXPORT_FREE_LIMIT = 1;
+function currentYearMonth() { return new Date().toISOString().slice(0, 7); }
+function bookExportsUsedThisMonth() {
+  return usageState.bookExportMonth === currentYearMonth() ? (usageState.bookExportCount || 0) : 0;
+}
+function remainingFreeBookExports() {
+  if (isPaidUser()) return Infinity;
+  return Math.max(0, BOOK_EXPORT_FREE_LIMIT - bookExportsUsedThisMonth());
+}
+// Se llama recién después de un doc.save() exitoso — nunca antes, un
+// intento que el usuario cancela o que falla no debería gastar el cupo.
+// No-op para Pro (mismo criterio que syncAudioUsageAfterSave(): un plan
+// pago nunca escribe este contador, no tiene sentido).
+async function recordBookExportUsage() {
+  if (isPaidUser()) return;
+  usageState = { ...usageState, bookExportMonth: currentYearMonth(), bookExportCount: bookExportsUsedThisMonth() + 1 };
+  try { await saveUsage(usageState); } catch (e) { console.warn('No se pudo guardar el uso de exportación del fotolibro:', e); }
+}
+
+// Reconciliación real del contador contra la cuenta (computeRealAudioCount(),
+// en drive.js — recorre todos los álbumes y días, cara de correr). Se
+// dispara en paralelo desde bootstrapDiaryPage() SIN esperarla, y el flag
+// _audioReconcileInFlight evita que entrar/salir de un álbum varias veces
+// seguidas dispare varios escaneos completos al mismo tiempo (el bug real
+// de v1.54: el escaneo corría adentro de loadUsage(), bloqueando la
+// navegación, y cada reintento por una escritura que no llegaba a tiempo
+// sumaba otro escaneo entero en paralelo — con conexión inestable eso
+// saturaba Drive y el loader del día quedaba pegado).
+let _audioReconcileInFlight = false;
+async function maybeReconcileAudioUsage() {
+  if (usageState.reconciled || _audioReconcileInFlight) return;
+  _audioReconcileInFlight = true;
+  try {
+    const audioCount = await computeRealAudioCount();
+    usageState = { version: 1, audioCount, reconciled: true };
+    await saveUsage(usageState);
+  } catch (e) {
+    console.warn('No se pudo reconciliar el contador de audio del plan gratis:', e);
+  } finally {
+    _audioReconcileInFlight = false;
+  }
+}
 
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
@@ -1462,6 +2019,20 @@ async function bootstrapDiaryPage() {
     } else {
       albumCanEdit = await canEditFolder(albumFolderId);
     }
+    // Lectura rápida (un GET), sin importar el plan ni si el álbum es de
+    // solo lectura: un usuario Pro no consulta el gate, pero igual
+    // necesitamos que el contador esté al día para el día en que baje a
+    // Free y sí importe. Antes se salteaba en álbumes de solo lectura
+    // (ni el drop-zone ni el grabador aparecen ahí) — pero el botón
+    // "Exportar" del fotolibro (v1.58) SÍ es visible en álbumes
+    // compartidos de solo lectura, y su gate (v1.59) también necesita
+    // el usageState real de la cuenta ahí, así que ya no tiene sentido
+    // saltear esta lectura para ningún caso. La reconciliación contra el
+    // conteo real de audio (cara, escanea toda la cuenta) sigue
+    // disparándose aparte, en paralelo, sin bloquear la navegación — ver
+    // maybeReconcileAudioUsage() — y esa sí sigue acotada a álbumes editables.
+    usageState = await loadUsage();
+    if (albumCanEdit) maybeReconcileAudioUsage();
     currentDate = await resolveStartDate();
     renderDiaryPage();
     await loadDay(currentDate);
@@ -1550,6 +2121,7 @@ async function loadDay(dateStr) {
     currentDay = day || emptyDay();
   } catch(e) { setStatus('error', 'Error al cargar'); currentDay = emptyDay(); }
   currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+  currentDayAudioCountAtLoad = currentDay.media.filter(m => m.type === 'audio').length;
   const titleEl = document.getElementById('day-title');
   const notesEl = document.getElementById('day-notes');
   if (titleEl) { titleEl.value = currentDay.title || ''; autoResize(titleEl); }
@@ -1562,11 +2134,29 @@ async function loadDay(dateStr) {
   }
 }
 
+// Recalcula el delta de audios de ESTE día contra lo que tenía al cargarlo
+// y lo suma/resta a usageState.audioCount (persistido en Drive) — cubre
+// tanto grabar/subir (delta positivo) como borrar (delta negativo, ver
+// "¿Se recupera el cupo?" en CLAUDE.md). Se sincroniza SIEMPRE, sea Pro o
+// free — si solo sincronizara para free, una cuenta Pro que graba de más
+// y después baja a Free se encontraría con un contador en 0 sin reflejar
+// nada de lo real (ver "Gate de audio: tope de 4, no se pierde nada al
+// bajar de plan" en CLAUDE.md → "Funcionando bien").
+async function syncAudioUsageAfterSave() {
+  const newAudioCount = currentDay.media.filter(m => m.type === 'audio').length;
+  const delta = newAudioCount - currentDayAudioCountAtLoad;
+  currentDayAudioCountAtLoad = newAudioCount;
+  if (delta === 0) return;
+  usageState.audioCount = Math.max(0, usageState.audioCount + delta);
+  try { await saveUsage(usageState); } catch (e) { console.warn('No se pudo actualizar el contador de audio del plan gratis:', e); }
+}
+
 async function saveCurrentDay() {
   setStatus('', 'Guardando...');
   try {
     currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay, currentDayOriginalIds);
     currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+    await syncAudioUsageAfterSave();
     if (albumMeta && !albumMeta.coverFileId) {
       const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
       if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
@@ -1582,6 +2172,7 @@ async function saveCurrentDay() {
       // papelera lo que ya está bien. El mensaje ya viene completo, sin
       // prefijo "Error:" — es un guardado parcial, no una falla total.
       currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+      await syncAudioUsageAfterSave();
       setStatus('error', e.message);
     } else {
       setStatus('error', 'Error: ' + e.message);
@@ -1697,12 +2288,28 @@ function renderMedia() {
 }
 
 // ─── File handling ────────────────────────────────────────
+// Recorta la lista de audios a agregar al cupo gratis disponible — si
+// alcanza para todos los deja pasar tal cual (incluye el caso Pro, que
+// tiene cupo infinito); si no, deja pasar los primeros que entren y avisa
+// del resto con el paywall en vez de subirlos en silencio o bloquear todo.
+function enforceAudioFreeLimit(audioFiles) {
+  if (!audioFiles.length) return audioFiles;
+  const allowedCount = remainingFreeAudioSlots();
+  if (allowedCount >= audioFiles.length) return audioFiles;
+  const kept = audioFiles.slice(0, allowedCount);
+  const blockedCount = audioFiles.length - kept.length;
+  openSubscribeModal(kept.length
+    ? `Se agregaron ${kept.length} audio${kept.length === 1 ? '' : 's'} — ${blockedCount} más no se subieron porque el plan gratis permite hasta ${AUDIO_FREE_LIMIT} audios en la cuenta. Pasate a Pro para subir el resto, o borrá alguno para hacer lugar.`
+    : audioLimitMessage());
+  return kept;
+}
+
 async function processFiles(files) {
   const allowed = ['image/', 'audio/', 'video/'];
   const valid = Array.from(files).filter(f => allowed.some(t => f.type.startsWith(t)));
   if (!valid.length) return;
   const imgVid = valid.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
-  const audio  = valid.filter(f => f.type.startsWith('audio/'));
+  const audio  = enforceAudioFreeLimit(valid.filter(f => f.type.startsWith('audio/')));
   if (imgVid.length > 0) {
     const grouped = await groupFilesByDate(imgVid);
     const otherDays = Object.keys(grouped.dated).filter(d => d !== currentDate);
@@ -1712,7 +2319,7 @@ async function processFiles(files) {
       if (confirm(msg)) { await saveFilesToCorrectDays(grouped, audio); return; }
     }
   }
-  addFilesToCurrentDay(valid);
+  addFilesToCurrentDay([...imgVid, ...audio]);
 }
 
 async function saveFilesToCorrectDays(grouped, audioFiles) {
@@ -1725,10 +2332,10 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
       const isImg = file.type.startsWith('image/');
       let blob = file;
       if (isImg) { const data = await compressImage(file); blob = base64ToBlob(data); }
-      const fileId = await uploadFile(blob, file.name, dayFolderId);
+      const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION);
       day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
     }
-    await writeJsonFile({ version: 2, title: day.title, notes: day.notes, media: day.media }, 'day.json', dayFolderId);
+    await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media });
     invalidateDayCache(albumFolderId, date);
   }
   const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
@@ -1761,7 +2368,7 @@ function compressImage(file) {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img; const MAX = 1200;
+        let { width, height } = img; const MAX = 2400; // subido de 1200 en el Paso 3 del fotolibro-a-PDF — a 1200px ninguna foto nueva iba a poder llegar a 300 DPI real ni en el tamaño de hoja más chico (20x20cm)
         if (width > MAX || height > MAX) { if (width > height) { height = Math.round(height * MAX / width); width = MAX; } else { width = Math.round(width * MAX / height); height = MAX; } }
         const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
@@ -1880,6 +2487,7 @@ async function renderBook() {
   const currentIds = allPhotos.map(p => p.driveFileId);
   let saved = null;
   try { saved = await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
+  bookPageSize = (saved && saved.pageSize) || defaultBookPageSize();
 
   if (!saved) {
     bookPages = chunkArray(currentIds, 4).map(images => ({ images, layout: null }));
@@ -1905,29 +2513,147 @@ async function renderBook() {
     bookPages = cleanedPages;
     bookDrawer = [...cleanedDrawer, ...added];
     if (albumCanEdit && changed) {
-      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
+      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
     }
   }
 
   bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
   renderBookPages();
   document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
 }
 
-// Layouts CSS válidos por cantidad de fotos — usado tanto para elegir
-// el automático (pickLayout) como para validar uno forzado guardado en
-// una página (si la cantidad de fotos cambió y ya no corresponde, se
-// vuelve a automático en vez de quedar inconsistente).
-const BOOK_LAYOUTS_BY_COUNT = {
-  1: ['book-layout-1'],
-  2: ['book-layout-2h', 'book-layout-2v'],
-  3: ['book-layout-3a', 'book-layout-3b'],
-  4: ['book-layout-4a', 'book-layout-4b'],
+// Tamaños de hoja habituales para fotolibro impreso (ver el research
+// sobre imprentas en CLAUDE.md → "Fotolibro → PDF"). El álbum guarda su
+// elección en book.json (`pageSize`, ver drive.js) — la página en
+// pantalla adopta esta proporción real (Paso 2 de la exportación
+// imprimible) y, más adelante, el export a PDF va a dibujar a este
+// tamaño exacto en cm. "Personalizado" no vive acá — se arma con los cm
+// que tipee el usuario en el modal (ver applyCustomBookPageSize()).
+const BOOK_PAGE_SIZES = {
+  'square-20': { label: '20 × 20 cm', w: 20, h: 20 },
+  'square-30': { label: '30 × 30 cm', w: 30, h: 30 },
+  'rect-20x30': { label: '20 × 30 cm (vertical)', w: 20, h: 30 },
+  'rect-30x20': { label: '30 × 20 cm (horizontal)', w: 30, h: 20 },
+  'a4-vertical': { label: 'A4 vertical', w: 21, h: 29.7 },
+  'a4-horizontal': { label: 'A4 horizontal', w: 29.7, h: 21 },
 };
+const DEFAULT_BOOK_PAGE_SIZE_ID = 'square-20';
+function defaultBookPageSize() {
+  const def = BOOK_PAGE_SIZES[DEFAULT_BOOK_PAGE_SIZE_ID];
+  return { id: DEFAULT_BOOK_PAGE_SIZE_ID, w: def.w, h: def.h };
+}
+
+// Única fuente de verdad de la geometría de cada layout del fotolibro —
+// tanto la pantalla (acá) como, más adelante, el export a PDF van a leer
+// de este mismo registro en vez de tener la geometría duplicada a mano
+// en dos lugares que puedan desincronizarse. Cada entrada describe una
+// grilla CSS como datos: `rows`/`cols` son los mismos números que un
+// `Nfr` (los valores relativos de `grid-template-rows/columns`), y cada
+// `cells[i]` ubica la foto i-ésima con `row`/`col` (0-indexado) y un
+// `rowSpan`/`colSpan` opcional (default 1) — equivalente exacto a lo que
+// hoy logran las reglas `.book-layout-3a .bp:first-child { grid-column:
+// 1 / -1 }`, etc., pero como datos en vez de CSS por selector.
+const BOOK_LAYOUTS = {
+  'book-layout-1': { label: null, rows: [1], cols: [1], cells: [
+    { row: 0, col: 0 },
+  ] },
+  'book-layout-2h': { label: 'Apiladas', rows: [1, 1], cols: [1], cells: [
+    { row: 0, col: 0 }, { row: 1, col: 0 },
+  ] },
+  'book-layout-2v': { label: 'Lado a lado', rows: [1], cols: [1, 1], cells: [
+    { row: 0, col: 0 }, { row: 0, col: 1 },
+  ] },
+  'book-layout-3a': { label: '1 grande arriba', rows: [1.5, 1], cols: [1, 1], cells: [
+    { row: 0, col: 0, colSpan: 2 }, { row: 1, col: 0 }, { row: 1, col: 1 },
+  ] },
+  'book-layout-3b': { label: '1 grande abajo', rows: [1, 1.5], cols: [1, 1], cells: [
+    { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 1, col: 0, colSpan: 2 },
+  ] },
+  'book-layout-4a': { label: 'Grilla pareja', rows: [1, 1], cols: [1, 1], cells: [
+    { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 1, col: 0 }, { row: 1, col: 1 },
+  ] },
+  'book-layout-4b': { label: '1 grande al costado', rows: [1, 1, 1], cols: [1.5, 1], cells: [
+    { row: 0, col: 0, rowSpan: 3 }, { row: 0, col: 1 }, { row: 1, col: 1 }, { row: 2, col: 1 },
+  ] },
+};
+
+function bookLayoutDef(layoutClass) {
+  return BOOK_LAYOUTS[layoutClass] || BOOK_LAYOUTS['book-layout-1'];
+}
+
+// Aplica la geometría de `layoutClass` sobre `gridEl` (que ya tiene la
+// clase genérica `.book-layout-grid`, solo `display:grid; gap:2px` fijo
+// en CSS) y ubica cada elemento de `cellEls` en su celda — ambos arrays
+// deben tener el mismo largo y orden que `def.cells`.
+function applyBookLayoutGrid(gridEl, layoutClass, cellEls) {
+  const def = bookLayoutDef(layoutClass);
+  gridEl.style.gridTemplateRows = def.rows.map(r => `${r}fr`).join(' ');
+  gridEl.style.gridTemplateColumns = def.cols.map(c => `${c}fr`).join(' ');
+  cellEls.forEach((cellEl, i) => {
+    const cell = def.cells[i];
+    if (!cell || !cellEl) return;
+    cellEl.style.gridRow = `${cell.row + 1} / span ${cell.rowSpan || 1}`;
+    cellEl.style.gridColumn = `${cell.col + 1} / span ${cell.colSpan || 1}`;
+  });
+}
+
+// Tamaño y posición de arranque de cada track (fila o columna), en mm —
+// replica a mano el algoritmo de CSS Grid con `fr` + `gap` fijo: cada
+// track ocupa `(fr/totalFr) * espacioUtilizable`, y el espacio
+// utilizable ya descuenta todos los gaps de antemano. Es la MISMA
+// geometría que ve la pantalla (`applyBookLayoutGrid`/CSS Grid nativo) —
+// esto es lo que hace que el PDF (Paso 3) y la pantalla (Paso 1) nunca
+// puedan desincronizarse: los dos leen `BOOK_LAYOUTS`, uno vía CSS Grid
+// real y el otro recalculando el mismo algoritmo a mano porque un PDF no
+// tiene layout engine propio.
+function bookGridTrackPositions(frs, totalSpaceMm, gapMm) {
+  const totalFr = frs.reduce((a, b) => a + b, 0);
+  const usable = totalSpaceMm - gapMm * (frs.length - 1);
+  const sizes = frs.map(fr => (fr / totalFr) * usable);
+  const starts = [];
+  let acc = 0;
+  for (const size of sizes) { starts.push(acc); acc += size + gapMm; }
+  return { sizes, starts };
+}
+
+// Rectángulo (x/y/w/h, en mm) de la celda `cellIdx` del layout `def`
+// dentro de una página de `pageWmm` x `pageHmm` — misma fuente
+// (BOOK_LAYOUTS) que usa la pantalla, usada tanto por el chequeo de DPI
+// previo a exportar como por el dibujo real del PDF.
+function computeCellRectMm(pageWmm, pageHmm, def, cellIdx, gapMm) {
+  const colsT = bookGridTrackPositions(def.cols, pageWmm, gapMm);
+  const rowsT = bookGridTrackPositions(def.rows, pageHmm, gapMm);
+  const cell = def.cells[cellIdx];
+  const colSpan = cell.colSpan || 1, rowSpan = cell.rowSpan || 1;
+  const x = colsT.starts[cell.col];
+  const y = rowsT.starts[cell.row];
+  let w = 0; for (let i = 0; i < colSpan; i++) { w += colsT.sizes[cell.col + i]; if (i < colSpan - 1) w += gapMm; }
+  let h = 0; for (let i = 0; i < rowSpan; i++) { h += rowsT.sizes[cell.row + i]; if (i < rowSpan - 1) h += gapMm; }
+  return { x, y, w, h };
+}
+
+// Layouts válidos por cantidad de fotos — derivado del registro de
+// arriba agrupando por cuántas celdas tiene cada uno, usado tanto para
+// elegir el automático (pickLayout) como para validar uno forzado
+// guardado en una página (si la cantidad de fotos cambió y ya no
+// corresponde, se vuelve a automático en vez de quedar inconsistente).
+const BOOK_LAYOUTS_BY_COUNT = {};
+for (const [key, def] of Object.entries(BOOK_LAYOUTS)) {
+  const n = def.cells.length;
+  (BOOK_LAYOUTS_BY_COUNT[n] || (BOOK_LAYOUTS_BY_COUNT[n] = [])).push(key);
+}
 function isValidBookLayout(layout, count) {
   return (BOOK_LAYOUTS_BY_COUNT[count] || []).includes(layout);
+}
+
+// Nombres en criollo de cada layout, para el selector — derivado del
+// registro de arriba (el de 1 foto no tiene selector, `label` queda
+// `null` y nunca se consulta acá).
+const BOOK_LAYOUT_LABELS = {};
+for (const [key, def] of Object.entries(BOOK_LAYOUTS)) {
+  if (def.label) BOOK_LAYOUT_LABELS[key] = def.label;
 }
 
 // Alterna entre la vista inmersiva (una página a pantalla completa) y
@@ -1970,17 +2696,32 @@ function buildBookReorderTile(page, idx) {
   const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
   const label = document.createElement('div'); label.className = 'book-reorder-tile-label'; label.textContent = `Página ${idx + 1}`;
   tile.appendChild(label);
-  const grid = document.createElement('div'); grid.className = 'book-reorder-tile-grid';
-  page.images.forEach(id => {
-    const photo = bookPhotoByFileId.get(id); if (!photo) return;
+  // Con 1 sola foto no hay ningún otro layout entre los que elegir —
+  // no tiene sentido mostrar el botón.
+  if (page.images.length > 1) {
+    const layoutBtn = document.createElement('button');
+    layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
+    layoutBtn.textContent = '⊞';
+    layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
+    tile.appendChild(layoutBtn);
+  }
+  const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
+  wrap.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
+  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+  const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+  const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
+  wrap.appendChild(grid);
+  const cellEls = imgs.map(photo => {
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
     cell.appendChild(imgEl);
     const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
     cell.appendChild(handle);
     grid.appendChild(cell);
+    return cell;
   });
-  tile.appendChild(grid);
+  applyBookLayoutGrid(grid, layoutClass, cellEls);
+  tile.appendChild(wrap);
   return tile;
 }
 
@@ -2000,19 +2741,58 @@ function renderBookPages() {
   if (!container) return;
   container.innerHTML = '';
   bookPages.forEach((page, idx) => container.appendChild(buildBookPage(page, idx)));
+  fitAllBookPageCards(container);
   if (albumCanEdit) { initBookDragReorder(container); initBookTouchReorder(container); }
   applyBookTextVisibility();
   updateBookCounter();
 }
 
+// La tarjeta de página (.book-page-card) necesita un ancho/alto en PX
+// concretos para que su proporción real (bookPageSize) quede "adentro"
+// del espacio disponible sin recortarse ni deformarse — `aspect-ratio`
+// solo, sin al menos una dimensión definida, no alcanza (un div vacío no
+// tiene tamaño propio del que derivar la otra dimensión, a diferencia de
+// una imagen con `object-fit:contain`, que sí resuelve esto solo pero
+// nunca aplica a un div genérico). Se mide UNA sola vez el espacio
+// disponible (todas las páginas comparten el mismo tamaño de `.book-page`,
+// que es fijo — 100% del carrusel) y se aplica el mismo ancho/alto a
+// todas las tarjetas. `bookPageSize` sigue siendo la fuente de verdad de
+// la PROPORCIÓN — acá solo se resuelve a qué tamaño en pantalla le toca
+// en este momento, nunca al revés.
+function fitAllBookPageCards(container) {
+  if (!bookPageSize) return;
+  const firstPage = container.querySelector('.book-page');
+  if (!firstPage) return;
+  const cs = getComputedStyle(firstPage);
+  const availW = firstPage.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+  const availH = firstPage.clientHeight - parseFloat(cs.paddingTop || 0) - parseFloat(cs.paddingBottom || 0);
+  if (!(availW > 0) || !(availH > 0)) return;
+  const scale = Math.min(availW / bookPageSize.w, availH / bookPageSize.h);
+  const cardW = Math.round(bookPageSize.w * scale);
+  const cardH = Math.round(bookPageSize.h * scale);
+  container.querySelectorAll('.book-page-card').forEach(card => { card.style.width = `${cardW}px`; card.style.height = `${cardH}px`; });
+}
+
+// Recalcula el tamaño de las tarjetas si el usuario rota el celular o
+// cambia el tamaño de la ventana mientras ya está mirando el tab Libro
+// en la vista inmersiva (`renderBook()` ya recalcula solo al re-entrar
+// al tab, esto cubre quedarse adentro).
+window.addEventListener('resize', () => {
+  const container = document.getElementById('book-pages-container');
+  if (container && container.style.display !== 'none' && container.children.length) fitAllBookPageCards(container);
+});
+
 function buildBookPage(page, idx) {
   const el = document.createElement('div'); el.className = 'book-page'; el.dataset.pageIdx = idx;
+  const card = document.createElement('div'); card.className = 'book-page-card';
+  card.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
+  el.appendChild(card);
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
   const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; el.appendChild(photoArea); return el; }
+  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; card.appendChild(photoArea); return el; }
   const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
-  const grid = document.createElement('div'); grid.className = layoutClass; grid.style.height = '100%';
-  imgs.forEach(photo => {
+  const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
+  const cellEls = imgs.map(photo => {
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
     cell.appendChild(imgEl);
@@ -2021,9 +2801,11 @@ function buildBookPage(page, idx) {
     cell.appendChild(chip);
     if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
     grid.appendChild(cell);
+    return cell;
   });
+  applyBookLayoutGrid(grid, layoutClass, cellEls);
   photoArea.appendChild(grid);
-  el.appendChild(photoArea);
+  card.appendChild(photoArea);
   return el;
 }
 
@@ -2044,6 +2826,119 @@ function seededPick(str) {
   return (hash & 1) === 0;
 }
 
+// ─── Selector de layout forzado por página ────────────────
+// El modelo de datos (page.layout) ya soportaba forzar un layout
+// puntual desde la migración a "páginas explícitas" (v1.26) — esto le
+// suma la UI para elegirlo. Vive en el modo Reordenar, un botón por
+// tile (solo si la página tiene más de 1 foto — con una sola no hay
+// nada entre qué elegir).
+let bookLayoutModalPageIdx = null;
+
+function openBookLayoutModal(idx) {
+  const page = bookPages[idx];
+  if (!page) return;
+  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+  const count = imgs.length;
+  const options = BOOK_LAYOUTS_BY_COUNT[count] || [];
+  if (options.length <= 1) return;
+  bookLayoutModalPageIdx = idx;
+  const currentLayout = page.layout && isValidBookLayout(page.layout, count) ? page.layout : null;
+  const autoLayout = pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+
+  const container = document.getElementById('book-layout-options');
+  container.innerHTML = '';
+  container.appendChild(buildBookLayoutOption('Automático', autoLayout, count, currentLayout === null, () => chooseBookLayout(null)));
+  options.forEach(layoutClass => {
+    container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_LABELS[layoutClass] || layoutClass, layoutClass, count, currentLayout === layoutClass, () => chooseBookLayout(layoutClass)));
+  });
+  document.getElementById('modal-book-layout').classList.add('open');
+}
+
+function buildBookLayoutOption(label, previewLayoutClass, count, active, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'book-layout-option' + (active ? ' active' : '');
+  const preview = document.createElement('div');
+  preview.className = 'book-layout-preview book-layout-grid';
+  const cellEls = [];
+  for (let i = 0; i < count; i++) { const cell = document.createElement('div'); cell.className = 'bp'; preview.appendChild(cell); cellEls.push(cell); }
+  applyBookLayoutGrid(preview, previewLayoutClass, cellEls);
+  btn.appendChild(preview);
+  const labelEl = document.createElement('div'); labelEl.className = 'book-layout-option-label'; labelEl.textContent = label;
+  btn.appendChild(labelEl);
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function chooseBookLayout(layoutClass) {
+  if (bookLayoutModalPageIdx === null) return;
+  const page = bookPages[bookLayoutModalPageIdx];
+  if (page) page.layout = layoutClass; // null = vuelve a automático
+  closeBookLayoutModal();
+  renderBookReorderGrid();
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el layout:', e));
+}
+
+function closeBookLayoutModal() {
+  document.getElementById('modal-book-layout').classList.remove('open');
+  bookLayoutModalPageIdx = null;
+}
+
+// ─── Fotolibro: tamaño de hoja real (Paso 2 de la exportación a PDF,
+// ver CLAUDE.md → "Fotolibro → PDF") ───────────────────────────────
+// El tamaño elegido queda guardado en book.json (bookPageSize, ver
+// BOOK_PAGE_SIZES) y define la proporción real de la página tanto acá
+// en pantalla (buildBookPage/buildBookReorderTile) como, más adelante,
+// del PDF exportado — de ahí que cambiarlo re-renderice la vista actual
+// y persista de una, igual que un cambio de layout.
+function openBookPageSizeModal() {
+  const container = document.getElementById('book-page-size-options');
+  container.innerHTML = '';
+  Object.entries(BOOK_PAGE_SIZES).forEach(([id, def]) => {
+    container.appendChild(buildBookPageSizeOption(id, def.label, def.w, def.h, bookPageSize.id === id));
+  });
+  container.appendChild(buildBookPageSizeOption('custom', 'Personalizado', bookPageSize.w, bookPageSize.h, bookPageSize.id === 'custom'));
+  document.getElementById('book-page-size-custom-w').value = bookPageSize.w;
+  document.getElementById('book-page-size-custom-h').value = bookPageSize.h;
+  document.getElementById('book-page-size-custom').style.display = bookPageSize.id === 'custom' ? '' : 'none';
+  document.getElementById('modal-book-page-size').classList.add('open');
+}
+
+function buildBookPageSizeOption(id, label, w, h, active) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'book-layout-option' + (active ? ' active' : '');
+  const preview = document.createElement('div');
+  preview.className = 'book-page-size-preview';
+  preview.style.aspectRatio = `${w} / ${h}`;
+  btn.appendChild(preview);
+  const labelEl = document.createElement('div'); labelEl.className = 'book-layout-option-label'; labelEl.textContent = label;
+  btn.appendChild(labelEl);
+  btn.addEventListener('click', () => {
+    if (id === 'custom') { document.getElementById('book-page-size-custom').style.display = ''; document.getElementById('book-page-size-custom-w').focus(); return; }
+    chooseBookPageSize({ id, w, h });
+  });
+  return btn;
+}
+
+function applyCustomBookPageSize() {
+  const w = parseFloat(document.getElementById('book-page-size-custom-w').value);
+  const h = parseFloat(document.getElementById('book-page-size-custom-h').value);
+  if (!(w > 0) || !(h > 0)) return;
+  chooseBookPageSize({ id: 'custom', w, h });
+}
+
+function chooseBookPageSize(sizeObj) {
+  bookPageSize = { id: sizeObj.id, w: sizeObj.w, h: sizeObj.h };
+  closeBookPageSizeModal();
+  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
+}
+
+function closeBookPageSizeModal() {
+  document.getElementById('modal-book-page-size').classList.remove('open');
+}
+
 function toggleBookText() {
   bookShowText = !bookShowText;
   document.getElementById('book-text-btn').classList.toggle('active', bookShowText);
@@ -2054,6 +2949,221 @@ function toggleBookText() {
 // el estado del toggle sobreviva a un re-render de las páginas.
 function applyBookTextVisibility() {
   document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; });
+}
+
+// ─── Fotolibro → PDF (Paso 3 de la exportación imprimible) ─────────
+// Separación entre celdas EN LA IMPRESIÓN — deliberadamente fija y chica
+// (no derivada de los 2px de pantalla, que no tienen ningún significado
+// físico al pasar a mm de papel real).
+const EXPORT_GAP_MM = 1;
+// Piso de calidad para el aviso previo a exportar: 300 DPI es el ideal
+// citado por las imprentas (ver research en CLAUDE.md), pero es exigente
+// para fotos de celular reales — 200 DPI es el piso que se suele citar
+// como "todavía aceptable" para fotolibro visto a distancia normal. Por
+// debajo de eso, avisamos (sin bloquear nunca la exportación).
+const EXPORT_MIN_DPI = 200;
+
+// DPI real que efectivamente se imprime cuando una foto de `imgPx` (su
+// resolución nativa) se estira/recorta "cover" (igual que `.bp img {
+// object-fit:cover }` en pantalla — llena la celda entera, recortando lo
+// que sobre) dentro de una celda de `cellMm` (mm). Con cover, el eje que
+// queda MÁS ajustado es el que manda la resolución real lograda — por
+// eso es el mínimo entre los dos ejes, no un promedio.
+function effectiveDpiForCell(imgPx, cellMm) {
+  const cellWIn = cellMm.w / 25.4, cellHIn = cellMm.h / 25.4;
+  return Math.min(imgPx.width / cellWIn, imgPx.height / cellHIn);
+}
+
+// Recorre bookPages (nunca el drawer — esas fotos no forman parte del
+// libro impreso) y arma una lista plana de cada foto colocada, con todo
+// lo que hace falta para ubicarla: a qué página/celda pertenece y qué
+// layout tiene esa página. Fuente única para el chequeo de DPI y para
+// el dibujo real del PDF — así nunca pueden mirar cosas distintas.
+function collectBookExportPhotos() {
+  const out = [];
+  bookPages.forEach((page, pageIdx) => {
+    const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+    if (!imgs.length) return;
+    const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+    imgs.forEach((photo, cellIdx) => out.push({ photo, pageIdx, cellIdx, layoutClass }));
+  });
+  return out;
+}
+
+// Chequeo previo a exportar: para cada foto del libro, compara su
+// resolución real (metadata de Drive, sin descargar el archivo) contra
+// el DPI que efectivamente va a lograr en su celda al tamaño de hoja +
+// sangrado elegidos. Devuelve solo las que quedan por debajo del piso —
+// nunca bloquea nada, es un aviso (ver openBookExportModal()). Una foto
+// cuya metadata no se pudo leer (`getImageDimensions` devolvió `null`)
+// se trata como "no chequeable", nunca como sospechosa.
+async function checkBookExportResolution(pageWmm, pageHmm) {
+  const placed = collectBookExportPhotos();
+  const results = await runWithConcurrency(placed, 5, async ({ photo, pageIdx, cellIdx, layoutClass }) => {
+    const dims = await getImageDimensions(photo.driveFileId);
+    if (!dims) return null;
+    const def = bookLayoutDef(layoutClass);
+    const rect = computeCellRectMm(pageWmm, pageHmm, def, cellIdx, EXPORT_GAP_MM);
+    const dpi = effectiveDpiForCell(dims, rect);
+    return dpi < EXPORT_MIN_DPI ? { photo, pageIdx, dpi: Math.round(dpi) } : null;
+  });
+  return results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+}
+
+// jsPDF se carga solo la primera vez que hace falta (nadie que no use
+// "Exportar a PDF" tiene por qué bajarlo) — memoizado para que dos
+// exportaciones seguidas no lo carguen dos veces.
+let _jsPdfLoadPromise = null;
+function ensureJsPdfLoaded() {
+  if (window.jspdf) return Promise.resolve();
+  if (_jsPdfLoadPromise) return _jsPdfLoadPromise;
+  _jsPdfLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { _jsPdfLoadPromise = null; reject(new Error('No se pudo cargar el generador de PDF. Revisá tu conexión.')); };
+    document.head.appendChild(script);
+  });
+  return _jsPdfLoadPromise;
+}
+
+function loadImageElementFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar una foto para el PDF'));
+    img.src = url;
+  });
+}
+
+// Recorta `imgEl` a `targetAspect` (ancho/alto) centrado, igual que
+// `object-fit:cover` — que es exactamente cómo se ve `.bp img` en
+// pantalla (ver CSS) — para que el PDF nunca deforme una foto que en la
+// app se ve recortada, no estirada. Devuelve un <canvas> ya recortado a
+// su resolución nativa (no la reduce), listo para `doc.addImage()`.
+function coverCropToCanvas(imgEl, targetAspect) {
+  const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+  const srcAspect = iw / ih;
+  let sx = 0, sy = 0, sw = iw, sh = ih;
+  if (srcAspect > targetAspect) { sw = ih * targetAspect; sx = (iw - sw) / 2; }
+  else { sh = iw / targetAspect; sy = (ih - sh) / 2; }
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(sw); canvas.height = Math.round(sh);
+  canvas.getContext('2d').drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+// El exportador en sí: arma un PDF con una página por cada página del
+// libro (nunca el drawer), del tamaño de `bookPageSize` + `bleedMm` de
+// sangrado en cada borde — mismo `BOOK_LAYOUTS`/`computeCellRectMm` que
+// ve la pantalla, así el PDF es geométricamente idéntico a lo que el
+// usuario ya vio armar. `onProgress(pagina, total)` es opcional, para
+// que la UI muestre progreso mientras descarga cada foto en resolución
+// completa (nunca la miniatura de pantalla) desde Drive.
+async function generateBookPdf(bleedMm, onProgress) {
+  await ensureJsPdfLoaded();
+  const { jsPDF } = window.jspdf;
+  const pageWmm = bookPageSize.w * 10 + bleedMm * 2;
+  const pageHmm = bookPageSize.h * 10 + bleedMm * 2;
+  const pagesWithPhotos = bookPages.filter(p => p.images.some(id => bookPhotoByFileId.has(id)));
+  if (!pagesWithPhotos.length) throw new Error('El libro no tiene fotos para exportar');
+  const doc = new jsPDF({ unit: 'mm', format: [pageWmm, pageHmm], compress: true });
+  for (let i = 0; i < pagesWithPhotos.length; i++) {
+    if (i > 0) doc.addPage([pageWmm, pageHmm]);
+    if (onProgress) onProgress(i + 1, pagesWithPhotos.length);
+    const page = pagesWithPhotos[i];
+    const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
+    const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
+    const def = bookLayoutDef(layoutClass);
+    for (let c = 0; c < imgs.length; c++) {
+      const rect = computeCellRectMm(pageWmm, pageHmm, def, c, EXPORT_GAP_MM);
+      const blobUrl = await fetchFileAsDataUrl(imgs[c].driveFileId);
+      try {
+        const imgEl = await loadImageElementFromUrl(blobUrl);
+        const canvas = coverCropToCanvas(imgEl, rect.w / rect.h);
+        doc.addImage(canvas, 'JPEG', rect.x, rect.y, rect.w, rect.h);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+    }
+  }
+  return doc;
+}
+
+// Flujo del modal de export: primer toque en "Exportar" corre el
+// chequeo de resolución (checkBookExportResolution) — si encuentra
+// fotos por debajo del piso, avisa y cambia el botón a "Exportar de
+// todos modos" en vez de generar directamente (mismo criterio de "avisa
+// pero no bloquea, deja elegir" que ya usa el aviso de duplicados de la
+// carga masiva). Un segundo toque (o el primero, si no hubo nada que
+// avisar) genera el PDF de una.
+let _exportLowResConfirmed = false;
+
+function openBookExportModal() {
+  if (remainingFreeBookExports() <= 0) {
+    openSubscribeModal('Ya usaste tu PDF gratis de este mes — pasate a Pro para exportar el fotolibro sin límite.');
+    return;
+  }
+  _exportLowResConfirmed = false;
+  document.getElementById('export-page-size-label').textContent = `${bookPageSize.w} × ${bookPageSize.h} cm`;
+  document.getElementById('export-bleed').value = 3;
+  document.getElementById('export-warning').style.display = 'none';
+  document.getElementById('export-progress').style.display = 'none';
+  const btn = document.getElementById('export-confirm-btn');
+  btn.textContent = 'Exportar'; btn.disabled = false;
+  document.getElementById('modal-book-export').classList.add('open');
+}
+
+function closeBookExportModal() {
+  document.getElementById('modal-book-export').classList.remove('open');
+}
+
+async function startBookExport() {
+  const btn = document.getElementById('export-confirm-btn');
+  const warnEl = document.getElementById('export-warning');
+  const progressEl = document.getElementById('export-progress');
+  const bleedMm = parseFloat(document.getElementById('export-bleed').value);
+  if (!(bleedMm >= 0)) {
+    warnEl.style.display = ''; warnEl.textContent = 'El sangrado tiene que ser un número (podés poner 0 si no querés sangrado).';
+    return;
+  }
+
+  if (!_exportLowResConfirmed) {
+    btn.disabled = true;
+    warnEl.style.display = 'none';
+    progressEl.style.display = ''; progressEl.textContent = 'Comprobando la calidad de las fotos...';
+    const pageWmm = bookPageSize.w * 10 + bleedMm * 2;
+    const pageHmm = bookPageSize.h * 10 + bleedMm * 2;
+    let lowRes = [];
+    try { lowRes = await checkBookExportResolution(pageWmm, pageHmm); } catch (e) { console.warn('No se pudo completar el chequeo de resolución, se sigue igual:', e); }
+    progressEl.style.display = 'none';
+    btn.disabled = false;
+    if (lowRes.length) {
+      const n = lowRes.length;
+      warnEl.style.display = '';
+      warnEl.textContent = `${n} foto${n > 1 ? 's' : ''} se ${n > 1 ? 'van' : 'va'} a ver borrosa${n > 1 ? 's' : ''} impresa${n > 1 ? 's' : ''} a este tamaño (menos de ${EXPORT_MIN_DPI} DPI). Podés exportar igual si no te importa.`;
+      _exportLowResConfirmed = true;
+      btn.textContent = 'Exportar de todos modos';
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  warnEl.style.display = 'none';
+  progressEl.style.display = ''; progressEl.textContent = 'Generando PDF...';
+  try {
+    const doc = await generateBookPdf(bleedMm, (page, total) => { progressEl.textContent = `Generando PDF... página ${page}/${total}`; });
+    const albumName = (document.getElementById('header-subtitle').textContent || 'fotolibro').trim();
+    doc.save(`Fotolibro - ${albumName}.pdf`);
+    await recordBookExportUsage();
+    closeBookExportModal();
+  } catch (e) {
+    progressEl.style.display = 'none';
+    warnEl.style.display = ''; warnEl.textContent = e.message || 'No se pudo generar el PDF. Probá de nuevo.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Exportar';
+    _exportLowResConfirmed = false;
+  }
 }
 
 // ─── Fotolibro: reordenar arrastrando (independiente de la fecha) ──
@@ -2249,7 +3359,7 @@ function moveBookPhoto(srcId, target) {
     bookDrawer.push(srcId);
   }
 
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
   if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
   const newContainerEl = document.getElementById(containerId);
   const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
@@ -2308,6 +3418,7 @@ function renderBulkDiaryReview() {
 async function confirmBulkDiary() {
   const btn = document.getElementById('bulk-diary-confirm-btn'); const progress = document.getElementById('bulk-diary-progress');
   btn.disabled = true;
+  progress.textContent = 'Preparando...'; // feedback inmediato al tocar — antes quedaba en blanco varios segundos
   try {
     const allGroups = {};
     Object.keys(bulkDiaryGrouped.dated).forEach(date => {
@@ -2404,6 +3515,10 @@ function initRecorder() {
   btnRec.addEventListener('click', () => { if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(); else startRecording(); });
 }
 async function startRecording() {
+  if (remainingFreeAudioSlots() <= 0) {
+    openSubscribeModal(audioLimitMessage());
+    return;
+  }
   try { recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(e) { document.getElementById('recorder-sub').textContent = 'No se pudo acceder al micrófono'; return; }
   recorderChunks = []; mediaRecorder = new MediaRecorder(recorderStream);
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recorderChunks.push(e.data); };
@@ -2786,7 +3901,9 @@ document.getElementById('lightbox').addEventListener('touchend', e => { const di
 document.getElementById('slideshow-close').addEventListener('click', closeSlideshow);
 document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
 document.getElementById('modal-new-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewAlbumModal(); });
+document.getElementById('modal-confirm').addEventListener('click', e => { if (e.target === e.currentTarget) document.getElementById('confirm-cancel-btn').click(); });
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
+document.getElementById('modal-book-layout').addEventListener('click', e => { if (e.target === e.currentTarget) closeBookLayoutModal(); });
 document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
