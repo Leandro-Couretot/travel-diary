@@ -1,6 +1,6 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
-const admin = require('firebase-admin');
+const { getAppCheck } = require('firebase-admin/app-check');
 const { getSupabaseClient } = require('./lib/supabase');
 const { signSession } = require('./lib/session');
 
@@ -34,7 +34,11 @@ exports.authSession = onRequest(
     try {
       const appCheckHeader = req.header('X-Firebase-AppCheck');
       if (appCheckHeader) {
-        await admin.appCheck().verifyToken(appCheckHeader);
+        // admin.appCheck() (namespace viejo) no existe más en firebase-admin
+        // 14.x — la API es modular (firebase-admin/app-check → getAppCheck()),
+        // que es la misma que usa internamente enforceAppCheck de
+        // firebase-functions v2 (confirmado en su código fuente).
+        await getAppCheck().verifyToken(appCheckHeader);
         console.log('[AppCheck diag] token válido');
       } else {
         console.log('[AppCheck diag] sin header X-Firebase-AppCheck');
