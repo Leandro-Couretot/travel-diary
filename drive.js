@@ -677,6 +677,24 @@ async function saveBookLayout(albumFolderId, { pages, drawer, pageSize }) {
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
 
+// Colapsa entradas de media con el mismo driveFileId a una sola (se queda
+// con la primera, que conserva su posición/caption originales) — nunca
+// borra un archivo real de Drive, solo una referencia repetida al mismo
+// archivo dentro del array. Usado tanto al leer day.json (para que una
+// cuenta que ya tiene un día duplicado por el motivo que sea lo vea
+// arreglado sin tener que tocar nada) como al guardarlo (para que, si algo
+// en el futuro reintroduce una referencia repetida, el día quede limpio
+// apenas se lo vuelve a guardar).
+function dedupeMediaByDriveFileId(media) {
+  const seen = new Set();
+  return media.filter(m => {
+    if (!m.driveFileId) return true; // todavía sin subir, no hay id que comparar
+    if (seen.has(m.driveFileId)) return false;
+    seen.add(m.driveFileId);
+    return true;
+  });
+}
+
 async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
   if (!albumFolderId) throw new Error('albumFolderId no disponible — esperá a que Drive termine de cargar');
   const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId);
@@ -723,7 +741,9 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
     // null, un item "fantasma" que no se puede volver a renderizar
     // después de recargar la página) — siguen en day.media en memoria
     // para poder reintentarlos, solo no se persisten todavía.
-    media: day.media.filter(m => m.driveFileId).map(m => ({
+    // dedupeMediaByDriveFileId() colapsa una foto que haya quedado
+    // referenciada dos veces (ver CLAUDE.md) antes de escribir.
+    media: dedupeMediaByDriveFileId(day.media.filter(m => m.driveFileId)).map(m => ({
       type: m.type, name: m.name,
       driveFileId: m.driveFileId,
       caption: m.caption || ''
@@ -786,11 +806,15 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
       result = {
         title: dayJson.title || '',
         notes: dayJson.notes || '',
-        media: (dayJson.media || []).map(m => ({
+        // dedupeMediaByDriveFileId(): si una cuenta ya tiene un día con
+        // una foto referenciada dos veces (ver CLAUDE.md), se ve corregido
+        // acá mismo al cargarlo — sin esperar a que se guarde ese día para
+        // que la vista deje de mostrarla duplicada.
+        media: dedupeMediaByDriveFileId((dayJson.media || []).map(m => ({
           type: m.type, name: m.name,
           driveFileId: m.driveFileId,
           caption: m.caption || ''
-        }))
+        })))
       };
     }
     _dayCache[key] = { folderId: dayFolderId, json: result };
