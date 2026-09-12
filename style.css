@@ -117,22 +117,6 @@ body {
 .btn-nav:hover { border-color: var(--accent); color: var(--accent); }
 .btn-nav:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
-/* ─── DRIVE STATUS BTN ─── */
-.btn-drive {
-  background: none;
-  border: 1px solid var(--ink-faint);
-  color: var(--ink-muted);
-  padding: 0.35rem 0.65rem;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.btn-drive:hover { border-color: var(--accent); color: var(--accent); }
-.btn-drive.connected { color: var(--green); border-color: var(--green); }
-
 /* ─── MODAL ─── */
 .modal-overlay {
   display: none;

@@ -975,7 +975,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.69 ·
+      Versión 1.70 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -1000,7 +1000,7 @@ function navigateTo(view, params = {}) {
     dirty = false;
     document.getElementById('header-subtitle').textContent = 'mis recuerdos';
     renderHomeHeader();
-    updateDriveBtn(); // renderHomeHeader() resetea el botón al texto default — corregirlo al estado real
+    updateDriveBtn();
     renderAlbums();
   } else if (view === 'diary') {
     albumId        = params.albumId || null;
@@ -1014,11 +1014,10 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.69</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.70</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
-    <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
-    <button class="btn-drive" id="btn-drive" onclick="handleDriveBtn()">Conectar Drive</button>`;
+    <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
 }
 
 function openSubscribeModal(context) {
@@ -1232,14 +1231,7 @@ async function initGoogleAuth() {
 }
 
 function handleDriveBtn() {
-  if (isDriveConnected()) {
-    if (confirm('¿Desconectar Google Drive?')) {
-      disconnectDrive();
-      if (_silentRefreshTimer) { clearTimeout(_silentRefreshTimer); _silentRefreshTimer = null; }
-      localStorage.removeItem('drive_token_expires_at');
-      updateDriveBtn(); renderDisconnected();
-    }
-  } else if (window._tokenClient) {
+  if (window._tokenClient) {
     pendingAuthState = newAuthState();
     window._tokenClient.requestAccessToken({ state: pendingAuthState });
   } else {
@@ -1248,16 +1240,8 @@ function handleDriveBtn() {
 }
 
 function updateDriveBtn() {
-  const btn = document.getElementById('btn-drive');
   const bulkBtn = document.getElementById('btn-bulk-upload');
-  if (!btn) return;
-  if (isDriveConnected()) {
-    btn.textContent = '● Drive conectado'; btn.classList.add('connected');
-    if (bulkBtn) bulkBtn.style.display = '';
-  } else {
-    btn.textContent = 'Conectar Drive'; btn.classList.remove('connected');
-    if (bulkBtn) bulkBtn.style.display = 'none';
-  }
+  if (bulkBtn) bulkBtn.style.display = isDriveConnected() ? '' : 'none';
 }
 
 async function checkMigratable() {

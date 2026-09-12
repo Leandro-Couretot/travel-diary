@@ -40,11 +40,6 @@ async function _bootstrapDrive() {
   }
 }
 
-function disconnectDrive() {
-  driveToken = null; rootFolderId = null;
-  localStorage.removeItem('drive_token');
-}
-
 function isDriveConnected() {
   return !!(driveToken && rootFolderId);
 }
