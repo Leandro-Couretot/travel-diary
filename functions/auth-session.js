@@ -1,5 +1,6 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
+const admin = require('firebase-admin');
 const { getSupabaseClient } = require('./lib/supabase');
 const { signSession } = require('./lib/session');
 
@@ -21,6 +22,25 @@ exports.authSession = onRequest(
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'method_not_allowed' });
       return;
+    }
+
+    // Diagnóstico temporal de App Check (ver CLAUDE.md → "App Check", Fase 1):
+    // el dashboard de Firebase Console → App Check → APIs no lista Cloud
+    // Functions HTTP (`onRequest`), así que no hay forma de confirmar ahí que
+    // el tráfico real llega con un token válido. Este bloque valida el token
+    // a mano y solo lo deja en los logs de Cloud Run (Cloud Run → authsession
+    // → Logs) — nunca bloquea ni cambia la respuesta real; se saca apenas se
+    // confirme que el tráfico real llega válido.
+    try {
+      const appCheckHeader = req.header('X-Firebase-AppCheck');
+      if (appCheckHeader) {
+        await admin.appCheck().verifyToken(appCheckHeader);
+        console.log('[AppCheck diag] token válido');
+      } else {
+        console.log('[AppCheck diag] sin header X-Firebase-AppCheck');
+      }
+    } catch (e) {
+      console.log('[AppCheck diag] token inválido:', e.message);
     }
 
     const accessToken = req.body && req.body.access_token;
