@@ -25,7 +25,7 @@ const FIREBASE_CONFIG = {
   projectId: 'family-fotos-491610',
   appId: '1:29099211489:web:68d4251dc368823d81d5a0',
 };
-const RECAPTCHA_ENTERPRISE_SITE_KEY = '6LeP97YtAAAAALZJffDDV-JBhBC_EQ8rTLSHb6Bl';
+const RECAPTCHA_ENTERPRISE_SITE_KEY = '6Ld1abctAAAAAIv8tZA05hd3uGZeMeu4JzVNzbEm';
 
 let _appCheckInstance = null;
 function ensureAppCheckInitialized() {
