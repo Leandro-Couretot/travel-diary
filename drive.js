@@ -674,7 +674,10 @@ async function loadBookLayout(albumFolderId) {
 }
 
 async function saveBookLayout(albumFolderId, { pages, drawer, pageSize }) {
-  await writeJsonFileMigrating({ version: 2, pages, drawer, pageSize: normalizeBookPageSize(pageSize) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
+  // v3 (ver CLAUDE.md → "Fotolibro"): cada página tiene un layout siempre
+  // concreto (nunca null) del que sale su capacidad — `images` es un
+  // array de ese largo fijo, con `null` en los huecos vacíos.
+  await writeJsonFileMigrating({ version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────

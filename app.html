@@ -290,6 +290,7 @@ audio { width: 100%; height: 32px; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
 .bp.dragging { opacity: 0.35; }
 .bp.drag-over { outline: 3px solid var(--accent); outline-offset: -3px; }
+.bp-empty { background: transparent; border: 1.5px dashed var(--ink-faint); }
 .bp-chip { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.5rem 0.6rem 0.4rem; background: linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0)); color: white; line-height: 1.3; transition: opacity 0.3s; pointer-events: none; }
 .bp-chip-date { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85; }
 .bp-chip-caption { display: block; font-size: 0.72rem; margin-top: 0.1rem; }
@@ -310,6 +311,14 @@ audio { width: 100%; height: 32px; }
   display: flex; align-items: center; justify-content: center;
 }
 .book-reorder-layout-btn:hover { background: rgba(26,26,24,0.8); }
+.book-reorder-delete-btn {
+  position: absolute; top: 0.3rem; left: 0.3rem; z-index: 2;
+  width: 22px; height: 22px; border-radius: 4px; border: none;
+  background: rgba(26,26,24,0.55); color: #fff;
+  font-size: 0.7rem; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.book-reorder-delete-btn:hover { background: var(--red); }
 .book-layout-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 0.75rem; }
 .book-layout-option {
   display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
@@ -323,6 +332,9 @@ audio { width: 100%; height: 32px; }
 .book-layout-option-label { font-size: 0.7rem; color: var(--ink-muted); text-align: center; line-height: 1.25; }
 .book-layout-option.active .book-layout-option-label { color: var(--ink); }
 .book-page-size-preview { width: 48px; aspect-ratio: 1; background: var(--ink-faint); border-radius: 3px; }
+.book-add-page-count-options { display: flex; gap: 0.6rem; }
+.book-add-page-count-btn { width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--ink-faint); background: none; font-size: 1.1rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); }
+.book-add-page-count-btn:hover { border-color: var(--accent); background: var(--accent-light); }
 .book-page-size-custom { display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
 .book-drawer { flex: 0 0 auto; max-height: 34%; overflow-y: auto; border-top: 1px solid rgba(0,0,0,0.08); padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom)); background: rgba(255,255,255,0.55); }
 .book-drawer-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin-bottom: 0.5rem; }
@@ -803,6 +815,22 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-book-add-page">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Agregar página</div><button class="modal-close" onclick="closeBookAddPageModal()">×</button></div>
+    <div class="modal-body">
+      <div id="book-add-page-step-count">
+        <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:0.75rem;">¿Cuántas fotos va a tener esta página?</div>
+        <div class="book-add-page-count-options" id="book-add-page-count-options"></div>
+      </div>
+      <div id="book-add-page-step-layout" style="display:none;">
+        <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:0.75rem;">¿Cómo se distribuyen?</div>
+        <div class="book-layout-options" id="book-add-page-layout-options"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-book-page-size">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Tamaño de hoja</div><button class="modal-close" onclick="closeBookPageSizeModal()">×</button></div>
@@ -947,7 +975,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.68 ·
+      Versión 1.69 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -986,7 +1014,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.68</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.69</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openSubscribeModal()" title="Suscribirme">✨</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>
@@ -2540,26 +2568,32 @@ async function renderBook() {
   bookPageSize = (saved && saved.pageSize) || defaultBookPageSize();
 
   if (!saved) {
-    bookPages = chunkArray(currentIds, 4).map(images => ({ images, layout: null }));
+    bookPages = chunkArray(currentIds, 4).map(images => buildFixedCapacityPage(images, null));
     bookDrawer = [];
   } else {
     const currentSet = new Set(currentIds);
     let changed = !!saved._migrated;
     const cleanedPages = [];
     for (const page of saved.pages) {
-      const images = page.images.filter(id => currentSet.has(id));
-      if (images.length !== page.images.length) changed = true;
-      if (!images.length) { changed = true; continue; } // página que quedó sin fotos desaparece
-      let layout = page.layout;
-      if (layout && !isValidBookLayout(layout, images.length)) { layout = null; changed = true; }
+      // v2->v3 (ver CLAUDE.md → "Fotolibro"): un layout automático (null)
+      // se congela una sola vez acá — de ahí en más la página tiene un
+      // layout concreto y fijo, del que sale su capacidad (cantidad de
+      // celdas), independiente de cuántas fotos tenga puestas en cada
+      // momento. Sacar una foto ya no invalida el layout ni compacta el
+      // array — deja un `null` en su mismo lugar (buildFixedCapacityPage).
+      if (!page.layout) changed = true;
+      const { images: withHoles, layout } = buildFixedCapacityPage(page.images, page.layout);
+      const images = withHoles.map(id => (id && !currentSet.has(id)) ? (changed = true, null) : id);
       cleanedPages.push({ images, layout });
     }
     const cleanedDrawer = saved.drawer.filter(id => currentSet.has(id));
     if (cleanedDrawer.length !== saved.drawer.length) changed = true;
-    const placedSet = new Set([...cleanedPages.flatMap(p => p.images), ...cleanedDrawer]);
+    const placedSet = new Set([...cleanedPages.flatMap(p => p.images.filter(Boolean)), ...cleanedDrawer]);
     const added = currentIds.filter(id => !placedSet.has(id)); // fotos nuevas -> al drawer, nunca a una página sola
     if (added.length) changed = true;
 
+    // Páginas ya NO desaparecen solas por quedar sin fotos — el hueco
+    // queda ahí hasta que el usuario la borra a mano ("Eliminar página").
     bookPages = cleanedPages;
     bookDrawer = [...cleanedDrawer, ...added];
     if (albumCanEdit && changed) {
@@ -2568,7 +2602,7 @@ async function renderBook() {
   }
 
   bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-addpage-btn" onclick="openBookAddPageModal()">Agregar página</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
   renderBookPages();
   document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
@@ -2746,8 +2780,9 @@ function buildBookReorderTile(page, idx) {
   const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
   const label = document.createElement('div'); label.className = 'book-reorder-tile-label'; label.textContent = `Página ${idx + 1}`;
   tile.appendChild(label);
-  // Con 1 sola foto no hay ningún otro layout entre los que elegir —
-  // no tiene sentido mostrar el botón.
+  // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
+  // tiene sentido mostrar el botón. `page.images.length` es la capacidad
+  // fija de la página (v3), no la cantidad de fotos puestas ahora.
   if (page.images.length > 1) {
     const layoutBtn = document.createElement('button');
     layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
@@ -2755,13 +2790,26 @@ function buildBookReorderTile(page, idx) {
     layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
     tile.appendChild(layoutBtn);
   }
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button'; deleteBtn.className = 'book-reorder-delete-btn'; deleteBtn.title = 'Eliminar página';
+  deleteBtn.textContent = '✕';
+  deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteBookPage(idx); });
+  tile.appendChild(deleteBtn);
   const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
   wrap.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
-  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-  const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   wrap.appendChild(grid);
-  const cellEls = imgs.map(photo => {
+  // Se recorre page.images por índice real (nunca compactando) — un
+  // hueco (null) se dibuja como celda placeholder en su lugar exacto,
+  // en vez de correr a las demás fotos (ver buildFixedCapacityPage()).
+  const cellEls = page.images.map((fileId, slotIdx) => {
+    const photo = fileId ? bookPhotoByFileId.get(fileId) : null;
+    if (!photo) {
+      const cell = document.createElement('div'); cell.className = 'bp bp-empty';
+      cell.dataset.pageIdx = idx; cell.dataset.slotIdx = slotIdx;
+      grid.appendChild(cell);
+      return cell;
+    }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
     cell.appendChild(imgEl);
@@ -2770,7 +2818,7 @@ function buildBookReorderTile(page, idx) {
     grid.appendChild(cell);
     return cell;
   });
-  applyBookLayoutGrid(grid, layoutClass, cellEls);
+  applyBookLayoutGrid(grid, page.layout, cellEls);
   tile.appendChild(wrap);
   return tile;
 }
@@ -2838,11 +2886,20 @@ function buildBookPage(page, idx) {
   card.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
   el.appendChild(card);
   const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
-  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-  if (!imgs.length) { photoArea.innerHTML = `<div class="book-page-empty"><div class="book-empty-icon">📷</div>Sin fotos</div>`; card.appendChild(photoArea); return el; }
-  const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
-  const cellEls = imgs.map(photo => {
+  // Se recorre page.images por índice real (nunca compactando) — un
+  // hueco (null) se dibuja como celda placeholder en su lugar exacto
+  // (ver buildFixedCapacityPage()); la capacidad de la página ya no
+  // depende de cuántas fotos tenga puestas ahora, así que no hace falta
+  // ningún caso especial para "página sin fotos todavía".
+  const cellEls = page.images.map((fileId, slotIdx) => {
+    const photo = fileId ? bookPhotoByFileId.get(fileId) : null;
+    if (!photo) {
+      const cell = document.createElement('div'); cell.className = 'bp bp-empty';
+      cell.dataset.pageIdx = idx; cell.dataset.slotIdx = slotIdx;
+      grid.appendChild(cell);
+      return cell;
+    }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
     cell.appendChild(imgEl);
@@ -2853,7 +2910,7 @@ function buildBookPage(page, idx) {
     grid.appendChild(cell);
     return cell;
   });
-  applyBookLayoutGrid(grid, layoutClass, cellEls);
+  applyBookLayoutGrid(grid, page.layout, cellEls);
   photoArea.appendChild(grid);
   card.appendChild(photoArea);
   return el;
@@ -2876,30 +2933,62 @@ function seededPick(str) {
   return (hash & 1) === 0;
 }
 
+// ─── Fotolibro v3: capacidad de página fija (ver CLAUDE.md → "Fotolibro") ──
+// Antes (v2), el layout de una página se recalculaba cada vez que cambiaba
+// su cantidad de fotos — no había un "4 fotos menos una", cada cantidad
+// tiene layouts completamente distintos, así que sacar una sola foto le
+// cambiaba toda la geometría a la página sin que el usuario lo esperara.
+// Ahora la capacidad de una página sale directo de su layout
+// (`bookLayoutDef(layout).cells.length`) — es siempre un valor concreto,
+// elegido una vez y fijo hasta que el usuario lo cambie a mano con el
+// selector (⊞). `images` pasa a tener SIEMPRE ese largo fijo, con `null`
+// en los huecos vacíos — sacar una foto deja un hueco en su mismo lugar,
+// nunca compacta ni recalcula el resto de la página.
+//
+// `buildFixedCapacityPage(images, existingLayout)` es el único lugar que
+// arma esa forma: si `existingLayout` ya es concreto, se respeta tal cual
+// (esto es lo que hace que el layout quede FIJO de ahí en más); si viene
+// `null` (automático, de un book.json v2 viejo, o una página recién
+// chunkeada) se congela una única vez con `pickLayout()` sobre las fotos
+// reales que tenga ahora — de ahí en más ese layout ya no se vuelve a
+// tocar solo. El array de `images` se recorta/rellena con `null` al largo
+// exacto de la capacidad resultante.
+function buildFixedCapacityPage(images, existingLayout) {
+  const real = images.filter(Boolean);
+  const layout = existingLayout || pickLayout(real, real.join('-') || 'vacia');
+  const capacity = bookLayoutDef(layout).cells.length;
+  const padded = images.slice(0, capacity);
+  while (padded.length < capacity) padded.push(null);
+  return { images: padded, layout };
+}
+
 // ─── Selector de layout forzado por página ────────────────
 // El modelo de datos (page.layout) ya soportaba forzar un layout
 // puntual desde la migración a "páginas explícitas" (v1.26) — esto le
 // suma la UI para elegirlo. Vive en el modo Reordenar, un botón por
-// tile (solo si la página tiene más de 1 foto — con una sola no hay
+// tile (solo si la página tiene más de 1 lugar — con capacidad 1 no hay
 // nada entre qué elegir).
+//
+// v3 (ver CLAUDE.md → "Fotolibro"): el layout de una página ya siempre
+// es concreto (nunca `null`/automático — ver buildFixedCapacityPage()),
+// así que este selector deja de ofrecer una opción "Automático" — solo
+// deja elegir entre las variantes que existen para la MISMA capacidad
+// que ya tiene la página (cambiar de capacidad es un cambio de tamaño
+// de página, no de "distribución", y no es lo que resuelve este modal).
 let bookLayoutModalPageIdx = null;
 
 function openBookLayoutModal(idx) {
   const page = bookPages[idx];
   if (!page) return;
-  const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-  const count = imgs.length;
-  const options = BOOK_LAYOUTS_BY_COUNT[count] || [];
+  const capacity = bookLayoutDef(page.layout).cells.length;
+  const options = BOOK_LAYOUTS_BY_COUNT[capacity] || [];
   if (options.length <= 1) return;
   bookLayoutModalPageIdx = idx;
-  const currentLayout = page.layout && isValidBookLayout(page.layout, count) ? page.layout : null;
-  const autoLayout = pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
 
   const container = document.getElementById('book-layout-options');
   container.innerHTML = '';
-  container.appendChild(buildBookLayoutOption('Automático', autoLayout, count, currentLayout === null, () => chooseBookLayout(null)));
   options.forEach(layoutClass => {
-    container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_LABELS[layoutClass] || layoutClass, layoutClass, count, currentLayout === layoutClass, () => chooseBookLayout(layoutClass)));
+    container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_LABELS[layoutClass] || layoutClass, layoutClass, capacity, page.layout === layoutClass, () => chooseBookLayout(layoutClass)));
   });
   document.getElementById('modal-book-layout').classList.add('open');
 }
@@ -2923,7 +3012,7 @@ function buildBookLayoutOption(label, previewLayoutClass, count, active, onClick
 function chooseBookLayout(layoutClass) {
   if (bookLayoutModalPageIdx === null) return;
   const page = bookPages[bookLayoutModalPageIdx];
-  if (page) page.layout = layoutClass; // null = vuelve a automático
+  if (page) page.layout = layoutClass; // siempre un layout concreto, misma capacidad (ver openBookLayoutModal)
   closeBookLayoutModal();
   renderBookReorderGrid();
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el layout:', e));
@@ -2932,6 +3021,72 @@ function chooseBookLayout(layoutClass) {
 function closeBookLayoutModal() {
   document.getElementById('modal-book-layout').classList.remove('open');
   bookLayoutModalPageIdx = null;
+}
+
+// ─── Fotolibro: agregar página en blanco ────────────────────
+// El usuario elige primero cuántas fotos va a tener (capacidad) y recién
+// después cómo se distribuyen (mismo selector — buildBookLayoutOption()
+// — que ya usa openBookLayoutModal() para páginas existentes). La página
+// se crea vacía (todos sus `images` en `null`) lista para arrastrarle
+// fotos desde el drawer o desde otra página.
+function openBookAddPageModal() {
+  document.getElementById('book-add-page-step-count').style.display = '';
+  document.getElementById('book-add-page-step-layout').style.display = 'none';
+  const countContainer = document.getElementById('book-add-page-count-options');
+  countContainer.innerHTML = '';
+  [1, 2, 3, 4].forEach(n => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'book-add-page-count-btn'; btn.textContent = n;
+    btn.addEventListener('click', () => chooseBookAddPageCount(n));
+    countContainer.appendChild(btn);
+  });
+  document.getElementById('modal-book-add-page').classList.add('open');
+}
+
+function chooseBookAddPageCount(count) {
+  const options = BOOK_LAYOUTS_BY_COUNT[count] || [];
+  // Con capacidad 1 solo existe un layout (book-layout-1, sin variantes)
+  // — no tiene sentido mostrar un selector de una sola opción, se crea
+  // directo.
+  if (options.length <= 1) { confirmBookAddPage(options[0] || 'book-layout-1'); return; }
+  document.getElementById('book-add-page-step-count').style.display = 'none';
+  document.getElementById('book-add-page-step-layout').style.display = '';
+  const container = document.getElementById('book-add-page-layout-options');
+  container.innerHTML = '';
+  options.forEach(layoutClass => {
+    container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_LABELS[layoutClass] || layoutClass, layoutClass, count, false, () => confirmBookAddPage(layoutClass)));
+  });
+}
+
+function confirmBookAddPage(layoutClass) {
+  const capacity = bookLayoutDef(layoutClass).cells.length;
+  bookPages.push({ images: Array(capacity).fill(null), layout: layoutClass });
+  closeBookAddPageModal();
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+}
+
+function closeBookAddPageModal() {
+  document.getElementById('modal-book-add-page').classList.remove('open');
+}
+
+// Elimina una página del fotolibro (botón "✕" en el modo Reordenar,
+// ver CLAUDE.md → "Fotolibro"): sus fotos reales (huecos no cuentan)
+// vuelven al drawer ("Sin ubicar"), nunca se pierden — solo la página en
+// sí (su layout/capacidad elegidos) desaparece.
+async function deleteBookPage(idx) {
+  const page = bookPages[idx];
+  if (!page) return;
+  const realPhotos = page.images.filter(Boolean);
+  const msg = realPhotos.length
+    ? `Esta página tiene ${realPhotos.length} foto${realPhotos.length > 1 ? 's' : ''} — al eliminarla, vuelven a "Sin ubicar". ¿Eliminar la página?`
+    : '¿Eliminar esta página vacía?';
+  const ok = await customConfirm(msg, { title: 'Eliminar página', confirmLabel: 'Eliminar' });
+  if (!ok) return;
+  bookDrawer.push(...realPhotos);
+  bookPages.splice(idx, 1);
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  renderBookReorderGrid();
 }
 
 // ─── Fotolibro: tamaño de hoja real (Paso 2 de la exportación a PDF,
@@ -3032,10 +3187,16 @@ function effectiveDpiForCell(imgPx, cellMm) {
 function collectBookExportPhotos() {
   const out = [];
   bookPages.forEach((page, pageIdx) => {
-    const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-    if (!imgs.length) return;
-    const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
-    imgs.forEach((photo, cellIdx) => out.push({ photo, pageIdx, cellIdx, layoutClass }));
+    const layoutClass = page.layout;
+    // Se recorre page.images por índice real (nunca compactando) — un
+    // hueco (null, foto todavía sin ubicar en esa página) simplemente no
+    // se agrega a la lista, esa celda sale en blanco en el PDF. Si se
+    // reindexara compactando, la 2ª foto real terminaría dibujándose en
+    // la celda 1 en vez de la 2 cuando la celda 1 está vacía.
+    page.images.forEach((fileId, cellIdx) => {
+      const photo = fileId ? bookPhotoByFileId.get(fileId) : null;
+      if (photo) out.push({ photo, pageIdx, cellIdx, layoutClass });
+    });
   });
   return out;
 }
@@ -3122,12 +3283,15 @@ async function generateBookPdf(bleedMm, onProgress) {
     if (i > 0) doc.addPage([pageWmm, pageHmm]);
     if (onProgress) onProgress(i + 1, pagesWithPhotos.length);
     const page = pagesWithPhotos[i];
-    const imgs = page.images.map(id => bookPhotoByFileId.get(id)).filter(Boolean);
-    const layoutClass = page.layout || pickLayout(imgs, imgs.map(p => p.driveFileId).join('-'));
-    const def = bookLayoutDef(layoutClass);
-    for (let c = 0; c < imgs.length; c++) {
+    const def = bookLayoutDef(page.layout);
+    // Por índice real, nunca compactando — una celda vacía (foto todavía
+    // sin ubicar en esa página) sale en blanco en el PDF en su lugar
+    // exacto, en vez de correr las fotos reales a celdas equivocadas.
+    for (let c = 0; c < page.images.length; c++) {
+      const fileId = page.images[c];
+      if (!fileId || !bookPhotoByFileId.has(fileId)) continue;
       const rect = computeCellRectMm(pageWmm, pageHmm, def, c, EXPORT_GAP_MM);
-      const blobUrl = await fetchFileAsDataUrl(imgs[c].driveFileId);
+      const blobUrl = await fetchFileAsDataUrl(fileId);
       try {
         const imgEl = await loadImageElementFromUrl(blobUrl);
         const canvas = coverCropToCanvas(imgEl, rect.w / rect.h);
@@ -3242,7 +3406,14 @@ function bookScrollTarget(root) {
 function resolveBookDropTarget(el) {
   if (!el) return null;
   const cell = el.closest('.bp');
-  if (cell) return { type: 'cell', fileId: cell.dataset.fileId };
+  if (cell) {
+    // Celda placeholder (hueco vacío, v3) — va a un índice puntual, no
+    // pisa ninguna foto (no tiene fileId).
+    if (cell.classList.contains('bp-empty')) {
+      return { type: 'slot', pageIdx: parseInt(cell.dataset.pageIdx, 10), slotIdx: parseInt(cell.dataset.slotIdx, 10) };
+    }
+    return { type: 'cell', fileId: cell.dataset.fileId };
+  }
   if (el.closest('.book-drawer')) return { type: 'drawer' };
   const pageEl = el.closest('.book-reorder-tile, .book-page');
   if (pageEl && pageEl.dataset.pageIdx !== undefined) return { type: 'page', pageIdx: parseInt(pageEl.dataset.pageIdx, 10) };
@@ -3261,6 +3432,9 @@ function initBookDragReorder(root) {
     const target = resolveBookDropTarget(e.target);
     if (target && target.type === 'cell' && target.fileId !== bookDragSrcId) {
       const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
+      if (cellEl) cellEl.classList.add('drag-over');
+    } else if (target && target.type === 'slot') {
+      const cellEl = root.querySelector(`.bp-empty[data-page-idx="${target.pageIdx}"][data-slot-idx="${target.slotIdx}"]`);
       if (cellEl) cellEl.classList.add('drag-over');
     }
     checkBookEdgeScroll(scrollTarget, e.clientX);
@@ -3293,6 +3467,9 @@ function initBookTouchReorder(root) {
       const target = resolveBookDropTarget(el);
       if (target && target.type === 'cell' && target.fileId !== touchSrcId) {
         const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
+        if (cellEl) cellEl.classList.add('drag-over');
+      } else if (target && target.type === 'slot') {
+        const cellEl = root.querySelector(`.bp-empty[data-page-idx="${target.pageIdx}"][data-slot-idx="${target.slotIdx}"]`);
         if (cellEl) cellEl.classList.add('drag-over');
       }
       checkBookEdgeScroll(scrollTarget, e.touches[0].clientX);
@@ -3339,26 +3516,25 @@ function clearBookEdgeScroll() {
   bookEdgeTimer = null; bookEdgeDir = null;
 }
 
-// Saca una foto de donde esté (una página o el drawer). Si una página
-// queda sin fotos, desaparece. Si el layout forzado de la página ya no
-// corresponde a la nueva cantidad de fotos, vuelve a automático.
+// Saca una foto de donde esté (una página o el drawer) — si estaba en
+// una página, deja un hueco (null) en su mismo lugar en vez de compactar
+// el array (la capacidad de la página es fija, ver
+// buildFixedCapacityPage()). La página NUNCA desaparece sola por quedar
+// sin fotos — se borra recién con el botón "Eliminar página".
 function removeBookPhotoFromCurrentSpot(fileId) {
   const drawerIdx = bookDrawer.indexOf(fileId);
   if (drawerIdx !== -1) { bookDrawer.splice(drawerIdx, 1); return; }
-  for (let i = bookPages.length - 1; i >= 0; i--) {
-    const page = bookPages[i];
+  for (const page of bookPages) {
     const slot = page.images.indexOf(fileId);
-    if (slot !== -1) {
-      page.images.splice(slot, 1);
-      if (!page.images.length) bookPages.splice(i, 1);
-      else if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
-      return;
-    }
+    if (slot !== -1) { page.images[slot] = null; return; }
   }
 }
 
 function locateBookPhoto(fileId) {
-  for (let i = 0; i < bookPages.length; i++) if (bookPages[i].images.includes(fileId)) return { pageIdx: i };
+  for (let i = 0; i < bookPages.length; i++) {
+    const slot = bookPages[i].images.indexOf(fileId);
+    if (slot !== -1) return { pageIdx: i, slotIdx: slot };
+  }
   return null;
 }
 
@@ -3384,44 +3560,36 @@ function moveBookPhoto(srcId, target) {
   if (target.type === 'cell') {
     // Misma regla siempre, sin importar si la foto pisada estaba en la
     // misma página, en otra, o si la arrastrada venía del drawer: la
-    // pisada se va al drawer, la arrastrada toma su lugar exacto.
+    // pisada se va al drawer, la arrastrada toma su lugar exacto (mismo
+    // índice, la capacidad de la página no cambia).
     removeBookPhotoFromCurrentSpot(srcId);
     const loc = locateBookPhoto(target.fileId);
     if (loc) {
-      const page = bookPages[loc.pageIdx];
-      const slot = page.images.indexOf(target.fileId);
-      page.images.splice(slot, 1, srcId);
-      if (page.layout && !isValidBookLayout(page.layout, page.images.length)) page.layout = null;
+      bookPages[loc.pageIdx].images[loc.slotIdx] = srcId;
       bookDrawer.push(target.fileId);
     } else {
       bookDrawer.push(srcId); // el target vivía en el drawer — nada que desplazar
     }
-  } else if (target.type === 'page') {
-    // target.pageIdx viene del DOM (resolveBookDropTarget), capturado ANTES
-    // de mover nada — pero si la página de origen de srcId se queda sin
-    // fotos, removeBookPhotoFromCurrentSpot() la saca del array (splice) y
-    // corre el índice de todas las páginas siguientes. Re-indexar bookPages
-    // con ese pageIdx DESPUÉS de la remoción podía terminar tocando la
-    // página siguiente a la que el usuario realmente soltó la foto (bug
-    // real reportado: una página cambiaba de layout/cantidad de fotos sin
-    // que el usuario la hubiera tocado). Se captura la referencia a la
-    // página objetivo ANTES de remover — un objeto sigue siendo el mismo
-    // aunque su posición en el array cambie.
-    const targetPage = bookPages[target.pageIdx];
+  } else if (target.type === 'slot') {
+    // Soltar sobre un hueco puntual (celda placeholder) — va directo a
+    // ese índice exacto, no desplaza nada (ya estaba vacío).
     removeBookPhotoFromCurrentSpot(srcId);
-    if (targetPage && bookPages.includes(targetPage)) {
-      if (targetPage.images.length >= 4) { bookDrawer.push(srcId); }
-      else {
-        targetPage.images.push(srcId);
-        if (targetPage.layout && !isValidBookLayout(targetPage.layout, targetPage.images.length)) targetPage.layout = null;
-      }
+    const page = bookPages[target.pageIdx];
+    if (page && target.slotIdx < page.images.length && !page.images[target.slotIdx]) {
+      page.images[target.slotIdx] = srcId;
     } else {
-      // La página objetivo era la propia página de origen y se vació al
-      // sacar srcId (ej. tenía una sola foto y era la que se está
-      // moviendo) — no hay dónde ponerla, va al drawer en vez de
-      // terminar en una página distinta a la que el usuario tocó.
-      bookDrawer.push(srcId);
+      bookDrawer.push(srcId); // el hueco ya no existe/está ocupado — no desplaza a nadie
     }
+  } else if (target.type === 'page') {
+    // Soltar en el fondo de una página (no sobre una celda puntual):
+    // llena el primer hueco libre — la capacidad es fija (v3), así que
+    // nunca "agrega al final" corriendo nada; si no queda ningún hueco,
+    // va al drawer igual que siempre.
+    removeBookPhotoFromCurrentSpot(srcId);
+    const page = bookPages[target.pageIdx];
+    const freeSlot = page ? page.images.indexOf(null) : -1;
+    if (freeSlot !== -1) page.images[freeSlot] = srcId;
+    else bookDrawer.push(srcId);
   } else if (target.type === 'drawer') {
     removeBookPhotoFromCurrentSpot(srcId);
     bookDrawer.push(srcId);
@@ -3972,6 +4140,7 @@ document.getElementById('modal-new-album').addEventListener('click', e => { if (
 document.getElementById('modal-confirm').addEventListener('click', e => { if (e.target === e.currentTarget) document.getElementById('confirm-cancel-btn').click(); });
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
 document.getElementById('modal-book-layout').addEventListener('click', e => { if (e.target === e.currentTarget) closeBookLayoutModal(); });
+document.getElementById('modal-book-add-page').addEventListener('click', e => { if (e.target === e.currentTarget) closeBookAddPageModal(); });
 document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
