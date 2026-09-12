@@ -9,6 +9,65 @@ let sessionToken = localStorage.getItem('td_session') || null;
 let subState = { plan: 'free', status: 'none' };
 let currentUserEmail = null; // se llena en establishSession(), viene ya validado por el servidor
 
+// ─── App Check (reCAPTCHA Enterprise) ──────────────────────────────
+// Defensa contra bots/scripts que le peguen directo a /api/* sin pasar por
+// esta app en un navegador real — corre invisible (sin ningún desafío
+// visible para el usuario), y cada Cloud Function puede exigir un token
+// válido antes de ejecutar su lógica (ver CLAUDE.md → "App Check"). Se
+// carga siempre (no bajo demanda como ensureJsPdfLoaded() del fotolibro,
+// que es opcional) porque el primer pedido a /api/* puede pasar apenas se
+// resuelve el login. Mismo criterio de "nunca romper la app si esto falla"
+// que ya usa getDebugPlanOverride()/maybeReconcileAudioUsage(): si algo
+// acá sale mal, las requests siguen mandándose igual, solo sin el header.
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyCGH1ovHZ5HaSMUDN3Atwu8S-54dieGUMw',
+  authDomain: 'family-fotos-491610.firebaseapp.com',
+  projectId: 'family-fotos-491610',
+  appId: '1:29099211489:web:68d4251dc368823d81d5a0',
+};
+const RECAPTCHA_ENTERPRISE_SITE_KEY = '6LeP97YtAAAAALZJffDDV-JBhBC_EQ8rTLSHb6Bl';
+
+let _appCheckInstance = null;
+function ensureAppCheckInitialized() {
+  if (_appCheckInstance) return _appCheckInstance;
+  try {
+    if (typeof firebase === 'undefined') return null;
+    const app = firebase.initializeApp(FIREBASE_CONFIG);
+    _appCheckInstance = firebase.appCheck(app);
+    _appCheckInstance.activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(RECAPTCHA_ENTERPRISE_SITE_KEY), true);
+    return _appCheckInstance;
+  } catch (e) {
+    console.warn('No se pudo inicializar App Check:', e);
+    return null;
+  }
+}
+
+async function appCheckHeaders() {
+  try {
+    const appCheck = ensureAppCheckInitialized();
+    if (!appCheck) return {};
+    const { token } = await appCheck.getToken(false);
+    return token ? { 'X-Firebase-AppCheck': token } : {};
+  } catch (e) {
+    console.warn('No se pudo obtener el token de App Check:', e);
+    return {};
+  }
+}
+
+// Variante que devuelve el token en sí (no un header) para sendBeacon()
+// (flushTrackEvents), que no puede mandar headers custom — mismo criterio
+// que ya usa session_token en el body como fallback para ese caso.
+async function appCheckTokenValue() {
+  try {
+    const appCheck = ensureAppCheckInitialized();
+    if (!appCheck) return null;
+    const { token } = await appCheck.getToken(false);
+    return token || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ─── Debug: forzar plan localmente, sin tocar Mercado Pago ─────────
 // Con un solo usuario de test (el propio dev) no hay forma de probar el
 // gating free/pro pagándose a sí mismo o creando una segunda cuenta de
@@ -55,7 +114,7 @@ async function establishSession(googleAccessToken) {
   try {
     const res = await fetch('/api/auth/session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
       body: JSON.stringify({ access_token: googleAccessToken }),
     });
     if (!res.ok) return;
@@ -77,7 +136,7 @@ async function refreshSubscriptionStatus() {
   if (!sessionToken) return;
   try {
     const res = await fetch('/api/subscription/status', {
-      headers: { Authorization: `Bearer ${sessionToken}` },
+      headers: { Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
     });
     if (res.ok) subState = await res.json();
   } catch (e) {
@@ -90,7 +149,7 @@ async function startCheckout(planType) {
   try {
     const res = await fetch('/api/checkout/create', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
       body: JSON.stringify({ planType }),
     });
     if (!res.ok) { alert('No se pudo iniciar la suscripción. Probá de nuevo en un rato.'); return; }
@@ -134,16 +193,20 @@ async function flushTrackEvents(useBeacon = false) {
   if (!events.length) return;
   try {
     if (useBeacon && navigator.sendBeacon) {
-      // sendBeacon() no permite mandar headers custom (Authorization) — el
-      // token viaja en el body como fallback exclusivamente para este caso;
-      // track-event.js lo acepta ahí solo cuando no hay header.
-      const payload = sessionToken ? { events, session_token: sessionToken } : { events };
+      // sendBeacon() no permite mandar headers custom (Authorization ni
+      // X-Firebase-AppCheck) — ambos tokens viajan en el body como fallback
+      // exclusivamente para este caso; track-event.js los acepta ahí solo
+      // cuando no hay header.
+      const appCheckToken = await appCheckTokenValue();
+      const payload = sessionToken
+        ? { events, session_token: sessionToken, app_check_token: appCheckToken }
+        : { events, app_check_token: appCheckToken };
       navigator.sendBeacon('/api/track', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
       return;
     }
     await fetch('/api/track', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}), ...(await appCheckHeaders()) },
       body: JSON.stringify({ events }),
     });
   } catch (e) {
