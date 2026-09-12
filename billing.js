@@ -31,22 +31,13 @@ let _appCheckInstance = null;
 function ensureAppCheckInitialized() {
   if (_appCheckInstance) return _appCheckInstance;
   try {
-    if (typeof firebase === 'undefined') {
-      // Diagnóstico temporal (ver CLAUDE.md → "App Check"): con este caso
-      // silencioso no había NINGÚN log, ni de éxito ni de error, así que no
-      // se podía saber por qué el header nunca llegaba al servidor. Usa
-      // console.error (no warn) a propósito: es lo único que el overlay de
-      // debug.js muestra en pantalla con ?debug=1 en la URL.
-      console.error('[AppCheck diag] firebase es undefined — el script del CDN no cargó');
-      return null;
-    }
+    if (typeof firebase === 'undefined') return null;
     const app = firebase.initializeApp(FIREBASE_CONFIG);
     _appCheckInstance = firebase.appCheck(app);
     _appCheckInstance.activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(RECAPTCHA_ENTERPRISE_SITE_KEY), true);
-    console.error('[AppCheck diag] App Check inicializado OK');
     return _appCheckInstance;
   } catch (e) {
-    console.error('[AppCheck diag] No se pudo inicializar App Check:', e && e.message || e);
+    console.warn('No se pudo inicializar App Check:', e);
     return null;
   }
 }
@@ -56,10 +47,9 @@ async function appCheckHeaders() {
     const appCheck = ensureAppCheckInitialized();
     if (!appCheck) return {};
     const { token } = await appCheck.getToken(false);
-    console.error('[AppCheck diag] getToken() ' + (token ? `devolvió un token (${token.length} chars)` : 'devolvió vacío'));
     return token ? { 'X-Firebase-AppCheck': token } : {};
   } catch (e) {
-    console.error('[AppCheck diag] No se pudo obtener el token de App Check:', e && e.message || e);
+    console.warn('No se pudo obtener el token de App Check:', e);
     return {};
   }
 }

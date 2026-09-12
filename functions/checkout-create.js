@@ -28,6 +28,7 @@ exports.checkoutCreate = onRequest(
   {
     region: 'southamerica-east1',
     secrets: [SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN],
+    enforceAppCheck: true, // ver CLAUDE.md → "App Check"
   },
   async (req, res) => {
     if (req.method !== 'POST') {

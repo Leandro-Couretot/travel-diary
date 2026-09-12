@@ -1,5 +1,6 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
+const { getAppCheck } = require('firebase-admin/app-check');
 const { getSupabaseClient } = require('./lib/supabase');
 const { verifySession } = require('./lib/session');
 
@@ -31,6 +32,26 @@ exports.trackEvent = onRequest(
     }
 
     const body = req.body || {};
+
+    // No se puede usar enforceAppCheck (como en authSession/checkoutCreate/
+    // subscriptionStatus, ver CLAUDE.md → "App Check") porque solo mira el
+    // header X-Firebase-AppCheck, y navigator.sendBeacon() (el flush al
+    // ocultar/cerrar la pestaña, ver flushTrackEvents() en billing.js) no
+    // puede mandar headers custom — ese camino manda el token en el body
+    // (app_check_token) en su lugar. Se valida a mano acá para cubrir los
+    // dos caminos con la misma API que usa enforceAppCheck por dentro.
+    const appCheckToken = req.header('X-Firebase-AppCheck') || (typeof body.app_check_token === 'string' ? body.app_check_token : null);
+    if (!appCheckToken) {
+      res.status(401).json({ error: 'missing_app_check_token' });
+      return;
+    }
+    try {
+      await getAppCheck().verifyToken(appCheckToken);
+    } catch (e) {
+      res.status(401).json({ error: 'invalid_app_check_token' });
+      return;
+    }
+
     const events = Array.isArray(body.events) ? body.events : [];
     if (!events.length) {
       res.status(200).json({ ok: true, inserted: 0 });
