@@ -138,7 +138,11 @@ async function refreshSubscriptionStatus() {
     const res = await fetch('/api/subscription/status', {
       headers: { Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
     });
-    if (res.ok) subState = await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      subState = data;
+      currentUserEmail = data.email || currentUserEmail;
+    }
   } catch (e) {
     console.warn('No se pudo refrescar el estado de suscripción:', e);
   }

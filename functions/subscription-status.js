@@ -64,6 +64,10 @@ exports.subscriptionStatus = onRequest(
         plan: row.plan,
         status: row.status,
         isPaid: row.status === 'authorized',
+        // Mismo criterio que auth-session.js: ya viene validado en el JWT de
+        // sesión (verifySession), el frontend solo lo usa para el toggle de
+        // debug de la cuenta del dev — ver CLAUDE.md v1.60.
+        email: session.email,
       });
     } catch (e) {
       console.error('subscription-status error:', e);
