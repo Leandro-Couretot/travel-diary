@@ -87,24 +87,22 @@ img { transition: opacity 0.25s ease; }
 }
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
 .album-card-wrapper { position: relative; }
-.album-share-btn {
+.album-menu-btn {
   position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
   background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
-  color: #fff; cursor: pointer; font-size: 0.8rem;
-  padding: 0.25rem 0.5rem; line-height: 1;
+  color: #fff; cursor: pointer; font-size: 0.9rem; font-weight: 700;
+  padding: 0.25rem 0.6rem; line-height: 1;
   opacity: 0; transition: opacity 0.2s;
 }
-.album-card-wrapper:hover .album-share-btn { opacity: 1; }
-@media (hover: none) { .album-share-btn { opacity: 1; } }
-.album-edit-btn {
-  position: absolute; top: 0.5rem; right: 2.4rem; z-index: 2;
-  background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
-  color: #fff; cursor: pointer; font-size: 0.8rem;
-  padding: 0.25rem 0.5rem; line-height: 1;
-  opacity: 0; transition: opacity 0.2s;
+.album-card-wrapper:hover .album-menu-btn { opacity: 1; }
+@media (hover: none) { .album-menu-btn { opacity: 1; } }
+.album-menu-dropdown {
+  position: absolute; top: 2.4rem; right: 0.5rem; z-index: 3;
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); min-width: 190px; overflow: hidden;
+  animation: fadeUp 0.15s ease;
 }
-.album-card-wrapper:hover .album-edit-btn { opacity: 1; }
-@media (hover: none) { .album-edit-btn { opacity: 1; } }
+.diary-menu-item.danger { color: var(--red); }
 .album-leave-btn {
   position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
   background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
@@ -1018,7 +1016,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
-      Versión 1.74 ·
+      Versión 1.75 ·
       <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
       <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
     </div>
@@ -1057,7 +1055,7 @@ function navigateTo(view, params = {}) {
 
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.74</span>
+    <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v1.75</span>
     <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
 }
@@ -1403,25 +1401,21 @@ async function renderAlbums() {
       ? `<img class="album-cover" id="cover-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
       : `<div class="album-cover-empty">L</div>`;
     card.innerHTML = `
-      <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">▶</button></div>
+      <div class="album-cover-wrap">${coverHtml}</div>
       <div class="album-info">
         <div class="album-name">${escHtml(album.name)}</div>
         <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
-        <div class="album-meta"><div class="album-days-count" id="days-count-${album.id}">—</div><div class="album-arrow">→</div></div>
+        <div class="album-meta"><div class="album-days-count" id="summary-${album.id}">—</div></div>
       </div>`;
     if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600', idx);
     card.addEventListener('click', e => {
-      if (e.target.closest('.album-play-btn') || e.target.closest('.album-share-btn') || e.target.closest('.album-edit-btn')) return;
+      if (e.target.closest('.album-menu-btn')) return;
       openAlbumDiary(album);
     });
-    card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow(album); });
-    const shareBtn = document.createElement('button');
-    shareBtn.className = 'album-share-btn'; shareBtn.title = 'Compartir álbum'; shareBtn.textContent = '↗';
-    shareBtn.addEventListener('click', e => openShareModal(e, album));
-    const editBtn = document.createElement('button');
-    editBtn.className = 'album-edit-btn'; editBtn.title = 'Editar álbum'; editBtn.textContent = '✎';
-    editBtn.addEventListener('click', e => openEditAlbumModal(e, album));
-    wrapper.appendChild(card); wrapper.appendChild(shareBtn); wrapper.appendChild(editBtn); ownGrid.appendChild(wrapper);
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'album-menu-btn'; menuBtn.title = 'Más opciones'; menuBtn.textContent = '⋯';
+    menuBtn.addEventListener('click', e => toggleAlbumMenu(e, album, wrapper));
+    wrapper.appendChild(card); wrapper.appendChild(menuBtn); ownGrid.appendChild(wrapper);
     loadAlbumDaysInfo(album);
   });
 
@@ -1542,32 +1536,116 @@ function openSharedAlbumDiary(album) {
   navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId });
 }
 
-// Duración de un viaje entre dos fechas (YYYY-MM-DD), incluyendo ambos
-// extremos — ej. 1 ene a 13 ene son 13 días, no 12.
-function daysBetweenInclusive(fromStr, toStr) {
-  const from = new Date(fromStr + 'T12:00:00');
-  const to = new Date(toStr + 'T12:00:00');
-  return Math.round((to - from) / 86400000) + 1;
-}
-
 async function loadAlbumDaysInfo(album) {
   try {
     const fid = await getAlbumFolderId(album.id);
     const days = await listDayFolders(fid);
-    const countEl = document.getElementById(`days-count-${album.id}`);
+    const summaryEl = document.getElementById(`summary-${album.id}`);
     if (!days.length) {
-      if (countEl) countEl.textContent = 'Sin días aún';
+      if (summaryEl) summaryEl.textContent = 'Sin días aún';
       return;
     }
-    // "Días" = duración real del viaje (primer día con contenido → último),
-    // no la fecha manual de "Desde/Hasta" ni la cantidad de días con diario
-    // escrito — un día de viaje sin nada cargado igual cuenta en el rango.
+    // El rango de fechas real (primer día con contenido → último) sigue
+    // saliendo de los nombres de carpeta — no hace falta leer nada más
+    // para esto. El contador de días de v1.32 se reemplaza (v1.75) por un
+    // resumen de contenido real, que sí requiere leer cada day.json —
+    // se resuelve un instante después, sin bloquear lo anterior.
     const first = days[0], last = days[days.length - 1];
-    const duration = daysBetweenInclusive(first, last);
-    if (countEl) countEl.textContent = `${duration} día${duration > 1 ? 's' : ''}`;
     const datesEl = document.getElementById(`dates-${album.id}`);
     if (datesEl) datesEl.textContent = `${formatDate(first)} — ${formatDate(last)}`;
+
+    const dayJsons = await Promise.all(days.map(d => loadDayFromDrive(fid, d).catch(() => null)));
+    let photoCount = 0, videoCount = 0;
+    dayJsons.forEach(d => (d?.media || []).forEach(m => {
+      if (m.type === 'image') photoCount++;
+      else if (m.type === 'video') videoCount++;
+    }));
+    if (summaryEl && (photoCount || videoCount)) {
+      const parts = [`${photoCount} foto${photoCount === 1 ? '' : 's'}`];
+      if (videoCount > 0) parts.push(`${videoCount} video${videoCount === 1 ? '' : 's'}`);
+      summaryEl.textContent = parts.join(' y ');
+    }
   } catch {}
+}
+
+// ─── Menú "⋯" de la card de álbum (v1.75) ──────────────────
+// Reemplaza los íconos flotantes de editar/compartir + el ▶ de
+// slideshow, todos consolidados en un único punto de entrada — mismo
+// patrón de menú desplegable que ya usa el diario (toggleDiaryMenu),
+// pero anclado a la card en vez de al header.
+let _albumMenuEl = null;
+
+function toggleAlbumMenu(event, album, wrapper) {
+  event.preventDefault(); event.stopPropagation();
+  const wasOpenForThisAlbum = _albumMenuEl && _albumMenuEl.dataset.albumId === album.id;
+  closeAlbumMenu();
+  if (wasOpenForThisAlbum) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'album-menu-dropdown';
+  menu.dataset.albumId = album.id;
+  menu.innerHTML = `
+    <button class="diary-menu-item" data-action="play"><span class="diary-menu-item-icon">▶</span> Reproducir</button>
+    <button class="diary-menu-item" data-action="edit"><span class="diary-menu-item-icon">✎</span> Editar álbum</button>
+    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">⬆</span> Carga masiva</button>
+    <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">↗</span> Compartir álbum</button>
+    <button class="diary-menu-item" data-action="drive"><span class="diary-menu-item-icon">📁</span> Ver en Drive</button>
+    <button class="diary-menu-item" data-action="archive"><span class="diary-menu-item-icon">🗄</span> Archivar álbum</button>
+    <button class="diary-menu-item danger" data-action="delete"><span class="diary-menu-item-icon">✕</span> Eliminar álbum</button>`;
+  menu.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    e.stopPropagation();
+    closeAlbumMenu();
+    handleAlbumMenuAction(btn.dataset.action, album);
+  });
+  wrapper.appendChild(menu);
+  _albumMenuEl = menu;
+  setTimeout(() => document.addEventListener('click', _closeAlbumMenuOnOutside), 0);
+}
+
+function _closeAlbumMenuOnOutside(e) {
+  if (_albumMenuEl && !_albumMenuEl.contains(e.target)) closeAlbumMenu();
+}
+
+function closeAlbumMenu() {
+  _albumMenuEl?.remove();
+  _albumMenuEl = null;
+  document.removeEventListener('click', _closeAlbumMenuOnOutside);
+}
+
+const _noopEvent = { preventDefault() {}, stopPropagation() {} };
+
+async function handleAlbumMenuAction(action, album) {
+  if (action === 'play') { startSlideshow(album); return; }
+  if (action === 'edit') { openEditAlbumModal(_noopEvent, album); return; }
+  if (action === 'bulk') { openBulkUploadForAlbum(album.id); return; }
+  if (action === 'share') { openShareModal(_noopEvent, album); return; }
+  if (action === 'drive') {
+    const fid = await getAlbumFolderId(album.id);
+    window.open(`https://drive.google.com/drive/folders/${encodeURIComponent(fid)}`, '_blank', 'noopener');
+    return;
+  }
+  if (action === 'archive') {
+    const ok = await customConfirm(
+      'Vas a poder abrirlo desde Drive cuando quieras, pero no vas a poder seguir editándolo desde la app hasta que lo reactives.',
+      { title: 'Archivar álbum', confirmLabel: 'Archivar' }
+    );
+    if (!ok) return;
+    try { await updateAlbumMeta(album.id, { archived: true }); await renderAlbums(); }
+    catch (e) { alert('No se pudo archivar el álbum: ' + e.message); }
+    return;
+  }
+  if (action === 'delete') {
+    const ok = await customConfirm(
+      'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+      { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
+    );
+    if (!ok) return;
+    try { await deleteAlbum(album.id); await renderAlbums(); }
+    catch (e) { alert('No se pudo eliminar el álbum: ' + e.message); }
+    return;
+  }
 }
 
 // ─── Confirmación propia (reemplaza confirm() nativo) ────────
@@ -1743,6 +1821,8 @@ async function submitShare() {
 }
 
 // ─── Bulk upload (home) ────────────────────────────────────
+let bulkPresetAlbumId = null; // seteado desde el menú ⋯ de una card puntual (v1.75)
+
 function openBulkUpload() {
   bulkGrouped = null; bulkUndatedDates = {};
   document.getElementById('bulk-step-drop').style.display = '';
@@ -1750,6 +1830,11 @@ function openBulkUpload() {
   document.getElementById('bulk-progress').textContent = '';
   document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">📁</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-upload').classList.add('open');
+}
+
+function openBulkUploadForAlbum(albumId) {
+  bulkPresetAlbumId = albumId;
+  openBulkUpload();
 }
 function closeBulkUpload() { document.getElementById('modal-bulk-upload').classList.remove('open'); }
 
@@ -1834,6 +1919,7 @@ async function refreshBulkDuplicates() {
 function renderBulkReview() {
   const sel = document.getElementById('bulk-album-select');
   sel.innerHTML = albums.map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('');
+  if (bulkPresetAlbumId) { sel.value = bulkPresetAlbumId; bulkPresetAlbumId = null; }
   renderBulkDatedList(document.getElementById('bulk-dated-list'), bulkGrouped);
   const undatedList = document.getElementById('bulk-undated-list');
   undatedList.innerHTML = '';
