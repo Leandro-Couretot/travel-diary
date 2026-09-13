@@ -1,4 +1,4 @@
 {
-  "version": "1.75",
-  "changelog": "Cards de álbum rediseñadas: resumen de fotos/videos y un menú ⋯ con todas las opciones."
+  "version": "1.76",
+  "changelog": "Arreglamos que el botón Actualizar del banner a veces no actualizaba de verdad."
 }
