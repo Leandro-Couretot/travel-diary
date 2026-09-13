@@ -74,6 +74,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // solo el propio origen
 
+  // version.json es la fuente de verdad del banner de "hay una versión
+  // nueva" (ver app.html, checkForAppUpdate()) — nunca puede servirse desde
+  // caché, o el chequeo compararía contra un número viejo y el banner no
+  // avisaría nunca. Se deja pasar sin interceptar, directo a la red con el
+  // cache:'no-store' que ya pide el fetch de la página.
+  if (url.pathname.endsWith('/version.json')) return;
+
   // El documento principal (app.html, pedido con mode:'navigate' al abrir
   // la PWA o recargar) y todos los scripts del shell van siempre a la
   // red primero — un script viejo cacheado puede no tener todavía una
