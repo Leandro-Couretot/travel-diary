@@ -1,4 +1,4 @@
 {
-  "version": "1.76",
-  "changelog": "Arreglamos que el botón Actualizar del banner a veces no actualizaba de verdad."
+  "version": "1.77",
+  "changelog": "Arreglamos de raíz el banner de actualización en loop: quedaba desincronizado internamente."
 }
