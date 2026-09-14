@@ -49,7 +49,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1.5rem;
-  align-items: start; /* deja que cada tarjeta ocupe su alto real en vez de estirarse a la fila — necesario para que el corrimiento por tarjeta (albumStaggerOffset) se vea */
 }
 .album-card {
   background: var(--surface); border-radius: 10px; overflow: hidden;
@@ -1124,7 +1123,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.86';
+const APP_VERSION = '1.87';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1261,17 +1260,6 @@ async function refreshSubscriptionAndEnforceLimit() {
 
 function sortAlbumsByTripDateDesc(list) {
   return list.slice().sort((a, b) => (b.dateFrom || '').localeCompare(a.dateFrom || ''));
-}
-
-// Corrimiento vertical chico y estable por álbum (mismo hash simple que
-// usa pickLayout() para el fotolibro) — el mismo álbum siempre cae en el
-// mismo lugar entre recargas, no es un random que salta. Es margin-top
-// real (no transform), así el alto de cada fila de .albums-grid lo
-// absorbe solo sin arriesgar que una tarjeta pise la fila de abajo.
-function albumStaggerOffset(id) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return (Math.abs(hash) % 3) * 16; // 0, 16 o 32px
 }
 
 // Portadas más allá de EAGER_COVER_COUNT no piden su miniatura de Drive hasta
@@ -1545,7 +1533,6 @@ async function renderAlbums() {
   albums.forEach((album, idx) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'album-card-wrapper';
-    wrapper.style.marginTop = `${albumStaggerOffset(album.id)}px`;
     const card = document.createElement('div');
     card.className = 'album-card';
     card.style.animationDelay = `${idx * 0.07}s`;
