@@ -1090,7 +1090,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.84';
+const APP_VERSION = '1.85';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1485,7 +1485,11 @@ async function renderAlbums() {
   // El FAB solo tiene sentido con al menos un álbum propio activo —
   // "Agregar fotos" necesita un destino real en el <select> del modal de
   // carga masiva (renderBulkReview() arma esas opciones de `albums`).
-  document.getElementById('fab-container').style.display = albums.length ? '' : 'none';
+  // v1.85, bug real: la clase .fab-container define `display:none` — poner
+  // el inline style en '' (vacío) solo saca el inline style, no lo
+  // sobreescribe, así que el botón caía de nuevo en el display:none de la
+  // clase y nunca llegaba a mostrarse. Hace falta un valor explícito.
+  document.getElementById('fab-container').style.display = albums.length ? 'block' : 'none';
 
   if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `

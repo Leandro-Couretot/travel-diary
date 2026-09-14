@@ -1,4 +1,4 @@
 {
-  "version": "1.84",
-  "changelog": "Home saluda con tu nombre y muestra el total de álbumes, fotos y videos."
+  "version": "1.85",
+  "changelog": "Fix: el botón flotante ＋ de Home no se mostraba nunca por un bug de CSS."
 }
