@@ -1,4 +1,4 @@
 {
-  "version": "1.87",
-  "changelog": "Las tarjetas de álbum vuelven a estar alineadas en la grilla de Home."
+  "version": "1.88",
+  "changelog": "La tab 'Lista' ahora muestra todas las fotos del álbum en una grilla, sin agrupar por día."
 }

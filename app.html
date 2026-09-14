@@ -292,17 +292,14 @@ audio { width: 100%; height: 32px; }
 .drag-handle:active { cursor: grabbing; }
 .empty-media { text-align: center; padding: 1rem 0 0; color: var(--ink-faint); font-size: 0.85rem; }
 
-/* List tab */
-.list-tab-wrap { padding: 0.5rem 0 4rem; }
-.list-day-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1.5rem; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid var(--ink-faint); }
-.list-day-item:last-child { border-bottom: none; }
-.list-day-item:hover { background: var(--accent-light); }
-.list-day-item.active { background: var(--accent-light); }
-.list-day-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--accent-light); flex-shrink: 0; }
-.list-day-info { flex: 1; min-width: 0; }
-.list-day-date { font-family: 'DM Serif Display', serif; font-size: 0.9rem; line-height: 1.2; }
-.list-day-title { font-size: 0.75rem; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.1rem; }
-.list-day-count { font-size: 0.72rem; color: var(--ink-faint); white-space: nowrap; }
+/* List tab — grilla plana de fotos (v1.88), sin agrupar por día: ver
+   CLAUDE.md → "Funcionando bien" para el porqué. */
+.list-tab-wrap { padding: 0.5rem 1rem 4rem; }
+.list-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 4px; }
+.list-photo-item { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 4px; cursor: pointer; background: var(--accent-light); }
+.list-photo-item.active { outline: 2px solid var(--accent); outline-offset: -2px; }
+.list-photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.list-photo-date { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.3rem 0.4rem 0.25rem; background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); color: white; font-size: 0.6rem; letter-spacing: 0.02em; pointer-events: none; }
 .list-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-muted); font-size: 0.875rem; }
 
 /* Calendar tab */
@@ -544,7 +541,7 @@ audio { width: 100%; height: 32px; }
   .media-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   #day-title { font-size: 1.5rem; }
   .day-nav-bar { padding: 0.6rem 1rem; }
-  .list-day-item { padding: 0.65rem 1rem; }
+  .list-photo-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
   .cal-wrap { padding: 0.75rem 0.5rem 4rem; }
 }
 /* ─── DIARY DROPDOWN MENU ─── */
@@ -1123,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.87';
+const APP_VERSION = '1.88';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2747,26 +2744,41 @@ function compressImage(file) {
 }
 
 // ─── List tab ─────────────────────────────────────────────
+// Grilla plana de TODAS las fotos del álbum, sin agrupar por día (v1.88)
+// — pensada para "buscar rápido una foto" cuando no te acordás de qué día
+// fue, no para navegar día por día (eso ya lo cubren Mes/Libro). Cada
+// miniatura lleva la fecha en una etiqueta chica encima, como contexto sin
+// volver a agrupar. Mismo patrón que renderBook(): un Promise.all por día
+// (reusa la caché de loadDayFromDrive) y se renderiza recién con todo
+// resuelto, para no mostrar las fotos en un orden que salta a medida que
+// cada día responde.
 async function renderListTab() {
   const wrap = document.getElementById('list-tab-content');
-  wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando días...</div>';
-  try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar los días</div>'; return; }
+  wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando fotos...</div>';
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar los días</div>'; return; } }
   if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay días guardados</div>'; return; }
+
+  const perDay = await Promise.all(allDates.slice().reverse().map(async date => {
+    const day = await loadDayFromDrive(albumFolderId, date).catch(() => null) || { media: [] };
+    return (day.media || [])
+      .filter(m => m.type === 'image' && m.driveFileId)
+      .map(m => ({ driveFileId: m.driveFileId, date }));
+  }));
+  const allPhotos = perDay.flat();
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos en este álbum</div>'; return; }
+
   wrap.innerHTML = '';
-  allDates.slice().reverse().forEach(d => {
+  const grid = document.createElement('div');
+  grid.className = 'list-photo-grid';
+  allPhotos.forEach(p => {
     const item = document.createElement('div');
-    item.className = 'list-day-item' + (d === currentDate ? ' active' : '');
-    item.innerHTML = `<div class="list-day-thumb" id="lt-${d}"></div><div class="list-day-info"><div class="list-day-date">${formatDate(d)}</div><div class="list-day-title">${formatDateLong(d)}</div></div>`;
-    item.addEventListener('click', () => { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; switchTab('day'); loadDay(d); });
-    wrap.appendChild(item);
-    loadDayFromDrive(albumFolderId, d).then(day => {
-      if (!day) return;
-      const thumb = document.getElementById(`lt-${d}`); if (!thumb) return;
-      if (day.title) item.querySelector('.list-day-title').textContent = day.title;
-      const firstImg = (day.media || []).find(m => m.type === 'image' && m.driveFileId);
-      if (firstImg) { const img = document.createElement('img'); img.className = 'list-day-thumb'; img.style.borderRadius = '4px'; setAuthImg(img, firstImg.driveFileId, 'w80'); thumb.replaceWith(img); }
-    }).catch(() => {});
+    item.className = 'list-photo-item' + (p.date === currentDate ? ' active' : '');
+    item.innerHTML = `<img class="list-photo-img" alt=""><div class="list-photo-date">${formatDate(p.date)}</div>`;
+    item.addEventListener('click', () => { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; switchTab('day'); loadDay(p.date); });
+    setAuthImg(item.querySelector('.list-photo-img'), p.driveFileId, 'w200');
+    grid.appendChild(item);
   });
+  wrap.appendChild(grid);
 }
 
 // ─── Calendar tab ─────────────────────────────────────────
