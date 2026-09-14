@@ -1,4 +1,4 @@
 {
-  "version": "1.91",
-  "changelog": "Auth de Drive con refresh_token real del lado del servidor — se acaba la reconexión manual seguida."
+  "version": "1.92",
+  "changelog": "El login con Google manda el parámetro 'state' — cierra un aviso de seguridad de Google Cloud."
 }

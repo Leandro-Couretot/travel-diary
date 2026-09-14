@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.91';
+const APP_VERSION = '1.92';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1432,6 +1432,39 @@ async function afterDriveConnected() {
   await renderAlbums(); await checkMigratable();
 }
 
+// Arma (o rearma) window._codeClient con un `state` nuevo — ver el
+// comentario grande en initGoogleAuth() para el porqué de este campo.
+// Google Identity Services no permite pisar la config de un CodeClient ya
+// creado, así que la única forma de que cada intento de login lleve un
+// `state` distinto es reconstruir el cliente entero antes de pedir el
+// código (handleDriveBtn() la llama de nuevo justo antes de requestCode()).
+function buildCodeClient() {
+  window._codeClient = google.accounts.oauth2.initCodeClient({
+    client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, ux_mode: 'popup',
+    access_type: 'offline', prompt: 'consent', state: newAuthState(),
+    callback: async (response) => {
+      if (!response || !response.code) return; // usuario cerró el popup o lo rechazó — nada que hacer, sigue viendo la pantalla de conectar
+      const sessionData = await establishSessionWithCode(response.code);
+      if (!sessionData || !sessionData.driveAccessToken) {
+        alert('No se pudo completar la conexión con Google. Probá de nuevo.');
+        return;
+      }
+      driveToken = sessionData.driveAccessToken;
+      localStorage.setItem('drive_token', driveToken);
+      localStorage.setItem('scope_version', String(SCOPE_VERSION));
+      saveTokenExpiry(sessionData.driveExpiresIn);
+      if (sessionData.hasRefreshToken) localStorage.setItem(DRIVE_REFRESH_AVAILABLE_KEY, '1');
+      // Mismo tramo que establishSessionAndEnforceLimit() — la sesión ya
+      // se estableció arriba (establishSessionWithCode), no hace falta
+      // repetirla.
+      if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
+      await maybeEnforceAlbumLimit();
+      await afterDriveConnected();
+    },
+    error_callback: (err) => { console.warn('Drive auth (code): popup cancelado o falló', err); },
+  });
+}
+
 async function initGoogleAuth() {
   const sp     = new URLSearchParams(location.search);
   const joinId = sp.get('join');
@@ -1448,34 +1481,20 @@ async function initGoogleAuth() {
     // prompt:'consent' fuerza que Google lo entregue en ESTE pedido — sin
     // esto, Google solo lo manda en el primerísimo consentimiento
     // histórico de la cuenta, y ninguna cuenta ya conectada con el flujo
-    // viejo dio ese consentimiento todavía. El popup no devuelve `state`
-    // en la respuesta (a diferencia de initTokenClient) — Google documenta
-    // que no hace falta para este modo, el código llega directo al
-    // callback de esta misma página, no por una redirección de terceros.
-    window._codeClient = google.accounts.oauth2.initCodeClient({
-      client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, ux_mode: 'popup',
-      access_type: 'offline', prompt: 'consent',
-      callback: async (response) => {
-        if (!response || !response.code) return; // usuario cerró el popup o lo rechazó — nada que hacer, sigue viendo la pantalla de conectar
-        const sessionData = await establishSessionWithCode(response.code);
-        if (!sessionData || !sessionData.driveAccessToken) {
-          alert('No se pudo completar la conexión con Google. Probá de nuevo.');
-          return;
-        }
-        driveToken = sessionData.driveAccessToken;
-        localStorage.setItem('drive_token', driveToken);
-        localStorage.setItem('scope_version', String(SCOPE_VERSION));
-        saveTokenExpiry(sessionData.driveExpiresIn);
-        if (sessionData.hasRefreshToken) localStorage.setItem(DRIVE_REFRESH_AVAILABLE_KEY, '1');
-        // Mismo tramo que establishSessionAndEnforceLimit() — la sesión ya
-        // se estableció arriba (establishSessionWithCode), no hace falta
-        // repetirla.
-        if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
-        await maybeEnforceAlbumLimit();
-        await afterDriveConnected();
-      },
-      error_callback: (err) => { console.warn('Drive auth (code): popup cancelado o falló', err); },
-    });
+    // viejo dio ese consentimiento todavía.
+    // `state` (v1.92): el propio Google Cloud Console (OAuth Overview →
+    // "Project Checkup" → "Use secure flows") empezó a marcar este client_id
+    // como vulnerable a impersonación por no mandarlo — GIS SÍ soporta este
+    // campo en initCodeClient (aunque en modo popup, a diferencia de
+    // initTokenClient, no lo devuelve en el callback para validarlo acá; el
+    // código llega directo a esta misma página, no por una redirección de
+    // terceros que un atacante pudiera falsificar) — igual se manda, porque
+    // lo que audita el checkup es el pedido real que sale hacia el servidor
+    // de OAuth de Google, no la respuesta que vuelve. buildCodeClient() se
+    // reinvoca en cada click de "Iniciar sesión" (ver handleDriveBtn()) para
+    // que cada intento lleve un `state` fresco, mismo criterio que ya usa
+    // pendingAuthState con el flujo viejo.
+    buildCodeClient();
 
     // Flujo viejo — se sigue armando por dos motivos: (1) es lo único que
     // usa el refresh silencioso de cuentas que todavía no pasaron por el
@@ -1527,6 +1546,7 @@ async function initGoogleAuth() {
 
 function handleDriveBtn() {
   if (window._codeClient) {
+    buildCodeClient(); // state fresco en cada intento, ver initGoogleAuth()
     window._codeClient.requestCode();
   } else if (window._tokenClient) {
     // GIS todavía no terminó de armar el code client (raro) — cae al flujo
