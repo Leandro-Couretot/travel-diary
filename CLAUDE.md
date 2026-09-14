@@ -66,7 +66,7 @@ travel-diary/
 Dos vistas principales manejadas por `navigateTo(view, params)`:
 
 - `#view-home` — grilla de álbumes
-- `#view-diary` — diario de un álbum (tabs: Día / Lista / Mes / Libro)
+- `#view-diary` — diario de un álbum (tabs: Día / Mes / Galería / Libro)
 
 La navegación entre vistas es JS puro (`classList.add/remove('active')`), sin `location.href` ni `history.pushState`. Esto es intencional para que la PWA en iOS no abra Safari al navegar.
 
@@ -205,8 +205,8 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 
 ### Diario (`#view-diary`)
 - **Tab Día:** editor con título, notas, upload fotos/videos/audios, grabación de audio in-app
-- **Tab Lista:** todos los días del álbum con thumbnail
 - **Tab Mes:** calendario mensual con foto de portada de cada día
+- **Tab Galería** (llamada "Lista" hasta v1.88, ver esa entrada en "Funcionando bien" para el rediseño): grilla plana con todas las fotos del álbum, sin agrupar por día — para buscar visualmente una foto puntual
 - **Tab Libro:** vista de fotobook con layouts variados (1/2/3/4 fotos por página, max 4), swipe horizontal. Páginas explícitas + un "drawer" de fotos sin ubicar, con arrastre entre páginas/drawer — ver "Fotolibro: páginas explícitas + drawer" (v1.26) y las entregas previas "Orden manual del fotolibro" (v1.23) y "Modo reordenar del fotolibro" (v1.24)
 - Drag & drop para reordenar media (desktop + touch)
 - Lightbox al tocar foto (swipe entre fotos, botón compartir)
@@ -226,6 +226,10 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 ## Estado actual y pendientes
 
 ### Funcionando bien
+- **Tab "Lista" pasa a llamarse "Galería" y se reordenan las tabs del diario** (v1.89): pedido directo del usuario tras probar el rediseño de v1.88 — el nombre "Lista" quedó desactualizado apenas dejó de ser una lista de renglones para ser una grilla de fotos (v1.88), y pidió además correr la tab al lado de "Libro": el orden pasa de Día/Lista/Mes/Libro a **Día/Mes/Galería/Libro**.
+  - **Solo el label visible cambia, no el identificador interno**: el botón (`.diary-tab`) y el texto del modal de ayuda pasan de "Lista" a "Galería", pero `data-tab="list"`, `id="tab-list"`, `renderListTab()`, `list-tab-content`, `.list-photo-grid` y el nombre del evento de analytics (`tab_viewed` con `{ tab: 'list' }`) se dejan sin tocar — mismo criterio que ya usa esta app para los identificadores internos del rebrand a Legado (ver "Qué es"): renombrar algo que el usuario nunca ve no aporta nada y sí arriesga romper algo sin necesidad.
+  - **El reorden es puramente de markup, sin tocar `switchTab()`**: `switchTab(tab)` decide qué tab/panel mostrar comparando `data-tab`/`id` contra el string recibido — nunca asume una posición en el DOM — así que mover el botón y el `<div class="tab-panel" id="tab-list">` a su lugar nuevo en el HTML (entre Mes y Libro) alcanza solo, sin ningún cambio de JS. Confirmado además que no hay ningún código que navegue por hermano de tab (`nextElementSibling`/similar) que pudiera depender del orden viejo.
+  - Verificado con `node --check` en el inline script completo de `app.html`.
 - **Tab "Lista": pasa de un renglón por día a una grilla plana con TODAS las fotos del álbum** (v1.88): el usuario mandó un screenshot de la Lista tal como estaba (una fila por día, con una sola miniatura de portada + fecha + subtítulo) y preguntó explícitamente si se entendía el caso de uso de cambiarla — "debería haber un preview de cada imagen como para que el usuario pueda buscar rápido una foto en caso de que no se acuerde de qué día fue". El problema de fondo con la Lista de antes: para "buscar una foto que no te acordás de qué día fue" tenías que abrir cada día uno por uno hasta reconocerla a ojo — la fila solo mostraba la portada del día, nunca el resto de las fotos de ese día, así que no servía como buscador visual.
   - **`renderListTab()` reescrita**: en vez de iterar `allDates` y pintar un renglón por carpeta de día, arma un array plano de **todas** las fotos del álbum (`type === 'image'` únicamente — ni video ni audio tienen una miniatura real para reconocer a simple vista, y el pedido del usuario fue explícito sobre "una foto") y las pinta todas juntas en una grilla de miniaturas cuadradas (`.list-photo-grid`, mismo patrón visual de `auto-fill`/`minmax` que ya usa `.albums-grid`/`.media-grid`), sin ningún agrupador de fecha de por medio — exactamente lo pedido, "sin la carpeta fecha". Mismo criterio que ya usa `renderBook()` (Libro) para armar su lista de fotos: un `Promise.all` sobre `allDates` leyendo cada `day.json` vía `loadDayFromDrive()` (la misma caché `_dayCache` de siempre, sin ningún pedido nuevo a Drive) y recién se renderiza la grilla completa cuando todo resolvió — evita que las fotos vayan apareciendo en un orden que salta a medida que cada día responde en un orden distinto de red.
   - **Sin perder la fecha como contexto**: aunque ya no se agrupa por día, cada miniatura lleva una etiqueta chica con la fecha (`.list-photo-date`, texto blanco sobre un degradé oscuro en la esquina inferior — mismo recurso visual que ya usa `.bp-chip` en el fotolibro para el mismo problema, "páginas mezclan fechas, hace falta un dato chico por foto en vez de un encabezado grande") — así se puede seguir ubicando temporalmente una foto sin que la fecha vuelva a organizar la grilla en secciones.

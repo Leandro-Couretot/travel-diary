@@ -1,4 +1,4 @@
 {
-  "version": "1.88",
-  "changelog": "La tab 'Lista' ahora muestra todas las fotos del álbum en una grilla, sin agrupar por día."
+  "version": "1.89",
+  "changelog": "La tab 'Lista' pasa a llamarse 'Galería' y queda al lado de 'Libro'; el orden ahora es Día, Mes, Galería, Libro."
 }

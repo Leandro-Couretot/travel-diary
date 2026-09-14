@@ -765,8 +765,8 @@ audio { width: 100%; height: 32px; }
 <div class="view" id="view-diary">
   <div class="diary-tabs" id="diary-tabs">
     <button class="diary-tab active" data-tab="day" onclick="switchTab('day')">Día</button>
-    <button class="diary-tab" data-tab="list" onclick="switchTab('list')">Lista</button>
     <button class="diary-tab" data-tab="month" onclick="switchTab('month')">Mes</button>
+    <button class="diary-tab" data-tab="list" onclick="switchTab('list')">Galería</button>
     <button class="diary-tab" data-tab="book" onclick="switchTab('book')">Libro</button>
   </div>
   <input type="date" id="date-input" style="position:absolute;opacity:0;pointer-events:none;top:110px;right:1rem;">
@@ -779,11 +779,11 @@ audio { width: 100%; height: 32px; }
     </div>
     <div id="day-editor"></div>
   </div>
-  <div class="tab-panel" id="tab-list">
-    <div class="list-tab-wrap" id="list-tab-content"><div class="list-empty">Cargando días...</div></div>
-  </div>
   <div class="tab-panel" id="tab-month">
     <div class="cal-wrap" id="cal-wrap"><div class="list-empty">Cargando calendario...</div></div>
+  </div>
+  <div class="tab-panel" id="tab-list">
+    <div class="list-tab-wrap" id="list-tab-content"><div class="list-empty">Cargando días...</div></div>
   </div>
   <div class="tab-panel" id="tab-book">
     <div class="book-wrap" id="book-wrap"><div class="list-empty">Cargando libro...</div></div>
@@ -1068,7 +1068,7 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-section"><div class="help-section-title">📅 El diario</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Navegá entre días con las flechas o tocando la fecha.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tabs: <strong>Día</strong> para editar, <strong>Lista</strong> para ver todos los días, <strong>Mes</strong> para el calendario, <strong>Libro</strong> para la vista de fotos.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tabs: <strong>Día</strong> para editar, <strong>Mes</strong> para el calendario, <strong>Galería</strong> para buscar una foto puntual, <strong>Libro</strong> para el fotolibro.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Arrastrá el ícono ⠿ para reordenar.</span></div>
       <div class="help-tip">Acordate de tocar <strong>Guardar día</strong> antes de cambiar de día.</div>
     </div>
@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.88';
+const APP_VERSION = '1.89';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
