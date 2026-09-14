@@ -44,6 +44,7 @@
 }
 .home-intro h1 em { font-style: italic; color: var(--accent); }
 .home-intro p { font-size: 0.9rem; color: var(--ink-muted); }
+.home-totals { font-size: 0.78rem; color: var(--ink-muted); letter-spacing: 0.02em; margin-top: 0.3rem; min-height: 1.1em; }
 .albums-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -1089,7 +1090,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.83';
+const APP_VERSION = '1.84';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1117,6 +1118,43 @@ function navigateTo(view, params = {}) {
     renderDiaryHeader();
     bootstrapDiaryPage();
   }
+}
+
+// Saludo personalizado de Home (v1.84) — reemplaza el título fijo "Tus
+// recuerdos" por "Hola, {nombre}" una vez que currentUserName está
+// disponible (mismo dato que ya trae el avatar de v1.81, del JWT de
+// sesión — sin ningún pedido nuevo). Mientras no llegó (primer instante
+// después de conectar, o una cuenta que todavía no reconectó tras el
+// scope nuevo de v1.81) cae al título genérico de siempre — nunca "Hola,
+// undefined" ni un hueco vacío.
+function homeGreetingHtml() {
+  const firstName = (currentUserName || '').trim().split(/\s+/)[0];
+  return firstName ? `Hola, <em>${escHtml(firstName)}</em>` : 'Tus <em>recuerdos</em>';
+}
+// Actualiza el saludo ya pintado sin rehacer toda la grilla — se llama
+// junto a renderHomeHeader() apenas establishSession()/
+// refreshSubscriptionStatus() resuelven (mismo patrón que el avatar).
+function renderHomeGreetingName() {
+  const el = document.getElementById('home-greeting');
+  if (el) el.innerHTML = homeGreetingHtml();
+}
+
+// Subtítulo chico bajo el saludo: "N álbumes · M fotos y P videos" —
+// suma los mismos photoCount/videoCount que ya calcula loadAlbumDaysInfo()
+// por card (v1.75), sin pedir nada nuevo a Drive. Solo cuenta álbumes
+// propios activos (los que arma la grilla principal) — no incluye
+// compartidos ni archivados, mismo alcance que `albums`.
+async function renderHomeTotals(albumCount, dayInfoPromises) {
+  const el = document.getElementById('home-totals');
+  if (!el) return;
+  const results = await Promise.all(dayInfoPromises);
+  if (!el.isConnected) return; // se navegó afuera de Home mientras esto resolvía
+  const photoCount = results.reduce((sum, r) => sum + (r?.photoCount || 0), 0);
+  const videoCount = results.reduce((sum, r) => sum + (r?.videoCount || 0), 0);
+  const albumsLabel = `${albumCount} álbum${albumCount === 1 ? '' : 'es'}`;
+  const mediaParts = [`${photoCount} foto${photoCount === 1 ? '' : 's'}`];
+  if (videoCount > 0) mediaParts.push(`${videoCount} video${videoCount === 1 ? '' : 's'}`);
+  el.textContent = `${albumsLabel} · ${mediaParts.join(' y ')}`;
 }
 
 function renderHomeHeader() {
@@ -1178,12 +1216,12 @@ async function maybeEnforceAlbumLimit() {
 }
 async function establishSessionAndEnforceLimit(token) {
   await establishSession(token);
-  if (currentView === 'home') renderHomeHeader(); // pinta el avatar (v1.81) apenas está disponible
+  if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); } // avatar (v1.81) + saludo (v1.84) apenas están disponibles
   await maybeEnforceAlbumLimit();
 }
 async function refreshSubscriptionAndEnforceLimit() {
   await refreshSubscriptionStatus();
-  if (currentView === 'home') renderHomeHeader();
+  if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
   await maybeEnforceAlbumLimit();
 }
 
@@ -1451,7 +1489,7 @@ async function renderAlbums() {
 
   if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `
-      <div class="home-intro fade-up"><h1>Tus <em>recuerdos</em></h1><p>Creá tu primer álbum para empezar.</p></div>
+      <div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><p>Creá tu primer álbum para empezar.</p></div>
       <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
     return;
   }
@@ -1459,12 +1497,13 @@ async function renderAlbums() {
   const reconstructedNotice = wasReconstructed
     ? `<div class="reconstructed-notice">⚠️ No encontramos el índice de tus álbumes, así que lo reconstruimos a partir de tus carpetas en Drive — tus fotos siguen todas ahí. Se perdieron las fechas manuales de "Desde/Hasta" (podés volver a cargarlas con ✎).</div>`
     : '';
-  main.innerHTML = `<div class="home-intro fade-up"><h1>Tus <em>recuerdos</em></h1></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
+  main.innerHTML = `<div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><div class="home-totals" id="home-totals"></div></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
 
   const ownGrid = document.createElement('div');
   ownGrid.className = 'albums-grid';
   document.getElementById('section-own').appendChild(ownGrid);
 
+  const dayInfoPromises = []; // se suman para el saludo con el total (v1.84)
   albums.forEach((album, idx) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'album-card-wrapper';
@@ -1491,8 +1530,9 @@ async function renderAlbums() {
     menuBtn.className = 'album-menu-btn'; menuBtn.title = 'Más opciones'; menuBtn.textContent = '⋯';
     menuBtn.addEventListener('click', e => toggleAlbumMenu(e, album, wrapper));
     wrapper.appendChild(card); wrapper.appendChild(menuBtn); ownGrid.appendChild(wrapper);
-    loadAlbumDaysInfo(album);
+    dayInfoPromises.push(loadAlbumDaysInfo(album));
   });
+  renderHomeTotals(albums.length, dayInfoPromises);
 
   const newCard = document.createElement('button');
   newCard.className = 'album-card-new';
@@ -1611,6 +1651,10 @@ function openSharedAlbumDiary(album) {
   navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId });
 }
 
+// Devuelve { photoCount, videoCount } además de pintar el resumen de la
+// card (v1.75) — v1.84 suma estos mismos números entre todos los álbumes
+// para el saludo de Home ("N álbumes · M fotos y P videos"), así que la
+// cuenta tiene que salir de un único lugar en vez de recalcularse aparte.
 async function loadAlbumDaysInfo(album) {
   try {
     const fid = await getAlbumFolderId(album.id);
@@ -1618,7 +1662,7 @@ async function loadAlbumDaysInfo(album) {
     const summaryEl = document.getElementById(`summary-${album.id}`);
     if (!days.length) {
       if (summaryEl) summaryEl.textContent = 'Sin días aún';
-      return;
+      return { photoCount: 0, videoCount: 0 };
     }
     // v1.82: ya no se pisa la fecha de la tarjeta con el rango real de
     // contenido (eso hacía v1.32) — el usuario reportó confusión real al
@@ -1643,7 +1687,8 @@ async function loadAlbumDaysInfo(album) {
       if (videoCount > 0) parts.push(`${videoCount} video${videoCount === 1 ? '' : 's'}`);
       summaryEl.textContent = parts.join(' y ');
     }
-  } catch {}
+    return { photoCount, videoCount };
+  } catch { return { photoCount: 0, videoCount: 0 }; }
 }
 
 // ─── Menú "⋯" de la card de álbum (v1.75) ──────────────────

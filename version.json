@@ -1,4 +1,4 @@
 {
-  "version": "1.83",
-  "changelog": "Nuevo botón flotante ＋ en Home para agregar fotos o crear un álbum en un toque."
+  "version": "1.84",
+  "changelog": "Home saluda con tu nombre y muestra el total de álbumes, fotos y videos."
 }
