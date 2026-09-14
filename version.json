@@ -1,4 +1,4 @@
 {
-  "version": "1.78",
-  "changelog": "Header más limpio: sin el subtítulo del logo ni el botón de carga masiva."
+  "version": "1.79",
+  "changelog": "Arreglamos que el botón de plan Anual del paywall se viera cortado en iPhone."
 }
