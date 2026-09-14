@@ -1,4 +1,4 @@
 {
-  "version": "1.90",
-  "changelog": "Home con un solo botón de acceso + arreglo real: la app ya intenta reconectar en silencio antes de pedir loguearse de nuevo."
+  "version": "1.91",
+  "changelog": "Auth de Drive con refresh_token real del lado del servidor — se acaba la reconexión manual seguida."
 }

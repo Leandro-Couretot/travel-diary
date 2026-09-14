@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.90';
+const APP_VERSION = '1.91';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1310,17 +1310,32 @@ function formatDateLong(str) {
 // ═══════════════════════════════════════════════════════════
 // ─── DRIVE AUTH ─────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
-// El access_token de Google vence a la hora, siempre, y este flujo
-// (initTokenClient) nunca da refresh_token — la única forma de evitar
-// que el usuario tenga que reconectarse a mano es pedir uno nuevo EN
-// SILENCIO (prompt:'') un rato antes de que venza. No está garantizado
-// que funcione siempre — Google recomienda llamar requestAccessToken()
-// desde un evento iniciado por el usuario, y llamarlo desde un timer o
-// al volver a la pestaña no lo es del todo (Safari/iOS es más estricto
-// con esto que Chrome). Si falla, no rompe nada: response.error hace
-// que no se haga nada y el usuario ve el flujo de reconexión normal,
-// igual que hoy.
+// Dos generaciones de flujo conviven acá — migración lazy, mismo criterio
+// que el resto de esta app (nunca un big-bang, ver CLAUDE.md → "Auth de
+// Drive: de implícito a refresh_token real" para el porqué completo):
+//
+// - VIEJO (`_tokenClient`, `initTokenClient`, implícito): el access_token
+//   de Google vence siempre a la hora y este flujo nunca da refresh_token
+//   — la única forma de evitar que el usuario reconecte a mano es pedir
+//   uno nuevo EN SILENCIO (prompt:'') un rato antes de que venza, algo que
+//   depende de que el navegador todavía tenga una sesión de Google viva
+//   (cookie) — nada garantizado, mucho menos confiable en Safari/PWA que
+//   en Chrome (v1.20). Sigue existiendo como mecanismo de refresco de
+//   respaldo (`tryEagerSilentRefresh()`) para cuentas que todavía no
+//   migraron, y como red de seguridad si el code client no llegó a armarse.
+// - NUEVO (`_codeClient`, `initCodeClient`, authorization code): lo único
+//   que usa `handleDriveBtn()` de acá en más — "Iniciar sesión" pide un
+//   CÓDIGO en vez de un token; el intercambio por access_token +
+//   refresh_token real pasa del lado del servidor (`auth-session.js`, el
+//   único lugar con el client_secret). El refresh_token queda guardado en
+//   Supabase, y de ahí en más cualquier renovación de token pasa por
+//   `drive-token-refresh.js` — sin depender de nada del navegador.
+//
+// Toda cuenta que toque "Iniciar sesión" desde este deploy en adelante
+// (conexión nueva, o reconectar porque el token viejo murió del todo) pasa
+// al flujo nuevo esa misma vez — sin forzar ningún logout masivo.
 const SILENT_REFRESH_BUFFER_MS = 5 * 60 * 1000; // refrescar 5 min antes de vencer
+const DRIVE_REFRESH_AVAILABLE_KEY = 'drive_refresh_available'; // '1' una vez que esta cuenta tiene refresh_token guardado en el servidor
 let _silentRefreshTimer = null;
 let _eagerRefreshResolve = null; // ver tryEagerSilentRefresh()
 
@@ -1341,10 +1356,35 @@ function scheduleSilentRefresh() {
   _silentRefreshTimer = setTimeout(trySilentRefresh, delay);
 }
 
+// Refresca el access_token de Drive por el camino que corresponda: si esta
+// cuenta ya tiene un refresh_token real guardado del lado del servidor
+// (flujo nuevo), se lo pide a drive-token-refresh.js — no depende de que
+// el navegador tenga sesión de Google viva, funciona igual en Safari/PWA
+// que en Chrome. Si todavía no migró (o el servidor avisa que ya no hay
+// refresh_token válido — ej. la cuenta revocó el acceso desde Google y
+// hace falta reconectar de cero), cae al mecanismo viejo (silencioso vía
+// Google, tan poco garantizado como siempre). Nunca tira, devuelve
+// `true`/`false`.
+async function refreshDriveToken() {
+  if (localStorage.getItem(DRIVE_REFRESH_AVAILABLE_KEY) === '1') {
+    const result = await refreshDriveTokenServerSide(); // billing.js, nunca tira
+    if (result && result.access_token) {
+      driveToken = result.access_token;
+      localStorage.setItem('drive_token', driveToken);
+      saveTokenExpiry(result.expires_in);
+      return true;
+    }
+    // Se saca el flag para no reintentar este camino en cada refresh si el
+    // servidor ya avisó que no hay nada guardado — cae al mecanismo viejo
+    // como red de seguridad.
+    localStorage.removeItem(DRIVE_REFRESH_AVAILABLE_KEY);
+  }
+  return tryEagerSilentRefresh();
+}
+
 function trySilentRefresh() {
-  if (!window._tokenClient || !isDriveConnected()) return;
-  pendingAuthState = newAuthState();
-  window._tokenClient.requestAccessToken({ state: pendingAuthState, prompt: '' });
+  if (!isDriveConnected()) return;
+  refreshDriveToken();
 }
 
 // Los timers de setTimeout se pausan/retrasan cuando la pestaña está
@@ -1361,15 +1401,12 @@ document.addEventListener('visibilitychange', () => {
 // ~55 min) el token guardado ya está vencido, pero hasta acá el código iba
 // derecho a usar ese token contra Drive (initDrive → _bootstrapDrive), que
 // devuelve 401, borra la sesión y manda a la pantalla de "reconectar" —
-// sin haber intentado el refresh silencioso ni una sola vez, porque
-// scheduleSilentRefresh() solo se llama DESPUÉS de un bootstrap exitoso.
-// tryEagerSilentRefresh() corta ese camino: si el token guardado ya venció
-// (o está por vencer), intenta refrescarlo en silencio ANTES de tocar
-// Drive — mismo pedido de siempre (prompt:''), tan poco garantizado como
-// siempre (ver nota de arriba), pero ahora al menos se intenta en el
-// momento en que más falta hace. Nunca puede quedar colgado: si Google no
-// contesta en 4s, se resuelve `false` y initGoogleAuth() sigue exactamente
-// como antes (initDrive() con el token viejo, 401 limpio, reconectar).
+// sin haber intentado ningún refresh, porque scheduleSilentRefresh() solo
+// se llama DESPUÉS de un bootstrap exitoso. Esta función es el mecanismo
+// VIEJO en sí (vía Google, ver refreshDriveToken() para el nuevo, que la
+// usa como fallback) — se intenta ANTES de tocar Drive cuando el token
+// guardado ya venció. Nunca puede quedar colgada: si Google no contesta en
+// 4s, se resuelve `false`.
 function tryEagerSilentRefresh() {
   return new Promise(resolve => {
     if (!window._tokenClient) { resolve(false); return; }
@@ -1380,6 +1417,19 @@ function tryEagerSilentRefresh() {
     }, 4000);
     window._tokenClient.requestAccessToken({ state: pendingAuthState, prompt: '' });
   });
+}
+
+// Último tramo compartido por cualquier camino que termine con un
+// driveToken recién puesto y válido (conexión nueva vía código, o el
+// fallback implícito si el code client no llegó a armarse) — resuelve la
+// carpeta raíz y despacha a join/álbumes según corresponda.
+async function afterDriveConnected() {
+  rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
+  if (_onConnected) { await _onConnected(); return; }
+  const sp2 = new URLSearchParams(location.search);
+  const jId = sp2.get('join');
+  if (jId) { await handleJoin(jId, decodeURIComponent(sp2.get('name') || ''), sp2.get('from'), sp2.get('to')); return; }
+  await renderAlbums(); await checkMigratable();
 }
 
 async function initGoogleAuth() {
@@ -1393,6 +1443,46 @@ async function initGoogleAuth() {
   renderHomeHeader();
 
   if (window.google && window.google.accounts) {
+    // Flujo nuevo — ver el comentario grande al principio de esta sección.
+    // access_type:'offline' pide el refresh_token además del access_token;
+    // prompt:'consent' fuerza que Google lo entregue en ESTE pedido — sin
+    // esto, Google solo lo manda en el primerísimo consentimiento
+    // histórico de la cuenta, y ninguna cuenta ya conectada con el flujo
+    // viejo dio ese consentimiento todavía. El popup no devuelve `state`
+    // en la respuesta (a diferencia de initTokenClient) — Google documenta
+    // que no hace falta para este modo, el código llega directo al
+    // callback de esta misma página, no por una redirección de terceros.
+    window._codeClient = google.accounts.oauth2.initCodeClient({
+      client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE, ux_mode: 'popup',
+      access_type: 'offline', prompt: 'consent',
+      callback: async (response) => {
+        if (!response || !response.code) return; // usuario cerró el popup o lo rechazó — nada que hacer, sigue viendo la pantalla de conectar
+        const sessionData = await establishSessionWithCode(response.code);
+        if (!sessionData || !sessionData.driveAccessToken) {
+          alert('No se pudo completar la conexión con Google. Probá de nuevo.');
+          return;
+        }
+        driveToken = sessionData.driveAccessToken;
+        localStorage.setItem('drive_token', driveToken);
+        localStorage.setItem('scope_version', String(SCOPE_VERSION));
+        saveTokenExpiry(sessionData.driveExpiresIn);
+        if (sessionData.hasRefreshToken) localStorage.setItem(DRIVE_REFRESH_AVAILABLE_KEY, '1');
+        // Mismo tramo que establishSessionAndEnforceLimit() — la sesión ya
+        // se estableció arriba (establishSessionWithCode), no hace falta
+        // repetirla.
+        if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
+        await maybeEnforceAlbumLimit();
+        await afterDriveConnected();
+      },
+      error_callback: (err) => { console.warn('Drive auth (code): popup cancelado o falló', err); },
+    });
+
+    // Flujo viejo — se sigue armando por dos motivos: (1) es lo único que
+    // usa el refresh silencioso de cuentas que todavía no pasaron por el
+    // flujo nuevo (tryEagerSilentRefresh()), y (2) sirve de red de
+    // seguridad si por lo que sea el code client no llegó a inicializarse
+    // (handleDriveBtn() cae acá en ese caso). Ya no lo usa handleDriveBtn()
+    // para una conexión nueva en el camino normal.
     window._tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE,
       callback: async (response) => {
@@ -1413,12 +1503,7 @@ async function initGoogleAuth() {
         // Drive, no hace falta repetir nada de lo de abajo.
         if (_eagerRefreshResolve) { const r = _eagerRefreshResolve; _eagerRefreshResolve = null; r(true); return; }
         establishSessionAndEnforceLimit(driveToken); // en paralelo, no bloquea el flujo de Drive
-        rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
-        if (_onConnected) { await _onConnected(); return; }
-        const sp2 = new URLSearchParams(location.search);
-        const jId = sp2.get('join');
-        if (jId) { await handleJoin(jId, decodeURIComponent(sp2.get('name') || ''), sp2.get('from'), sp2.get('to')); return; }
-        await renderAlbums(); await checkMigratable();
+        await afterDriveConnected();
       }
     });
   }
@@ -1428,7 +1513,7 @@ async function initGoogleAuth() {
   }
 
   const expiresAt = parseInt(localStorage.getItem('drive_token_expires_at') || '0', 10);
-  if (Date.now() > expiresAt - SILENT_REFRESH_BUFFER_MS) await tryEagerSilentRefresh();
+  if (Date.now() > expiresAt - SILENT_REFRESH_BUFFER_MS) await refreshDriveToken();
 
   initDrive(async () => {
     scheduleSilentRefresh(); // por si el token guardado ya está por vencer
@@ -1441,7 +1526,13 @@ async function initGoogleAuth() {
 }
 
 function handleDriveBtn() {
-  if (window._tokenClient) {
+  if (window._codeClient) {
+    window._codeClient.requestCode();
+  } else if (window._tokenClient) {
+    // GIS todavía no terminó de armar el code client (raro) — cae al flujo
+    // viejo para no dejar al usuario sin ningún botón funcional; esta
+    // cuenta simplemente no migra al refresh_token real hasta la próxima
+    // vez que toque "Iniciar sesión".
     pendingAuthState = newAuthState();
     window._tokenClient.requestAccessToken({ state: pendingAuthState });
   } else {

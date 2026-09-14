@@ -4,18 +4,71 @@ const { getSupabaseClient } = require('./lib/supabase');
 const { signSession } = require('./lib/session');
 
 const GOOGLE_CLIENT_ID = defineSecret('GOOGLE_CLIENT_ID');
+const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_CLIENT_SECRET');
 const SESSION_JWT_SECRET = defineSecret('SESSION_JWT_SECRET');
 const SUPABASE_URL = defineSecret('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 
-// Recibe el access_token de Drive que ya tiene el frontend (el mismo que usa
-// para hablarle a Google Drive) y lo valida del lado del servidor antes de
-// confiar en la identidad que dice representar — nunca se acepta un
-// email/sub que mande el cliente directamente.
+// Error tipado con el status HTTP que corresponde devolver — así el catch
+// general de abajo no tiene que adivinar 401 vs 500 mirando el mensaje.
+class AuthError extends Error {
+  constructor(status, code) { super(code); this.status = status; this.code = code; }
+}
+
+// Intercambia el código de autorización (flujo `initCodeClient`, ver
+// CLAUDE.md → "Auth de Drive: de implícito a refresh_token real") por un
+// access_token + refresh_token reales de Google. `redirect_uri: 'postmessage'`
+// es el valor especial documentado por Google para códigos obtenidos con
+// `ux_mode: 'popup'` de Google Identity Services — no es una URL real, es
+// el literal que hay que mandar.
+async function exchangeCodeForTokens(code) {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE_CLIENT_ID.value(),
+      client_secret: GOOGLE_CLIENT_SECRET.value(),
+      redirect_uri: 'postmessage',
+      grant_type: 'authorization_code',
+    }),
+  });
+  if (!res.ok) throw new AuthError(401, 'code_exchange_failed');
+  return res.json(); // { access_token, expires_in, refresh_token?, scope, token_type, id_token }
+}
+
+// Valida que el access_token sea realmente de esta app y resuelve la
+// identidad real detrás — mismo chequeo sin importar si el token vino de un
+// intercambio de código (nuevo) o lo mandó el frontend directo (legacy, ver
+// más abajo).
+async function resolveGoogleIdentity(accessToken) {
+  const tokenInfoRes = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
+  );
+  if (!tokenInfoRes.ok) throw new AuthError(401, 'invalid_token');
+  const tokenInfo = await tokenInfoRes.json();
+  if (tokenInfo.aud !== GOOGLE_CLIENT_ID.value()) throw new AuthError(401, 'token_wrong_audience');
+
+  const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!userInfoRes.ok) throw new AuthError(401, 'userinfo_failed');
+  const userInfo = await userInfoRes.json();
+  const emailVerified = userInfo.email_verified === true || userInfo.email_verified === 'true';
+  if (!userInfo.sub || !userInfo.email || !emailVerified) throw new AuthError(401, 'email_not_verified');
+  return userInfo;
+}
+
+// Recibe, según el caller: `code` (flujo nuevo — authorization code, ver
+// CLAUDE.md) o `access_token` (flujo viejo/implícito, se mantiene mientras
+// conviven las dos generaciones de sesión, mismo criterio de migración lazy
+// que ya usa esta app en Drive — nunca un big-bang). En ambos casos termina
+// validando la identidad del lado del servidor antes de confiar en ella —
+// nunca se acepta un email/sub que mande el cliente directamente.
 exports.authSession = onRequest(
   {
     region: 'southamerica-east1',
-    secrets: [GOOGLE_CLIENT_ID, SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
+    secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
     // App Check (ver CLAUDE.md → "App Check", Fase 2): rechaza automáticamente
     // cualquier pedido sin un token válido de X-Firebase-AppCheck, antes de
     // que el handler llegue a correr — así el tráfico bot/script directo a
@@ -28,49 +81,37 @@ exports.authSession = onRequest(
       return;
     }
 
-    const accessToken = req.body && req.body.access_token;
-    if (!accessToken || typeof accessToken !== 'string') {
-      res.status(400).json({ error: 'missing_access_token' });
+    const code = req.body && req.body.code;
+    const legacyAccessToken = req.body && req.body.access_token;
+    if ((!code || typeof code !== 'string') && (!legacyAccessToken || typeof legacyAccessToken !== 'string')) {
+      res.status(400).json({ error: 'missing_code_or_access_token' });
       return;
     }
 
     try {
-      // 1) El token es realmente de ESTA app (evita que alguien mande un
-      //    access_token válido pero emitido para otra aplicación de Google).
-      const tokenInfoRes = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
-      );
-      if (!tokenInfoRes.ok) {
-        res.status(401).json({ error: 'invalid_token' });
-        return;
-      }
-      const tokenInfo = await tokenInfoRes.json();
-      if (tokenInfo.aud !== GOOGLE_CLIENT_ID.value()) {
-        res.status(401).json({ error: 'token_wrong_audience' });
-        return;
+      let driveAccessToken = legacyAccessToken;
+      let driveExpiresIn = null;
+      let refreshToken = null;
+
+      if (code) {
+        const tokens = await exchangeCodeForTokens(code);
+        driveAccessToken = tokens.access_token;
+        driveExpiresIn = tokens.expires_in;
+        // Google solo devuelve refresh_token en el primer consentimiento (o
+        // si se fuerza prompt=consent) — si esta vez no vino, no se pisa el
+        // que ya podría haber guardado de una conexión anterior.
+        refreshToken = tokens.refresh_token || null;
       }
 
-      // 2) Identidad real detrás del token.
-      const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!userInfoRes.ok) {
-        res.status(401).json({ error: 'userinfo_failed' });
-        return;
-      }
-      const userInfo = await userInfoRes.json();
-      const emailVerified = userInfo.email_verified === true || userInfo.email_verified === 'true';
-      if (!userInfo.sub || !userInfo.email || !emailVerified) {
-        res.status(401).json({ error: 'email_not_verified' });
-        return;
-      }
+      // 1-2) Identidad real detrás del token, validada contra Google.
+      const userInfo = await resolveGoogleIdentity(driveAccessToken);
 
       // 3) Crea la fila si es la primera vez (plan='free' por default de la
-      //    tabla) o solo refresca el email si ya existía. Se chequea ANTES
-      //    del upsert si la fila ya existía — es la única forma limpia de
-      //    saber "es un usuario nuevo" (un upsert no lo distingue solo), y
-      //    eso es lo que dispara el evento signup_completed de la Fase 2 de
-      //    GROWTH_PLAN.md.
+      //    tabla) o solo refresca el email/refresh_token si ya existía. Se
+      //    chequea ANTES del upsert si la fila ya existía — es la única
+      //    forma limpia de saber "es un usuario nuevo" (un upsert no lo
+      //    distingue solo), y eso es lo que dispara el evento
+      //    signup_completed de la Fase 2 de GROWTH_PLAN.md.
       const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
       const { data: existing } = await supabase
         .from('subscriptions')
@@ -79,10 +120,13 @@ exports.authSession = onRequest(
         .maybeSingle();
       const isNewUser = !existing;
 
+      const upsertRow = { google_sub: userInfo.sub, email: userInfo.email };
+      if (refreshToken) upsertRow.drive_refresh_token = refreshToken;
+
       const { data, error } = await supabase
         .from('subscriptions')
-        .upsert({ google_sub: userInfo.sub, email: userInfo.email }, { onConflict: 'google_sub' })
-        .select('plan, status')
+        .upsert(upsertRow, { onConflict: 'google_sub' })
+        .select('plan, status, drive_refresh_token')
         .single();
 
       if (error) {
@@ -116,14 +160,32 @@ exports.authSession = onRequest(
         // negocio real (eso sigue siendo status==='authorized').
         email: userInfo.email,
         // picture/name (v1.81): solo existen si la cuenta otorgó el scope
-        // userinfo.profile (sumado junto con este cambio) — pueden venir
-        // undefined para una sesión vieja que todavía no re-autenticó tras
-        // el bump de SCOPE_VERSION. Se usan únicamente para el avatar del
-        // header, nunca para nada de negocio.
+        // userinfo.profile — pueden venir undefined para una sesión vieja
+        // que todavía no re-autenticó. Se usan únicamente para el avatar
+        // del header, nunca para nada de negocio.
         picture: userInfo.picture,
         name: userInfo.name,
+        // Nuevo (flujo authorization code): el frontend necesita el
+        // access_token de Drive en sí — con el flujo viejo lo obtenía
+        // directo de Google en el navegador, con este lo obtiene acá
+        // porque el intercambio de código requiere el client_secret, que
+        // nunca puede vivir en el cliente. Solo vienen seteados cuando el
+        // pedido llegó con `code`; con `access_token` (legacy) el frontend
+        // ya tiene el token, no hace falta devolvérselo.
+        driveAccessToken: code ? driveAccessToken : undefined,
+        driveExpiresIn: code ? driveExpiresIn : undefined,
+        // Le dice al frontend si esta cuenta ya tiene un refresh_token real
+        // guardado (recién obtenido ahora, o de una conexión anterior) —
+        // así sabe si puede empezar a preferir el refresh server-side
+        // (drive-token-refresh.js) en vez del silencioso basado en cookies
+        // de Google en el navegador.
+        hasRefreshToken: !!data.drive_refresh_token,
       });
     } catch (e) {
+      if (e instanceof AuthError) {
+        res.status(e.status).json({ error: e.code });
+        return;
+      }
       console.error('auth-session error:', e);
       res.status(500).json({ error: 'internal_error' });
     }

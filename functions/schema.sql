@@ -42,6 +42,17 @@ create table if not exists travel_diary.subscriptions (
   updated_at           timestamptz not null default now()
 );
 
+-- v1.91 — refresh_token real de Google Drive (flujo authorization code, ver
+-- CLAUDE.md → "Suscripciones" → "Auth de Drive: de implícito a refresh_token
+-- real"), guardado acá para que una Cloud Function pueda pedir un
+-- access_token nuevo sin depender de que el navegador todavía tenga sesión
+-- de Google viva (el problema real de fondo del flujo implícito viejo).
+-- Mismo nivel de confianza que el resto de esta tabla — RLS sin policies,
+-- solo accesible con la service_role_key que usan las Cloud Functions,
+-- nunca expuesto al cliente. Null hasta que la cuenta se conecta una vez
+-- con el flujo nuevo (migración lazy, no se fuerza a nadie de una).
+alter table travel_diary.subscriptions add column if not exists drive_refresh_token text;
+
 -- Log crudo de cada notificación de Mercado Pago, para poder auditar pagos
 -- después. Nunca se borra ni se actualiza, solo se inserta.
 create table if not exists travel_diary.subscription_events (

@@ -111,7 +111,10 @@ function isPaidUser() {
 }
 
 // Se llama con el mismo access_token que ya usa Drive, apenas se conecta —
-// no hace falta un segundo login para esto.
+// no hace falta un segundo login para esto. Camino legacy: sigue existiendo
+// mientras conviven cuentas que todavía no pasaron por el flujo nuevo de
+// código de autorización (ver establishSessionWithCode() más abajo y
+// CLAUDE.md → "Auth de Drive: de implícito a refresh_token real").
 async function establishSession(googleAccessToken) {
   try {
     const res = await fetch('/api/auth/session', {
@@ -120,19 +123,71 @@ async function establishSession(googleAccessToken) {
       body: JSON.stringify({ access_token: googleAccessToken }),
     });
     if (!res.ok) return;
-    const data = await res.json();
-    sessionToken = data.token;
-    localStorage.setItem('td_session', sessionToken);
-    subState = { plan: data.plan, status: data.status };
-    currentUserEmail = data.email || null;
-    currentUserPicture = data.picture || null;
-    currentUserName = data.name || null;
-    // Uno por sesión (cada vez que se resuelve establishSession, sea recién
-    // conectado o una sesión restaurada al abrir la app), no por request —
-    // ver ANALYTICS_PLAN.md, tabla AARRR.
-    trackEvent('login');
+    applySessionResponse(await res.json());
   } catch (e) {
     console.warn('No se pudo establecer la sesión de suscripción:', e);
+  }
+}
+
+// Flujo nuevo (authorization code, ver CLAUDE.md): manda el `code` que
+// entregó `initCodeClient` — el intercambio por tokens reales de Google
+// (incluido el refresh_token) pasa del lado del servidor, porque requiere
+// el client_secret, que nunca puede vivir en el navegador. A diferencia de
+// establishSession() (fire-and-forget, nadie usa lo que devuelve), acá el
+// caller SÍ necesita el resultado — es la única forma de conseguir el
+// access_token de Drive en sí con este flujo. Devuelve `null` si falla
+// (nunca tira), mismo criterio que el resto de esta app para no romper el
+// intento de conectar por un error de red pasajero.
+async function establishSessionWithCode(code) {
+  try {
+    const res = await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    applySessionResponse(data);
+    return data;
+  } catch (e) {
+    console.warn('No se pudo establecer la sesión con el código de autorización:', e);
+    return null;
+  }
+}
+
+function applySessionResponse(data) {
+  sessionToken = data.token;
+  localStorage.setItem('td_session', sessionToken);
+  subState = { plan: data.plan, status: data.status };
+  currentUserEmail = data.email || null;
+  currentUserPicture = data.picture || null;
+  currentUserName = data.name || null;
+  // Uno por sesión (cada vez que se resuelve, sea recién conectado o una
+  // sesión restaurada al abrir la app), no por request — ver
+  // ANALYTICS_PLAN.md, tabla AARRR.
+  trackEvent('login');
+}
+
+// Pide un access_token de Drive nuevo usando el refresh_token guardado del
+// lado del servidor (ver drive-token-refresh.js) — reemplaza al refresh
+// silencioso basado en cookies de Google del navegador para cualquier
+// cuenta que ya pasó por el flujo de código de autorización al menos una
+// vez. Autenticado con el JWT de sesión propio (30 días), no con el
+// access_token de Drive (que es justo lo que puede estar vencido acá).
+// Devuelve `{access_token, expires_in}` o `null` — nunca tira, el caller
+// (app.html) decide el fallback (el mecanismo viejo, o pedir reconectar).
+async function refreshDriveTokenServerSide() {
+  if (!sessionToken) return null;
+  try {
+    const res = await fetch('/api/drive/token/refresh', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.warn('No se pudo refrescar el access_token de Drive del lado del servidor:', e);
+    return null;
   }
 }
 
