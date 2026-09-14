@@ -102,7 +102,9 @@ exports.authSession = onRequest(
         }
       }
 
-      const token = signSession(SESSION_JWT_SECRET.value(), { sub: userInfo.sub, email: userInfo.email });
+      const token = signSession(SESSION_JWT_SECRET.value(), {
+        sub: userInfo.sub, email: userInfo.email, picture: userInfo.picture, name: userInfo.name,
+      });
       res.status(200).json({
         token,
         plan: data.plan,
@@ -113,6 +115,13 @@ exports.authSession = onRequest(
         // debug de v1.52 a la cuenta del propio dev, nunca para nada de
         // negocio real (eso sigue siendo status==='authorized').
         email: userInfo.email,
+        // picture/name (v1.81): solo existen si la cuenta otorgó el scope
+        // userinfo.profile (sumado junto con este cambio) — pueden venir
+        // undefined para una sesión vieja que todavía no re-autenticó tras
+        // el bump de SCOPE_VERSION. Se usan únicamente para el avatar del
+        // header, nunca para nada de negocio.
+        picture: userInfo.picture,
+        name: userInfo.name,
       });
     } catch (e) {
       console.error('auth-session error:', e);

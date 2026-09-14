@@ -1,9 +1,9 @@
 // ─── DRIVE CONFIG ────────────────────────────────────────
 const DRIVE_CLIENT_ID = '29099211489-421jp27om456sbegj4qhcohvimkfbd5m.apps.googleusercontent.com';
-const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const ROOT_FOLDER     = 'legado';
 const ROOT_FOLDER_OLD = 'travel-diary'; // nombre de antes del rebrand — ver getOrCreateFolderMigrating()
-const SCOPE_VERSION   = 4; // bumped: + userinfo.email (identidad estable para suscripciones)
+const SCOPE_VERSION   = 5; // bumped: + userinfo.profile (foto/nombre para el avatar del header, v1.81)
 
 // ─── STATE ───────────────────────────────────────────────
 let driveToken       = null;

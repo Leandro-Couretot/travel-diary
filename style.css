@@ -117,6 +117,11 @@ body {
 .btn-nav:hover { border-color: var(--accent); color: var(--accent); }
 .btn-nav:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
+.header-avatar {
+  width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--ink-faint); flex-shrink: 0;
+}
+
 /* ─── MODAL ─── */
 .modal-overlay {
   display: none;

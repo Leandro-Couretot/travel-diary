@@ -68,6 +68,12 @@ exports.subscriptionStatus = onRequest(
         // sesión (verifySession), el frontend solo lo usa para el toggle de
         // debug de la cuenta del dev — ver CLAUDE.md v1.60.
         email: session.email,
+        // picture/name (v1.81): salen del mismo JWT, sin ninguna consulta
+        // nueva a Google/Supabase — mismo motivo que ya llevó a sumar email
+        // acá en v1.72 (esta es la rama de sesión restaurada, la que corre
+        // en la enorme mayoría de visitas después de la primera conexión).
+        picture: session.picture,
+        name: session.name,
       });
     } catch (e) {
       console.error('subscription-status error:', e);

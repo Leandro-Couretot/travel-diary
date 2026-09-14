@@ -8,6 +8,8 @@
 let sessionToken = localStorage.getItem('td_session') || null;
 let subState = { plan: 'free', status: 'none' };
 let currentUserEmail = null; // se llena en establishSession(), viene ya validado por el servidor
+let currentUserPicture = null; // v1.81: avatar del header — mismo origen/validación que currentUserEmail
+let currentUserName = null; // v1.81: solo para el alt/title del avatar, no se usa en ningún otro lado
 
 // ─── App Check (reCAPTCHA Enterprise) ──────────────────────────────
 // Defensa contra bots/scripts que le peguen directo a /api/* sin pasar por
@@ -123,6 +125,8 @@ async function establishSession(googleAccessToken) {
     localStorage.setItem('td_session', sessionToken);
     subState = { plan: data.plan, status: data.status };
     currentUserEmail = data.email || null;
+    currentUserPicture = data.picture || null;
+    currentUserName = data.name || null;
     // Uno por sesión (cada vez que se resuelve establishSession, sea recién
     // conectado o una sesión restaurada al abrir la app), no por request —
     // ver ANALYTICS_PLAN.md, tabla AARRR.
@@ -142,6 +146,8 @@ async function refreshSubscriptionStatus() {
       const data = await res.json();
       subState = data;
       currentUserEmail = data.email || currentUserEmail;
+      currentUserPicture = data.picture || currentUserPicture;
+      currentUserName = data.name || currentUserName;
     }
   } catch (e) {
     console.warn('No se pudo refrescar el estado de suscripción:', e);

@@ -1048,7 +1048,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.80';
+const APP_VERSION = '1.81';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1079,7 +1079,15 @@ function navigateTo(view, params = {}) {
 }
 
 function renderHomeHeader() {
+  // Avatar de Google (v1.81): solo se muestra si ya llegó (establishSession()/
+  // refreshSubscriptionStatus() lo resuelven en paralelo, sin bloquear) — sin
+  // foto no se arma ningún <img>, para no repetir el bug del ícono roto de
+  // v1.27 (mejor un hueco chico que un ícono de "imagen sin cargar").
+  const avatarHtml = currentUserPicture
+    ? `<img class="header-avatar" src="${escHtml(currentUserPicture)}" alt="${escHtml(currentUserName || 'Cuenta conectada')}" title="${escHtml(currentUserName || '')}" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : '';
   document.getElementById('header-actions').innerHTML = `
+    ${avatarHtml}
     <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v${APP_VERSION}</span>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
 }
@@ -1129,10 +1137,12 @@ async function maybeEnforceAlbumLimit() {
 }
 async function establishSessionAndEnforceLimit(token) {
   await establishSession(token);
+  if (currentView === 'home') renderHomeHeader(); // pinta el avatar (v1.81) apenas está disponible
   await maybeEnforceAlbumLimit();
 }
 async function refreshSubscriptionAndEnforceLimit() {
   await refreshSubscriptionStatus();
+  if (currentView === 'home') renderHomeHeader();
   await maybeEnforceAlbumLimit();
 }
 
