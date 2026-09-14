@@ -447,6 +447,7 @@ audio { width: 100%; height: 32px; }
 .plan-compare-label { color: var(--ink); font-weight: 500; }
 .plan-compare-free { text-align: center; color: var(--ink-muted); }
 .plan-compare-pro { text-align: center; color: var(--accent); font-weight: 700; }
+.plan-compare-soon { text-align: center; color: var(--ink-faint); font-style: italic; font-size: 0.76rem; }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
 .bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
@@ -932,6 +933,7 @@ audio { width: 100%; height: 32px; }
         <div class="plan-compare-row"><div class="plan-compare-label">Álbumes</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitados</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Audio</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitado</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
+        <div class="plan-compare-row"><div class="plan-compare-label">Borrar objetos (IA)</div><div class="plan-compare-soon">Próximamente</div><div class="plan-compare-soon">Próximamente</div></div>
       </div>
       <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar álbumes viejos cada vez que sumás uno nuevo.</p>
       <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
@@ -1046,7 +1048,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.79';
+const APP_VERSION = '1.80';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
