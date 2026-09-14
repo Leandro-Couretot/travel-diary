@@ -1,4 +1,4 @@
 {
-  "version": "1.89",
-  "changelog": "La tab 'Lista' pasa a llamarse 'Galería' y queda al lado de 'Libro'; el orden ahora es Día, Mes, Galería, Libro."
+  "version": "1.90",
+  "changelog": "Home con un solo botón de acceso + arreglo real: la app ya intenta reconectar en silencio antes de pedir loguearse de nuevo."
 }

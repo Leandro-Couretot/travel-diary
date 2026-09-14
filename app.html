@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.89';
+const APP_VERSION = '1.90';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1322,6 +1322,7 @@ function formatDateLong(str) {
 // igual que hoy.
 const SILENT_REFRESH_BUFFER_MS = 5 * 60 * 1000; // refrescar 5 min antes de vencer
 let _silentRefreshTimer = null;
+let _eagerRefreshResolve = null; // ver tryEagerSilentRefresh()
 
 function newAuthState() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -1356,6 +1357,31 @@ document.addEventListener('visibilitychange', () => {
   if (Date.now() > expiresAt - SILENT_REFRESH_BUFFER_MS) trySilentRefresh();
 });
 
+// v1.90 — bug real: en un arranque en frío (la PWA estuvo cerrada más de
+// ~55 min) el token guardado ya está vencido, pero hasta acá el código iba
+// derecho a usar ese token contra Drive (initDrive → _bootstrapDrive), que
+// devuelve 401, borra la sesión y manda a la pantalla de "reconectar" —
+// sin haber intentado el refresh silencioso ni una sola vez, porque
+// scheduleSilentRefresh() solo se llama DESPUÉS de un bootstrap exitoso.
+// tryEagerSilentRefresh() corta ese camino: si el token guardado ya venció
+// (o está por vencer), intenta refrescarlo en silencio ANTES de tocar
+// Drive — mismo pedido de siempre (prompt:''), tan poco garantizado como
+// siempre (ver nota de arriba), pero ahora al menos se intenta en el
+// momento en que más falta hace. Nunca puede quedar colgado: si Google no
+// contesta en 4s, se resuelve `false` y initGoogleAuth() sigue exactamente
+// como antes (initDrive() con el token viejo, 401 limpio, reconectar).
+function tryEagerSilentRefresh() {
+  return new Promise(resolve => {
+    if (!window._tokenClient) { resolve(false); return; }
+    _eagerRefreshResolve = resolve;
+    pendingAuthState = newAuthState();
+    setTimeout(() => {
+      if (_eagerRefreshResolve) { _eagerRefreshResolve(false); _eagerRefreshResolve = null; }
+    }, 4000);
+    window._tokenClient.requestAccessToken({ state: pendingAuthState, prompt: '' });
+  });
+}
+
 async function initGoogleAuth() {
   const sp     = new URLSearchParams(location.search);
   const joinId = sp.get('join');
@@ -1370,13 +1396,22 @@ async function initGoogleAuth() {
     window._tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPE,
       callback: async (response) => {
-        if (response.error) return;
+        if (response.error) {
+          if (_eagerRefreshResolve) { const r = _eagerRefreshResolve; _eagerRefreshResolve = null; r(false); }
+          return;
+        }
         if (response.state !== pendingAuthState) { console.warn('Drive auth: state no coincide, se descarta la respuesta'); return; }
         pendingAuthState = null;
         driveToken = response.access_token;
         localStorage.setItem('drive_token', driveToken);
         localStorage.setItem('scope_version', String(SCOPE_VERSION));
         saveTokenExpiry(response.expires_in);
+        // tryEagerSilentRefresh() dispara este mismo callback — cuando la
+        // respuesta es para ese pedido puntual, alcanza con dejar el token
+        // fresco guardado (ya hecho arriba) y avisarle a la promesa que
+        // espera; initGoogleAuth() sigue solo con el bootstrap normal de
+        // Drive, no hace falta repetir nada de lo de abajo.
+        if (_eagerRefreshResolve) { const r = _eagerRefreshResolve; _eagerRefreshResolve = null; r(true); return; }
         establishSessionAndEnforceLimit(driveToken); // en paralelo, no bloquea el flujo de Drive
         rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
         if (_onConnected) { await _onConnected(); return; }
@@ -1391,6 +1426,9 @@ async function initGoogleAuth() {
   if (!hasSavedToken) {
     if (joinId) renderJoinPending(joinName); else renderDisconnected(); return;
   }
+
+  const expiresAt = parseInt(localStorage.getItem('drive_token_expires_at') || '0', 10);
+  if (Date.now() > expiresAt - SILENT_REFRESH_BUFFER_MS) await tryEagerSilentRefresh();
 
   initDrive(async () => {
     scheduleSilentRefresh(); // por si el token guardado ya está por vencer
@@ -1431,7 +1469,7 @@ function renderDisconnected() {
     <div class="connect-state fade-up">
       <h2>Legado</h2>
       <p>Guardá tus recuerdos en fotos, videos, audios y notas. Todo en tu Google Drive.</p>
-      <button class="btn btn-primary" onclick="openOnboardingModal()">Crear mi primer álbum</button>
+      <button class="btn btn-primary" onclick="openOnboardingModal()">Iniciar sesión / Registrarse</button>
     </div>`;
 }
 
