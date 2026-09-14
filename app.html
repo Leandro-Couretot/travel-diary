@@ -696,7 +696,7 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── SHARED HEADER ─── -->
 <header class="app-header" id="app-header">
-  <div class="app-logo" id="app-logo" style="cursor:pointer;" onclick="navigateTo('home')">Legado <span id="header-subtitle">mis recuerdos</span></div>
+  <div class="app-logo" id="app-logo" style="cursor:pointer;" onclick="navigateTo('home')">Legado <span id="header-subtitle"></span></div>
   <div style="display:flex;gap:0.5rem;align-items:center;" id="header-actions">
     <!-- populated by router -->
   </div>
@@ -1043,7 +1043,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.77';
+const APP_VERSION = '1.78';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1062,7 +1062,6 @@ function navigateTo(view, params = {}) {
     dirty = false;
     document.getElementById('header-subtitle').textContent = '';
     renderHomeHeader();
-    updateDriveBtn();
     renderAlbums();
   } else if (view === 'diary') {
     albumId        = params.albumId || null;
@@ -1077,7 +1076,6 @@ function navigateTo(view, params = {}) {
 function renderHomeHeader() {
   document.getElementById('header-actions').innerHTML = `
     <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v${APP_VERSION}</span>
-    <button class="btn-nav" id="btn-bulk-upload" style="display:none;" onclick="openBulkUpload()" title="Carga masiva">⬆</button>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
 }
 
@@ -1272,7 +1270,7 @@ async function initGoogleAuth() {
         const sp2 = new URLSearchParams(location.search);
         const jId = sp2.get('join');
         if (jId) { await handleJoin(jId, decodeURIComponent(sp2.get('name') || ''), sp2.get('from'), sp2.get('to')); return; }
-        updateDriveBtn(); await renderAlbums(); await checkMigratable();
+        await renderAlbums(); await checkMigratable();
       }
     });
   }
@@ -1285,7 +1283,7 @@ async function initGoogleAuth() {
     scheduleSilentRefresh(); // por si el token guardado ya está por vencer
     if (sessionToken) refreshSubscriptionAndEnforceLimit(); else establishSessionAndEnforceLimit(driveToken); // en paralelo
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
-    updateDriveBtn(); await renderAlbums(); await checkMigratable();
+    await renderAlbums(); await checkMigratable();
   }, () => {
     if (joinId) renderJoinPending(joinName); else renderDisconnected();
   });
@@ -1298,11 +1296,6 @@ function handleDriveBtn() {
   } else {
     alert('Google Drive no está disponible.');
   }
-}
-
-function updateDriveBtn() {
-  const bulkBtn = document.getElementById('btn-bulk-upload');
-  if (bulkBtn) bulkBtn.style.display = isDriveConnected() ? '' : 'none';
 }
 
 async function checkMigratable() {
@@ -1365,7 +1358,7 @@ async function handleJoin(folderId, albumName, dateFrom, dateTo) {
       await new Promise(r => setTimeout(r, 1400));
     }
     history.replaceState({}, '', location.pathname);
-    updateDriveBtn(); await renderAlbums(); await checkMigratable();
+    await renderAlbums(); await checkMigratable();
   } catch(e) {
     main.innerHTML = `<div class="connect-state fade-up"><h2>No se pudo unir al álbum</h2><p>${escHtml(e.message)}</p><button class="btn btn-primary" onclick="navigateTo('home')">Ir a mis recuerdos</button></div>`;
   }

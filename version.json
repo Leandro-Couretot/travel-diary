@@ -1,4 +1,4 @@
 {
-  "version": "1.77",
-  "changelog": "Arreglamos de raíz el banner de actualización en loop: quedaba desincronizado internamente."
+  "version": "1.78",
+  "changelog": "Header más limpio: sin el subtítulo del logo ni el botón de carga masiva."
 }
