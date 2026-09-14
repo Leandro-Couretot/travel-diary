@@ -1,4 +1,4 @@
 {
-  "version": "1.82",
-  "changelog": "La tarjeta de cada álbum vuelve a mostrar siempre las fechas que cargaste, sin mezclarlas con el rango real de contenido."
+  "version": "1.83",
+  "changelog": "Nuevo botón flotante ＋ en Home para agregar fotos o crear un álbum en un toque."
 }

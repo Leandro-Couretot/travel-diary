@@ -154,6 +154,40 @@ img { transition: opacity 0.25s ease; }
   .album-info { padding: 0.75rem 1rem 1rem; }
 }
 
+/* ─── FAB "＋" de Home (v1.83) ─── */
+/* La mayoría de las visitas a la app son para agregar fotos, no para
+   crear un álbum nuevo — antes había que abrir el menú ⋯ de una card
+   puntual (v1.75) para llegar a "Carga masiva". Este botón flotante deja
+   las dos acciones más comunes a un toque desde cualquier scroll de
+   Home, sin agregar una tercera forma de crear álbum (el "＋ Nuevo
+   álbum" de la grilla sigue ahí, este es un atajo, no un reemplazo). */
+.fab-container { position: fixed; right: 1.25rem; bottom: 1.5rem; z-index: 120; display: none; }
+.fab-btn {
+  width: 56px; height: 56px; border-radius: 50%; border: none;
+  background: var(--ink); color: #fff; font-size: 1.6rem; line-height: 1;
+  cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.fab-btn:hover { background: var(--accent); }
+.fab-container.open .fab-btn { transform: rotate(45deg); background: var(--accent); }
+.fab-menu {
+  position: absolute; right: 0; bottom: 68px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 0.6rem;
+  opacity: 0; pointer-events: none; transform: translateY(8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.fab-container.open .fab-menu { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.fab-menu-item {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--surface, #fff); color: var(--ink); border: 1px solid var(--ink-faint);
+  border-radius: 999px; padding: 0.55rem 1rem 0.55rem 0.7rem; font-size: 0.85rem;
+  font-family: 'DM Sans', sans-serif; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.15); transition: border-color 0.15s, background 0.15s;
+}
+.fab-menu-item:hover { border-color: var(--accent); background: var(--accent-light); }
+.fab-menu-icon { font-size: 1rem; }
+
 /* ─── DIARY STYLES ─── */
 #view-diary {
   display: none;
@@ -708,6 +742,13 @@ audio { width: 100%; height: 32px; }
   <main id="home-main">
     <div class="loading-albums"><div class="spinner"></div> Cargando...</div>
   </main>
+  <div class="fab-container" id="fab-container">
+    <div class="fab-menu" id="fab-menu">
+      <button class="fab-menu-item" onclick="handleFabAction('photos')"><span class="fab-menu-icon">🖼</span> Agregar fotos</button>
+      <button class="fab-menu-item" onclick="handleFabAction('album')"><span class="fab-menu-icon">＋</span> Álbum nuevo</button>
+    </div>
+    <button class="fab-btn" id="fab-btn" onclick="toggleFabMenu(event)" title="Agregar">＋</button>
+  </div>
 </div>
 
 <!-- ─── VIEW: DIARY ─── -->
@@ -1048,7 +1089,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.82';
+const APP_VERSION = '1.83';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1403,6 +1444,11 @@ async function renderAlbums() {
     });
   }, { rootMargin: '300px 0px' });
 
+  // El FAB solo tiene sentido con al menos un álbum propio activo —
+  // "Agregar fotos" necesita un destino real en el <select> del modal de
+  // carga masiva (renderBulkReview() arma esas opciones de `albums`).
+  document.getElementById('fab-container').style.display = albums.length ? '' : 'none';
+
   if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `
       <div class="home-intro fade-up"><h1>Tus <em>recuerdos</em></h1><p>Creá tu primer álbum para empezar.</p></div>
@@ -1644,6 +1690,33 @@ function closeAlbumMenu() {
   _albumMenuEl?.remove();
   _albumMenuEl = null;
   document.removeEventListener('click', _closeAlbumMenuOnOutside);
+}
+
+// ─── FAB "＋" de Home (v1.83) ────────────────────────────────
+// La mayoría de las entradas a la app son para agregar fotos a un
+// álbum ya existente, no para crear uno — este botón flotante deja
+// las dos acciones a un toque, sin importar cuánto se haya scrolleado.
+// "Agregar fotos" reusa el mismo modal de carga masiva de siempre
+// (openBulkUpload(), con el <select> de álbum de destino ya armado por
+// renderBulkReview() — nada nuevo que construir ahí).
+function toggleFabMenu(event) {
+  event?.stopPropagation();
+  const wasOpen = document.getElementById('fab-container').classList.contains('open');
+  if (wasOpen) { closeFabMenu(); return; }
+  document.getElementById('fab-container').classList.add('open');
+  setTimeout(() => document.addEventListener('click', _closeFabMenuOnOutside), 0);
+}
+function _closeFabMenuOnOutside(e) {
+  if (!document.getElementById('fab-container').contains(e.target)) closeFabMenu();
+}
+function closeFabMenu() {
+  document.getElementById('fab-container').classList.remove('open');
+  document.removeEventListener('click', _closeFabMenuOnOutside);
+}
+function handleFabAction(action) {
+  closeFabMenu();
+  if (action === 'album') openNewAlbumModal();
+  else if (action === 'photos') openBulkUpload();
 }
 
 const _noopEvent = { preventDefault() {}, stopPropagation() {} };
