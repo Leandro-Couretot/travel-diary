@@ -1,4 +1,4 @@
 {
-  "version": "1.81",
-  "changelog": "El header ahora muestra tu foto de Google — puede pedirte reconectar una vez."
+  "version": "1.82",
+  "changelog": "La tarjeta de cada álbum vuelve a mostrar siempre las fechas que cargaste, sin mezclarlas con el rango real de contenido."
 }

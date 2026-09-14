@@ -1048,7 +1048,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.81';
+const APP_VERSION = '1.82';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1574,15 +1574,18 @@ async function loadAlbumDaysInfo(album) {
       if (summaryEl) summaryEl.textContent = 'Sin días aún';
       return;
     }
-    // El rango de fechas real (primer día con contenido → último) sigue
-    // saliendo de los nombres de carpeta — no hace falta leer nada más
-    // para esto. El contador de días de v1.32 se reemplaza (v1.75) por un
-    // resumen de contenido real, que sí requiere leer cada day.json —
-    // se resuelve un instante después, sin bloquear lo anterior.
-    const first = days[0], last = days[days.length - 1];
-    const datesEl = document.getElementById(`dates-${album.id}`);
-    if (datesEl) datesEl.textContent = `${formatDate(first)} — ${formatDate(last)}`;
-
+    // v1.82: ya no se pisa la fecha de la tarjeta con el rango real de
+    // contenido (eso hacía v1.32) — el usuario reportó confusión real al
+    // ver un rango distinto en la tarjeta ("13 ago 2026 — 13 sep 2026",
+    // el contenido real) y en el modal de editar ("13 ago 2026 — 12 ago
+    // 2027", el campo manual que él mismo cargó), sin ninguna etiqueta
+    // que aclarara que eran dos cosas distintas — parecía un bug de
+    // fechas rotas, cuando en realidad cada una salía de una fuente
+    // distinta a propósito. La tarjeta vuelve a mostrar siempre
+    // DESDE/HASTA tal cual quedaron guardados en el álbum (ver línea de
+    // arriba, sin cambios) — esta función solo sigue calculando el
+    // resumen de fotos/videos (v1.75), que sí requiere leer cada
+    // day.json.
     const dayJsons = await Promise.all(days.map(d => loadDayFromDrive(fid, d).catch(() => null)));
     let photoCount = 0, videoCount = 0;
     dayJsons.forEach(d => (d?.media || []).forEach(m => {
