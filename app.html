@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.92';
+const APP_VERSION = '1.93';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3051,7 +3051,7 @@ async function renderBook() {
   }
 
   bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-addpage-btn" onclick="openBookAddPageModal()">Agregar página</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
+  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-addpage-btn" onclick="openBookAddPageModal()">Agregar página</button><button class="book-btn" id="book-recreate-btn" onclick="recreateBookRandom()">Recrear libro</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
   renderBookPages();
   document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
   updateBookCounter();
@@ -3536,6 +3536,44 @@ async function deleteBookPage(idx) {
   bookPages.splice(idx, 1);
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
+}
+
+// Rearma el libro entero desde cero con una distribución al azar (botón
+// "Recrear libro", v1.93) — pedido del usuario tras sumar muchas fotos
+// nuevas a un álbum que ya tenía el fotolibro armado: en vez de acomodar
+// una por una las que caen en "Sin ubicar", junta TODAS las fotos reales
+// del libro (páginas + drawer, en el orden en que ya estaban) y arma
+// páginas nuevas de 1 a 4 fotos al azar, cada una con un layout al azar
+// entre los válidos para esa cantidad (BOOK_LAYOUTS_BY_COUNT) — mismo
+// registro que ya usa "Agregar página", nunca una geometría nueva. El
+// drawer queda vacío: cada foto termina en alguna página. No reordena
+// las fotos entre sí, solo cómo se agrupan en páginas — así no se pierde
+// el orden cronológico/manual que ya tenían.
+// Destructivo para cualquier acomodo manual (páginas armadas a mano,
+// layouts forzados, fotos aisladas a propósito) — de ahí la confirmación
+// explícita antes de aplicar, mismo patrón que "Eliminar página".
+async function recreateBookRandom() {
+  const allIds = [...bookPages.flatMap(p => p.images.filter(Boolean)), ...bookDrawer];
+  if (!allIds.length) return;
+  const ok = await customConfirm(
+    `Se van a rearmar las ${allIds.length} foto${allIds.length > 1 ? 's' : ''} del libro en páginas nuevas, con cantidad de fotos y distribución al azar por página — se pierde cualquier acomodo manual que hayas hecho (páginas armadas a mano, layouts elegidos, fotos aisladas). ¿Recrear el libro?`,
+    { title: 'Recrear libro', confirmLabel: 'Recrear' }
+  );
+  if (!ok) return;
+  const newPages = [];
+  let i = 0;
+  while (i < allIds.length) {
+    const maxCount = Math.min(4, allIds.length - i);
+    const count = 1 + Math.floor(Math.random() * maxCount);
+    const options = BOOK_LAYOUTS_BY_COUNT[count] || ['book-layout-1'];
+    const layout = options[Math.floor(Math.random() * options.length)];
+    newPages.push(buildFixedCapacityPage(allIds.slice(i, i + count), layout));
+    i += count;
+  }
+  bookPages = newPages;
+  bookDrawer = [];
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
 }
 
 // ─── Fotolibro: tamaño de hoja real (Paso 2 de la exportación a PDF,

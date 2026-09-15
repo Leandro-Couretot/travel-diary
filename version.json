@@ -1,4 +1,4 @@
 {
-  "version": "1.92",
-  "changelog": "El login con Google manda el parámetro 'state' — cierra un aviso de seguridad de Google Cloud."
+  "version": "1.93",
+  "changelog": "Fotolibro: botón 'Recrear libro' para rearmar todas las páginas al azar cuando agregás muchas fotos nuevas."
 }
