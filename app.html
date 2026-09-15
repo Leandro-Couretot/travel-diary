@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.93';
+const APP_VERSION = '1.94';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3971,6 +3971,21 @@ function initBookTouchReorder(root) {
       if (touchSrcId && target) moveBookPhoto(touchSrcId, target);
       touchSrcId = null;
     });
+    // v1.94 — bug real: si iOS cancela el gesto a mitad de camino (gesto
+    // del sistema, ej. abrir el Centro de Control desde la esquina
+    // superior — justo donde vive el botón "Exportar" — o un scroll que
+    // el navegador reclasifica), dispara `touchcancel` en vez de
+    // `touchend`. Sin este listener, el clon (`touchClone`, pegado a
+    // `document.body` con `position:fixed`) nunca se sacaba — quedaba
+    // flotando en pantalla para siempre, como una foto "congelada",
+    // hasta recargar la app. Mismo cuidado que `touchend`, pero sin
+    // aplicar ningún movimiento (el gesto se abortó, no se completó).
+    handle.addEventListener('touchcancel', () => {
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      root.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
+      clearBookEdgeScroll();
+      touchSrcId = null;
+    });
   });
 }
 
@@ -4304,6 +4319,14 @@ function initTouchReorder(grid) {
       const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
       const targetCard = el && el.closest('.media-card');
       if (targetCard) { const targetIdx = parseInt(targetCard.dataset.idx); if (touchSrcIdx !== null && touchSrcIdx !== targetIdx) { const moved = currentDay.media.splice(touchSrcIdx, 1)[0]; currentDay.media.splice(targetIdx, 0, moved); saveCurrentDay(); renderMedia(); } }
+      touchSrcIdx = null;
+    });
+    // v1.94 — mismo bug/fix que initBookTouchReorder(): si iOS cancela el
+    // gesto (touchcancel en vez de touchend), sin este listener el clon
+    // quedaba flotando pegado a document.body para siempre.
+    handle.addEventListener('touchcancel', () => {
+      if (touchClone) { touchClone.remove(); touchClone = null; }
+      grid.querySelectorAll('.media-card').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
       touchSrcIdx = null;
     });
   });

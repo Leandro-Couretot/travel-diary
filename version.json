@@ -1,4 +1,4 @@
 {
-  "version": "1.93",
-  "changelog": "Fotolibro: botón 'Recrear libro' para rearmar todas las páginas al azar cuando agregás muchas fotos nuevas."
+  "version": "1.94",
+  "changelog": "Fix: una miniatura podía quedar 'congelada' en pantalla al arrastrar una foto si el gesto se interrumpía a mitad de camino."
 }
