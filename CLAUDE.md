@@ -28,6 +28,7 @@ App web para guardar recuerdos (fotos, videos, audios y notas) organizados en á
 - **Backend nuevo** (`functions/`): Node.js sobre Firebase Cloud Functions — antes la app no tenía backend propio, esto es exclusivamente para la lógica de suscripciones/pagos, no para el contenido del diario
 - Firebase Hosting (reemplaza a GitHub Pages una vez cortada la migración) + Supabase (Postgres, estado de suscripciones — proyecto compartido `pluxow-clients`, schema propio `travel_diary` — nombre interno, no cambió con el rebrand a Legado, ver "Qué es" — ver "Suscripciones") + Mercado Pago (cobros)
 - PWA instalable (manifest.json)
+- **Google Search Console + Google Analytics (gtag.js)**: verificación de dominio (archivo `google10a65c5cf7ded0c9.html` en la raíz — Google no pudo encontrar la etiqueta `<meta name="google-site-verification">` en `app.html`, se resolvió con el método de archivo en su lugar) + tag de Analytics (`G-0ZM7BKFP5G`, cargado al principio del `<head>` de `app.html`, justo como Google lo indica) — ninguno de los dos habla con `trackEvent()`/`usage_events` (Supabase, v1.62), son capas de medición separadas y sin relación entre sí.
 
 ---
 
