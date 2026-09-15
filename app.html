@@ -347,8 +347,19 @@ audio { width: 100%; height: 32px; }
 .book-reorder-grid { flex: 1; min-height: 0; display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
 .book-reorder-grid::-webkit-scrollbar { display: none; }
 .book-reorder-tile { position: relative; flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
-.book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.book-reorder-tile.page-dragging { opacity: 0.35; }
+.book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
+.book-reorder-page-handle { cursor: grab; font-size: 0.8rem; line-height: 1; }
 .book-reorder-tile-grid { aspect-ratio: 1; overflow: hidden; }
+.book-insert-gap {
+  flex: 0 0 24px; height: 24px; align-self: center; padding: 0;
+  border: none; border-radius: 50%; background: rgba(26,26,24,0.12); color: var(--ink-muted);
+  font-size: 0.85rem; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.book-insert-gap:hover { background: var(--accent); color: #fff; }
+.book-insert-gap.gap-active { background: var(--accent); color: #fff; transform: scale(1.35); }
 .book-reorder-layout-btn {
   position: absolute; top: 0.3rem; right: 0.3rem; z-index: 2;
   width: 22px; height: 22px; border-radius: 4px; border: none;
@@ -1078,7 +1089,7 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-section"><div class="help-section-title">📖 Fotolibro</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Tamaño</strong> elige el tamaño de hoja real — la página adopta esa proporción, igual a como se va a imprimir.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Reordenar</strong> muestra varias páginas a la vez para mover fotos entre ellas o al "sin ubicar".</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Reordenar</strong> muestra varias páginas a la vez — arrastrá el ⠿ de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño.</span></div>
       <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
@@ -1120,7 +1131,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.97';
+const APP_VERSION = '1.98';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3230,18 +3241,50 @@ function renderBookReorderGrid() {
   const area = document.getElementById('book-reorder-area');
   if (!container || !drawerEl || !area) return;
   container.innerHTML = '';
-  bookPages.forEach((page, idx) => container.appendChild(buildBookReorderTile(page, idx)));
+  // Un "+" entre cada dos páginas (y antes de la primera/después de la
+  // última) — deja claro DÓNDE entraría una página nueva (a diferencia
+  // del botón global "Agregar página", que siempre iba al final) y
+  // además sirve de blanco de drop al arrastrar una página existente
+  // (ver resolveBookPageDropIndex/initBookPageDragReorder).
+  container.appendChild(buildBookInsertGap(0));
+  bookPages.forEach((page, idx) => {
+    container.appendChild(buildBookReorderTile(page, idx));
+    container.appendChild(buildBookInsertGap(idx + 1));
+  });
   drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
   const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
   bookDrawer.forEach(id => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo)); });
   drawerEl.appendChild(drawerGrid);
   initBookDragReorder(area);
   initBookTouchReorder(area);
+  initBookPageDragReorder(container);
+  initBookPageTouchReorder(container);
+}
+
+// Botón "+" chico entre dos páginas — ver el comentario en
+// renderBookReorderGrid() para por qué existe y qué doble rol cumple.
+function buildBookInsertGap(insertIdx) {
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'book-insert-gap'; btn.dataset.insertIdx = insertIdx;
+  btn.title = 'Agregar página acá';
+  btn.textContent = '+';
+  btn.addEventListener('click', () => openBookAddPageModal(insertIdx));
+  return btn;
 }
 
 function buildBookReorderTile(page, idx) {
-  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
-  const label = document.createElement('div'); label.className = 'book-reorder-tile-label'; label.textContent = `Página ${idx + 1}`;
+  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx; tile.draggable = true;
+  const label = document.createElement('div'); label.className = 'book-reorder-tile-label';
+  // Manija de arrastre de la PÁGINA entera (a diferencia de la manija
+  // ⠿ de cada foto, que mueve fotos dentro/entre páginas) — en desktop
+  // alcanza con arrastrar cualquier parte del tile (tile.draggable de
+  // arriba), pero en touch hace falta un punto de arranque explícito
+  // para no competir con el scroll horizontal de la tira (mismo criterio
+  // que .bp-drag-handle, ver initBookPageTouchReorder()).
+  const pageHandle = document.createElement('span'); pageHandle.className = 'book-reorder-page-handle'; pageHandle.textContent = '⠿'; pageHandle.title = 'Arrastrar para reordenar';
+  label.appendChild(pageHandle);
+  const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
+  label.appendChild(labelText);
   tile.appendChild(label);
   // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
   // tiene sentido mostrar el botón. `page.images.length` es la capacidad
@@ -3492,7 +3535,15 @@ function closeBookLayoutModal() {
 // — que ya usa openBookLayoutModal() para páginas existentes). La página
 // se crea vacía (todos sus `images` en `null`) lista para arrastrarle
 // fotos desde el drawer o desde otra página.
-function openBookAddPageModal() {
+// Índice de inserción de la página nueva — `null` (el botón global
+// "Agregar página") va al final, un número puntual (tocar el "+" de un
+// hueco, ver buildBookInsertGap) la inserta justo ahí. Se resuelve una
+// sola vez al abrir el modal — el resto del flujo (elegir cantidad,
+// elegir layout) no necesita volver a preguntarlo.
+let bookAddPageInsertIdx = null;
+
+function openBookAddPageModal(insertIdx) {
+  bookAddPageInsertIdx = (insertIdx === undefined) ? null : insertIdx;
   document.getElementById('book-add-page-step-count').style.display = '';
   document.getElementById('book-add-page-step-layout').style.display = 'none';
   const countContainer = document.getElementById('book-add-page-count-options');
@@ -3523,7 +3574,8 @@ function chooseBookAddPageCount(count) {
 
 function confirmBookAddPage(layoutClass) {
   const capacity = bookLayoutDef(layoutClass).cells.length;
-  bookPages.push({ images: Array(capacity).fill(null), layout: layoutClass });
+  const idx = (bookAddPageInsertIdx === null) ? bookPages.length : bookAddPageInsertIdx;
+  bookPages.splice(idx, 0, { images: Array(capacity).fill(null), layout: layoutClass });
   closeBookAddPageModal();
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
   if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
@@ -3531,6 +3583,7 @@ function confirmBookAddPage(layoutClass) {
 
 function closeBookAddPageModal() {
   document.getElementById('modal-book-add-page').classList.remove('open');
+  bookAddPageInsertIdx = null;
 }
 
 // Elimina una página del fotolibro (botón "✕" en el modo Reordenar,
@@ -3893,6 +3946,7 @@ async function startBookExport() {
 // en vez de uno por celda, para poder resolver también drops sobre el
 // fondo de una página o del drawer, no solo sobre otra foto puntual.
 let bookDragSrcId = null;
+let bookPageDragSrcIdx = null; // índice de la página que se está arrastrando (arrastre de PÁGINAS enteras, ver más abajo) — null = no hay ninguna en curso
 
 // Encuentra el elemento scrolleable real dentro de (o igual a) `root`
 // — necesario porque en modo reordenar `root` es el área completa
@@ -3999,6 +4053,141 @@ function initBookTouchReorder(root) {
       root.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
       clearBookEdgeScroll();
       touchSrcId = null;
+    });
+  });
+}
+
+// ─── Reordenar PÁGINAS enteras (a diferencia de arriba, que mueve fotos
+// dentro/entre páginas) — solo tiene sentido en la grilla de miniaturas
+// del modo Reordenar, donde varias páginas están visibles a la vez.
+// Pedido del usuario: "se debe poder reordenar páginas" + un botón de
+// agregar página que se entienda dónde cae, en vez de siempre ir al
+// final — ver buildBookInsertGap()/openBookAddPageModal() para lo
+// segundo. Mismo patrón de siempre en esta app: arrastre nativo en
+// desktop, clon+manija a mano en touch (ver initBookTouchReorder()).
+
+// Interpreta DÓNDE se soltó una página, como un índice de inserción
+// (mismo significado que el segundo argumento de Array.splice): tocar
+// un "+" puntual (buildBookInsertGap) lo da directo por su dataset; caer
+// sobre el cuerpo de un tile lo deriva de la mitad donde cayó el cursor
+// (mitad izquierda → antes de esa página, mitad derecha → después) — así
+// no hace falta puntería exacta sobre el "+", cualquier punto del tile
+// vecino alcanza.
+function resolveBookPageDropIndex(el, clientX) {
+  if (!el) return null;
+  const gap = el.closest('.book-insert-gap');
+  if (gap) return parseInt(gap.dataset.insertIdx, 10);
+  const tile = el.closest('.book-reorder-tile');
+  if (tile && tile.dataset.pageIdx !== undefined) {
+    const idx = parseInt(tile.dataset.pageIdx, 10);
+    const rect = tile.getBoundingClientRect();
+    return (clientX < rect.left + rect.width / 2) ? idx : idx + 1;
+  }
+  return null;
+}
+
+// Mueve la página `srcIdx` al índice de inserción `targetInsertIdx` (ver
+// resolveBookPageDropIndex) — no-op si el destino es exactamente donde
+// ya estaba (justo antes o justo después de sí misma), para no disparar
+// un guardado/re-render de la nada.
+function moveBookPage(srcIdx, targetInsertIdx) {
+  if (targetInsertIdx === null || targetInsertIdx === undefined) return;
+  if (targetInsertIdx === srcIdx || targetInsertIdx === srcIdx + 1) return;
+  const [page] = bookPages.splice(srcIdx, 1);
+  const insertAt = targetInsertIdx > srcIdx ? targetInsertIdx - 1 : targetInsertIdx;
+  bookPages.splice(insertAt, 0, page);
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el orden de páginas:', e));
+  renderBookReorderGrid();
+}
+
+function highlightBookInsertGap(container, idx) {
+  container.querySelectorAll('.book-insert-gap').forEach(g => {
+    g.classList.toggle('gap-active', idx !== null && parseInt(g.dataset.insertIdx, 10) === idx);
+  });
+}
+
+// Desktop: el tile entero es `draggable` (asignado en buildBookReorderTile),
+// así que arrastrar cualquier parte de su fondo/label alcanza — salvo que
+// el drag arranque sobre una foto (`.bp`, que ya tiene su propio
+// `draggable` y gana como origen real del drag, sin ningún caso especial
+// acá) o sobre los botones ⊞/✕ (excluidos a mano, para que solo hagan su
+// click de siempre). `container` es la grilla de tiles sola (sin el
+// drawer) — mover una página nunca puede soltarse ahí.
+function initBookPageDragReorder(container) {
+  container.querySelectorAll('.book-reorder-tile').forEach(tile => {
+    tile.addEventListener('dragstart', e => {
+      if (e.target.closest('button')) { e.preventDefault(); return; }
+      bookPageDragSrcIdx = parseInt(tile.dataset.pageIdx, 10);
+      tile.classList.add('page-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    tile.addEventListener('dragend', () => {
+      tile.classList.remove('page-dragging');
+      highlightBookInsertGap(container, null);
+      bookPageDragSrcIdx = null;
+    });
+  });
+  container.addEventListener('dragover', e => {
+    if (bookPageDragSrcIdx === null) return; // no hay arrastre de página en curso — deja pasar el de fotos
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    highlightBookInsertGap(container, resolveBookPageDropIndex(e.target, e.clientX));
+    checkBookEdgeScroll(container, e.clientX);
+  });
+  container.addEventListener('drop', e => {
+    if (bookPageDragSrcIdx === null) return;
+    e.preventDefault();
+    moveBookPage(bookPageDragSrcIdx, resolveBookPageDropIndex(e.target, e.clientX));
+    bookPageDragSrcIdx = null;
+  });
+}
+
+// Touch: mismo patrón de clon+manija que initBookTouchReorder() usa para
+// fotos, acá aplicado al tile completo vía una manija dedicada
+// (.book-reorder-page-handle) — necesaria para no competir con el scroll
+// horizontal de la tira ni con el arrastre de fotos dentro del tile.
+function initBookPageTouchReorder(container) {
+  let srcIdx = null, clone = null, offX = 0, offY = 0;
+  container.querySelectorAll('.book-reorder-page-handle').forEach(handle => {
+    handle.addEventListener('touchstart', e => {
+      const tile = handle.closest('.book-reorder-tile');
+      srcIdx = parseInt(tile.dataset.pageIdx, 10);
+      const rect = tile.getBoundingClientRect();
+      offX = e.touches[0].clientX - rect.left; offY = e.touches[0].clientY - rect.top;
+      clone = tile.cloneNode(true);
+      clone.style.cssText = `position:fixed;width:${rect.width}px;height:${rect.height}px;opacity:0.85;pointer-events:none;z-index:999;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.35);transition:none;`;
+      clone.style.left = (e.touches[0].clientX - offX) + 'px'; clone.style.top = (e.touches[0].clientY - offY) + 'px';
+      document.body.appendChild(clone);
+      tile.style.opacity = '0.3';
+      e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchmove', e => {
+      if (!clone) return;
+      clone.style.left = (e.touches[0].clientX - offX) + 'px'; clone.style.top = (e.touches[0].clientY - offY) + 'px';
+      clone.style.display = 'none'; const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY); clone.style.display = '';
+      highlightBookInsertGap(container, resolveBookPageDropIndex(el, e.touches[0].clientX));
+      checkBookEdgeScroll(container, e.touches[0].clientX);
+      e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchend', e => {
+      const tile = handle.closest('.book-reorder-tile');
+      if (clone) { clone.remove(); clone = null; }
+      tile.style.opacity = '';
+      highlightBookInsertGap(container, null);
+      clearBookEdgeScroll();
+      const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      if (srcIdx !== null) moveBookPage(srcIdx, resolveBookPageDropIndex(el, e.changedTouches[0].clientX));
+      srcIdx = null;
+    });
+    // Mismo cuidado que initBookTouchReorder() (v1.94): si iOS cancela el
+    // gesto a mitad de camino, `touchcancel` tiene que limpiar el clon
+    // igual que `touchend`, sin aplicar ningún movimiento.
+    handle.addEventListener('touchcancel', () => {
+      const tile = handle.closest('.book-reorder-tile');
+      if (clone) { clone.remove(); clone = null; }
+      tile.style.opacity = '';
+      highlightBookInsertGap(container, null);
+      clearBookEdgeScroll();
+      srcIdx = null;
     });
   });
 }
