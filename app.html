@@ -1131,7 +1131,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.98';
+const APP_VERSION = '1.99';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2446,6 +2446,42 @@ let bookPages     = [];          // [{ images: [driveFileId,...], layout: string
 let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
 let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
 let bookReorderMode = false;     // true = grilla de páginas en miniatura + drawer, para reordenar
+
+// Carga lenta reportada por el usuario: el fotolibro pedía la miniatura de
+// TODAS las fotos de TODAS las páginas apenas se entraba al tab (o al modo
+// Reordenar) — un libro de 18+ páginas dispara 70+ pedidos a Drive a la
+// vez, saturando la API (que no es un CDN de imágenes). Mismo criterio que
+// ya resolvió esto para las tapas de Home (v1.28, scheduleCoverLoad()):
+// las primeras páginas/fotos piden su miniatura de una, el resto recién
+// cuando está por entrar en pantalla. `bookImgObserver` se recrea al
+// principio de cada render completo (mismo patrón que coverObserver) para
+// no seguir observando nodos ya reemplazados.
+let bookImgObserver = null;
+const EAGER_BOOK_PAGES = 3;         // páginas (inmersiva/Reordenar) cuyas fotos piden ya mismo
+const EAGER_BOOK_DRAWER_COUNT = 8;  // fotos del drawer ("Sin ubicar") que piden ya mismo
+
+function scheduleBookImgLoad(imgEl, fileId, size, eagerIdx, eagerLimit) {
+  if (eagerIdx < eagerLimit) { setAuthImg(imgEl, fileId, size); return; }
+  imgEl.dataset.bookFileId = fileId;
+  imgEl.dataset.bookSize = size;
+  bookImgObserver.observe(imgEl);
+}
+
+// Se llama al principio de cada render completo del Libro (inmersiva o
+// Reordenar) — descarta cualquier observer viejo (nodos ya reemplazados
+// por el innerHTML='' de ese mismo render) y arranca uno nuevo. Sirve a
+// las tres vistas (inmersiva, Reordenar, drawer) con un solo margen que
+// cubre tanto scroll horizontal (páginas/tiles) como vertical (drawer).
+function resetBookImgObserver() {
+  if (bookImgObserver) bookImgObserver.disconnect();
+  bookImgObserver = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      setAuthImg(entry.target, entry.target.dataset.bookFileId, entry.target.dataset.bookSize);
+    });
+  }, { rootMargin: '300px 300px' });
+}
 let bookPageSize  = null;        // { id, w, h } — tamaño de hoja de ESTE álbum, seteado en renderBook() (ver BOOK_PAGE_SIZES)
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
@@ -3240,6 +3276,7 @@ function renderBookReorderGrid() {
   const drawerEl = document.getElementById('book-drawer-container');
   const area = document.getElementById('book-reorder-area');
   if (!container || !drawerEl || !area) return;
+  resetBookImgObserver();
   container.innerHTML = '';
   // Un "+" entre cada dos páginas (y antes de la primera/después de la
   // última) — deja claro DÓNDE entraría una página nueva (a diferencia
@@ -3253,7 +3290,7 @@ function renderBookReorderGrid() {
   });
   drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
   const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
-  bookDrawer.forEach(id => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo)); });
+  bookDrawer.forEach((id, idx) => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo, idx)); });
   drawerEl.appendChild(drawerGrid);
   initBookDragReorder(area);
   initBookTouchReorder(area);
@@ -3317,7 +3354,7 @@ function buildBookReorderTile(page, idx) {
       return cell;
     }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
-    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
+    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES);
     cell.appendChild(imgEl);
     const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
     cell.appendChild(handle);
@@ -3329,9 +3366,9 @@ function buildBookReorderTile(page, idx) {
   return tile;
 }
 
-function buildBookDrawerCell(photo) {
+function buildBookDrawerCell(photo, idx) {
   const cell = document.createElement('div'); cell.className = 'bp book-drawer-cell'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
-  const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w200');
+  const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_DRAWER_COUNT);
   cell.appendChild(imgEl);
   const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
   cell.appendChild(handle);
@@ -3343,6 +3380,7 @@ function buildBookDrawerCell(photo) {
 function renderBookPages() {
   const container = document.getElementById('book-pages-container');
   if (!container) return;
+  resetBookImgObserver();
   container.innerHTML = '';
   bookPages.forEach((page, idx) => container.appendChild(buildBookPage(page, idx)));
   fitAllBookPageCards(container);
@@ -3407,7 +3445,7 @@ function buildBookPage(page, idx) {
       return cell;
     }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
-    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; setAuthImg(imgEl, photo.driveFileId, 'w800');
+    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w800', idx, EAGER_BOOK_PAGES);
     cell.appendChild(imgEl);
     const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
     chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
