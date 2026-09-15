@@ -8,7 +8,12 @@
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
 
-  gtag('config', 'G-0ZM7BKFP5G');
+  // send_page_view:false — esta es una SPA sin navegación real (ver
+  // convención #1, "nunca location.href/history.pushState"), así que el
+  // pageview automático de gtag no tiene sentido acá: siempre mostraría
+  // la misma URL (app.html). Las páginas "virtuales" por sección se
+  // mandan a mano, ver trackVirtualPageview() más abajo en el inline script.
+  gtag('config', 'G-0ZM7BKFP5G', { send_page_view: false });
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1141,8 +1146,36 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.99';
+const APP_VERSION = '2.00';
 document.getElementById('app-version-label').textContent = APP_VERSION;
+
+// Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
+// cambia (SPA, sin history.pushState, ver convención #1), así que le
+// mandamos a mano un page_path/page_location inventado por cada sección
+// que el usuario ve, para poder navegar el reporte "Páginas y pantallas"
+// de GA como si fueran páginas reales. Mismo criterio defensivo que
+// appCheckHeaders() (billing.js): nunca puede romper la app si gtag no
+// cargó (adblocker, red) — se traga cualquier error en silencio.
+function trackVirtualPageview(path, title) {
+  try {
+    if (typeof gtag !== 'function') return;
+    gtag('event', 'page_view', {
+      page_title: title,
+      page_location: location.origin + '/app.html#' + path,
+      page_path: path
+    });
+  } catch (e) {}
+}
+const DIARY_TAB_PAGEVIEWS = {
+  day:   { path: '/diario/dia',     title: 'Legado – Día' },
+  month: { path: '/diario/mes',     title: 'Legado – Mes' },
+  list:  { path: '/diario/galeria', title: 'Legado – Galería' },
+  book:  { path: '/diario/libro',   title: 'Legado – Libro' }
+};
+function trackDiaryTabPageview(tab) {
+  const entry = DIARY_TAB_PAGEVIEWS[tab];
+  if (entry) trackVirtualPageview(entry.path, entry.title);
+}
 
 // ═══════════════════════════════════════════════════════════
 // ─── SPA ROUTER ─────────────────────────────────────────
@@ -1161,6 +1194,7 @@ function navigateTo(view, params = {}) {
     document.getElementById('header-subtitle').textContent = '';
     renderHomeHeader();
     renderAlbums();
+    trackVirtualPageview('/home', 'Legado – Inicio');
   } else if (view === 'diary') {
     albumId        = params.albumId || null;
     isSharedAlbum  = params.shared  || false;
@@ -1168,6 +1202,7 @@ function navigateTo(view, params = {}) {
     document.getElementById('header-subtitle').textContent = params.name || 'diario';
     renderDiaryHeader();
     bootstrapDiaryPage();
+    trackDiaryTabPageview(currentTab);
   }
 }
 
@@ -2632,6 +2667,7 @@ function switchTab(tab) {
   if (tab === 'month') renderCalendar();
   if (tab === 'book')  renderBook();
   trackEvent('tab_viewed', { tab });
+  trackDiaryTabPageview(tab);
 }
 
 function renderDiaryPage() {

@@ -1,4 +1,4 @@
 {
-  "version": "1.99",
-  "changelog": "Fotolibro más rápido: las fotos de páginas lejanas ya no se piden todas de una, solo cuando están por entrar en pantalla."
+  "version": "2.00",
+  "changelog": "Google Analytics + pageviews virtuales por sección para medir uso de la app."
 }
