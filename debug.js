@@ -6,8 +6,59 @@
   const errors = [];
   let overlay   = null;
   let isVisible = false;
+  // No mandar el mismo error mil veces si queda tirando en loop — la idea
+  // de reportarlo a Supabase es poder recrearlo después, no llenar la tabla
+  // de filas repetidas. Una sola fila por (mensaje+origen) distinto, por
+  // carga de página.
+  const reportedKeys = new Set();
 
   const debugMode = new URLSearchParams(location.search).has('debug');
+
+  // Contexto de la app en el momento del error — para poder recrear "dónde,
+  // cuándo, a quién y en qué versión" sin tener que pedirle detalles al
+  // usuario. Estas variables viven en app.html/billing.js, que cargan
+  // DESPUÉS que este archivo (ver los <script> en app.html) — como todos
+  // son scripts clásicos (no módulos), comparten un mismo scope global, así
+  // que para cuando el error realmente ocurre (mucho después de la carga
+  // inicial) ya están definidas. Cada campo se resuelve por separado y con
+  // try/catch: si el error pasó MIENTRAS esos scripts todavía se estaban
+  // cargando, referenciar una `let`/`const` que todavía no se ejecutó tira
+  // ReferenceError (temporal dead zone) — se lo traga y ese campo queda
+  // ausente, nunca se pierde el resto del reporte por eso.
+  function appContextSnapshot() {
+    const ctx = { path: location.pathname, user_agent: navigator.userAgent, online: navigator.onLine };
+    try { ctx.app_version = typeof APP_VERSION !== 'undefined' ? APP_VERSION : null; } catch (e) {}
+    try { ctx.view = typeof currentView !== 'undefined' ? currentView : null; } catch (e) {}
+    try { ctx.tab = typeof currentTab !== 'undefined' ? currentTab : null; } catch (e) {}
+    try { ctx.album_id = typeof albumId !== 'undefined' ? albumId : null; } catch (e) {}
+    try { ctx.date = typeof currentDate !== 'undefined' ? currentDate : null; } catch (e) {}
+    try { ctx.user_email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : null; } catch (e) {}
+    return ctx;
+  }
+
+  // Manda el error al mismo pipeline de analytics que ya usa el resto de la
+  // app (trackEvent() → /api/track → tabla usage_events en Supabase, ver
+  // CLAUDE.md → "Métricas de producto") — sin inventar un canal nuevo. Si
+  // trackEvent() todavía no existe (billing.js carga después que este
+  // archivo — un error puede pasar en esa ventana chica), el reporte queda
+  // en cola y billing.js la vacía apenas se define (ver el flush al final
+  // de ese archivo).
+  function reportError(msg, source, stack) {
+    const key = `${msg}|${source}`;
+    if (reportedKeys.has(key)) return;
+    reportedKeys.add(key);
+    const payload = {
+      message: String(msg).slice(0, 500),
+      source: String(source || '').slice(0, 300),
+      stack: stack ? String(stack).slice(0, 2000) : null,
+      ...appContextSnapshot(),
+    };
+    if (typeof window.trackEvent === 'function') {
+      window.trackEvent('js_error', payload);
+    } else {
+      (window.__pendingErrorReports = window.__pendingErrorReports || []).push(payload);
+    }
+  }
 
   function getOverlay() {
     if (overlay) return overlay;
@@ -50,7 +101,7 @@
     return overlay;
   }
 
-  function showError(msg, source, lineno, colno) {
+  function showError(msg, source, lineno, colno, stack) {
     const time = new Date().toLocaleTimeString('es-AR');
     const entry = {
       time,
@@ -58,6 +109,7 @@
       source: `${source || location.pathname}:${lineno || 0}:${colno || 0}`
     };
     errors.push(entry);
+    reportError(entry.msg, entry.source, stack);
 
     const ov = getOverlay();
     ov.style.display = 'flex';
@@ -82,7 +134,7 @@
 
   // Capture global errors
   window.addEventListener('error', e => {
-    showError(e.message, e.filename, e.lineno, e.colno);
+    showError(e.message, e.filename, e.lineno, e.colno, e.error && e.error.stack);
   });
 
   // Capture unhandled promise rejections
@@ -90,7 +142,7 @@
     const msg = e.reason?.message || String(e.reason) || 'Unhandled promise rejection';
     const stack = e.reason?.stack || '';
     const match = stack.match(/\((.+):(\d+):(\d+)\)/) || stack.match(/at (.+):(\d+):(\d+)/);
-    showError(msg, match?.[1] || location.pathname, match?.[2], match?.[3]);
+    showError(msg, match?.[1] || location.pathname, match?.[2], match?.[3], stack);
   });
 
   // Also intercept console.error in debug mode

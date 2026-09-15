@@ -246,6 +246,15 @@ function trackEvent(eventName, eventProps = {}) {
   if (!_trackFlushTimer) _trackFlushTimer = setTimeout(() => flushTrackEvents(), TRACK_FLUSH_MS);
 }
 
+// debug.js corre antes que este archivo (ver los <script> en app.html) —
+// un error real puede pasar en esa ventana chica, antes de que trackEvent()
+// exista todavía. Esos reportes quedan en window.__pendingErrorReports en
+// vez de perderse (ver reportError() en debug.js) — se vacían acá, apenas
+// trackEvent() ya está definido.
+if (window.__pendingErrorReports && window.__pendingErrorReports.length) {
+  window.__pendingErrorReports.splice(0).forEach(payload => trackEvent('js_error', payload));
+}
+
 async function flushTrackEvents(useBeacon = false) {
   if (_trackFlushTimer) { clearTimeout(_trackFlushTimer); _trackFlushTimer = null; }
   if (!_eventBuffer.length) return;
