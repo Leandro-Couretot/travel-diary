@@ -1,4 +1,4 @@
 {
-  "version": "1.96",
-  "changelog": "Los errores de la app ahora se reportan solos (con usuario, versión y contexto) para poder diagnosticarlos sin depender de que alguien avise."
+  "version": "1.97",
+  "changelog": "Se arregla la barra inferior de 'Seleccionar fotos', que quedaba cortada por el borde del celular en iPhone."
 }

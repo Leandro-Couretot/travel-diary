@@ -592,7 +592,7 @@ audio { width: 100%; height: 32px; }
   position: fixed; bottom: 0; left: 0; right: 0;
   background: var(--ink); color: white;
   display: none; align-items: center; justify-content: space-between;
-  padding: 0.85rem 1.25rem;
+  padding: 0.85rem 1.25rem calc(0.85rem + env(safe-area-inset-bottom));
   z-index: 100; gap: 1rem;
 }
 .selection-bar.active { display: flex; }
@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.96';
+const APP_VERSION = '1.97';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
