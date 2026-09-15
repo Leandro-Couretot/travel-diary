@@ -1,4 +1,4 @@
 {
-  "version": "1.94",
-  "changelog": "Fix: una miniatura podía quedar 'congelada' en pantalla al arrastrar una foto si el gesto se interrumpía a mitad de camino."
+  "version": "1.95",
+  "changelog": "'Seleccionar fotos' ya funciona también en la tab Galería, para compartir o eliminar en bloque cruzando días."
 }

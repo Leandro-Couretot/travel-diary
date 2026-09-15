@@ -572,8 +572,8 @@ audio { width: 100%; height: 32px; }
 }
 
 /* ─── SELECTION MODE ─── */
-.media-card.selectable { cursor: pointer; }
-.media-card.selected { outline: 2.5px solid var(--accent); outline-offset: -2px; }
+.media-card.selectable, .list-photo-item.selectable { cursor: pointer; }
+.media-card.selected, .list-photo-item.selected { outline: 2.5px solid var(--accent); outline-offset: -2px; }
 .selection-check {
   position: absolute; top: 0.5rem; left: 0.5rem; z-index: 5;
   width: 22px; height: 22px; border-radius: 50%;
@@ -583,7 +583,7 @@ audio { width: 100%; height: 32px; }
   font-size: 0.75rem; color: transparent;
   transition: all 0.15s;
 }
-.media-card.selected .selection-check {
+.media-card.selected .selection-check, .list-photo-item.selected .selection-check {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
@@ -1120,7 +1120,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '1.94';
+const APP_VERSION = '1.95';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2426,6 +2426,7 @@ let usageState = { version: 1, audioCount: 0, reconciled: false };
 let currentDayAudioCountAtLoad = 0;
 let currentTab    = 'day';
 let allDates      = [];
+let galleryPhotos = [];          // [{driveFileId, date, name}] — armado por renderListTab(), fuente para el modo selección en la tab Galería
 let calDayData    = {};
 let calYear       = new Date().getFullYear();
 let calMonth      = new Date().getMonth();
@@ -2911,19 +2912,32 @@ async function renderListTab() {
     const day = await loadDayFromDrive(albumFolderId, date).catch(() => null) || { media: [] };
     return (day.media || [])
       .filter(m => m.type === 'image' && m.driveFileId)
-      .map(m => ({ driveFileId: m.driveFileId, date }));
+      .map(m => ({ driveFileId: m.driveFileId, date, name: m.name }));
   }));
   const allPhotos = perDay.flat();
   if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos en este álbum</div>'; return; }
+  galleryPhotos = allPhotos; // fuente para el modo selección (shareSelected/deleteSelectedGallery) — ver "SELECTION MODE"
 
   wrap.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'list-photo-grid';
-  allPhotos.forEach(p => {
+  allPhotos.forEach((p, i) => {
     const item = document.createElement('div');
     item.className = 'list-photo-item' + (p.date === currentDate ? ' active' : '');
-    item.innerHTML = `<img class="list-photo-img" alt=""><div class="list-photo-date">${formatDate(p.date)}</div>`;
-    item.addEventListener('click', () => { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; switchTab('day'); loadDay(p.date); });
+    item.dataset.idx = i;
+    item.innerHTML = `<div class="selection-check">✓</div><img class="list-photo-img" alt=""><div class="list-photo-date">${formatDate(p.date)}</div>`;
+    // Un único listener, consciente del modo — en vez de sumar un
+    // segundo listener de selección encima (como sí hace enterSelectionMode()
+    // con .media-card, que nunca tenía uno previo): acá ya había un click
+    // para navegar al día, así que agregar otro por arriba dispararía los
+    // dos juntos. onSelectionCardClick() funciona igual la reciba desde
+    // acá o desde un addEventListener propio — usa e.currentTarget, que el
+    // navegador deja resuelto durante todo el despacho del evento.
+    item.addEventListener('click', e => {
+      if (selectionMode) { onSelectionCardClick(e); return; }
+      if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
+      switchTab('day'); loadDay(p.date);
+    });
     setAuthImg(item.querySelector('.list-photo-img'), p.driveFileId, 'w200');
     grid.appendChild(item);
   });
@@ -4413,13 +4427,17 @@ function toggleDiaryMenu() {
   if (diaryMenuOpen) { closeDiaryMenu(); return; }
   diaryMenuOpen = true;
 
+  // "Seleccionar fotos" solo tiene sentido en Día (currentDay.media) y
+  // Galería (galleryPhotos) — Mes y Libro no tienen una grilla plana de
+  // fotos individuales a la que aplicarle este modo.
+  const canSelect = currentTab === 'day' || currentTab === 'list';
   const menu = document.createElement('div');
   menu.className = 'diary-menu-dropdown';
   menu.id = 'diary-menu-dropdown';
   menu.innerHTML = `
-    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(enterSelectionMode,50)">
+    ${canSelect ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(enterSelectionMode,50)">
       <span class="diary-menu-item-icon">☑</span> Seleccionar fotos
-    </button>
+    </button>` : ''}
     ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">⬆</span> Carga masiva
     </button>` : ''}
@@ -4461,6 +4479,20 @@ function enterSelectionMode() {
   document.getElementById('selection-btn-delete').style.display = albumCanEdit ? '' : 'none';
   updateSelectionBar();
 
+  // Galería: el click de cada .list-photo-item ya está armado consciente
+  // del modo (ver renderListTab()) — acá solo hace falta mostrar el
+  // affordance visual (checkbox + cursor), no sumar un listener nuevo.
+  if (currentTab === 'list') {
+    const listWrap = document.getElementById('list-tab-content');
+    if (!listWrap) return;
+    listWrap.querySelectorAll('.list-photo-item').forEach(card => {
+      card.classList.add('selectable');
+      const check = card.querySelector('.selection-check');
+      if (check) check.style.display = 'flex';
+    });
+    return;
+  }
+
   const grid = document.getElementById('media-grid');
   if (!grid) return;
 
@@ -4481,7 +4513,7 @@ function exitSelectionMode() {
   selectionMode = false;
   selectedIdxs.clear();
   document.getElementById('selection-bar').classList.remove('active');
-  renderMedia(); // re-render to restore normal state
+  if (currentTab === 'list') renderListTab(); else renderMedia(); // re-render to restore normal state
 }
 
 function onSelectionCardClick(e) {
@@ -4507,7 +4539,11 @@ function updateSelectionBar() {
 
 async function shareSelected() {
   if (!selectedIdxs.size) return;
-  const items = [...selectedIdxs].map(i => currentDay.media[i]).filter(Boolean);
+  // Galería: mismo mecanismo, la fuente de los items cambia — galleryPhotos
+  // nunca tiene `.data` en memoria (siempre son fotos ya guardadas en
+  // Drive), así que cae derecho a la rama fetchedFresh de abajo.
+  const sourceArr = currentTab === 'list' ? galleryPhotos : currentDay.media;
+  const items = [...selectedIdxs].map(i => sourceArr[i]).filter(Boolean);
   // Pedir todas las fotos en paralelo, no una por una: navigator.share()
   // solo funciona dentro de una ventana cortita de "recién tocaste un
   // botón" (user activation) — con varias fotos en fila esa ventana se
@@ -4521,7 +4557,7 @@ async function shareSelected() {
       const res  = await fetch(dataUrl);
       const blob = await res.blob();
       if (fetchedFresh) URL.revokeObjectURL(dataUrl);
-      return new File([blob], item.name, { type: blob.type });
+      return new File([blob], item.name || 'foto.jpg', { type: blob.type });
     } catch { return null; }
   }))).filter(Boolean);
   if (!files.length) return;
@@ -4544,11 +4580,50 @@ async function shareSelected() {
 
 async function deleteSelected() {
   if (!selectedIdxs.size) return;
+  if (currentTab === 'list') { await deleteSelectedGallery(); return; }
   const n = selectedIdxs.size;
   if (!confirm(`¿Eliminar ${n} archivo${n > 1 ? 's' : ''}?`)) return;
   const toDelete = [...selectedIdxs].sort((a, b) => b - a); // reverse to preserve indices
   for (const idx of toDelete) { const [removed] = currentDay.media.splice(idx, 1); revokeMediaBlobUrls([removed]); }
   markDirty();
+  exitSelectionMode();
+}
+
+// Eliminar desde la Galería no puede diferir a "Guardar" como en el tab
+// Día (deleteSelected() de arriba) — las fotos seleccionadas pueden
+// pertenecer a días distintos, no hay un solo day.json "en edición" al
+// que aferrarse. Se agrupan por fecha y cada día afectado se guarda
+// directo a Drive (mismo mecanismo de papelera de siempre — 30 días
+// recuperable, vía saveDayToDrive con previousIds). Si el día
+// actualmente abierto en el tab Día tiene cambios sin guardar, se pide
+// confirmar que se descartan antes de tocar nada — evita pisar una
+// edición en curso con una lectura fresca de Drive.
+async function deleteSelectedGallery() {
+  if (!selectedIdxs.size) return;
+  const n = selectedIdxs.size;
+  const items = [...selectedIdxs].map(i => galleryPhotos[i]).filter(Boolean);
+  const affectedDates = [...new Set(items.map(p => p.date))];
+  if (affectedDates.includes(currentDate) && dirty) {
+    if (!confirm('Tenés cambios sin guardar en uno de los días afectados. ¿Descartarlos y continuar?')) return;
+    dirty = false;
+  }
+  const ok = await customConfirm(
+    `¿Eliminar ${n} foto${n > 1 ? 's' : ''}? Se mandan a la papelera de Drive (recuperables 30 días).`,
+    { title: 'Eliminar fotos', confirmLabel: 'Eliminar' }
+  );
+  if (!ok) return;
+  const byDate = new Map();
+  items.forEach(p => { if (!byDate.has(p.date)) byDate.set(p.date, []); byDate.get(p.date).push(p.driveFileId); });
+  for (const [date, ids] of byDate) {
+    try {
+      const day = await loadDayFromDrive(albumFolderId, date);
+      if (!day) continue;
+      const previousIds = day.media.filter(m => m.driveFileId).map(m => m.driveFileId);
+      day.media = day.media.filter(m => !ids.includes(m.driveFileId));
+      await saveDayToDrive(albumFolderId, date, day, previousIds);
+      if (date === currentDate) currentDay.media = currentDay.media.filter(m => !ids.includes(m.driveFileId));
+    } catch (e) { console.warn('No se pudo eliminar fotos del día', date, e); }
+  }
   exitSelectionMode();
 }
 
