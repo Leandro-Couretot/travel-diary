@@ -336,16 +336,10 @@ audio { width: 100%; height: 32px; }
 
 /* Book tab */
 .book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; }
-.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; max-width: calc(100% - 1.5rem); }
+.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; gap: 0.5rem; }
 .book-btn { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.1); border-radius: 20px; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); transition: all 0.15s; }
 .book-btn:hover { background: white; }
 .book-btn.active { background: var(--ink); color: white; }
-.book-page-counter { position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%); font-size: 0.72rem; color: rgba(0,0,0,0.35); letter-spacing: 0.06em; background: rgba(255,255,255,0.7); padding: 0.2rem 0.6rem; border-radius: 10px; backdrop-filter: blur(4px); z-index: 10; white-space: nowrap; }
-.book-pages { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-.book-pages::-webkit-scrollbar { display: none; }
-.book-page { flex-shrink: 0; width: 100%; height: 100%; scroll-snap-align: start; display: grid; place-items: center; position: relative; overflow: hidden; padding: 1.1rem; box-sizing: border-box; }
-.book-page-card { position: relative; max-width: 100%; max-height: 100%; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; overflow: hidden; }
-.book-photo-area { flex: 1; overflow: hidden; position: relative; }
 .book-layout-grid { display: grid; gap: 2px; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
@@ -361,11 +355,16 @@ audio { width: 100%; height: 32px; }
 .book-reorder-area { display: flex; flex-direction: column; height: 100%; }
 .book-reorder-grid { flex: 1; min-height: 0; display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
 .book-reorder-grid::-webkit-scrollbar { display: none; }
-.book-reorder-tile { position: relative; flex: 0 0 150px; scroll-snap-align: start; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+.book-reorder-tile { flex: 0 0 150px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 0.35rem; }
 .book-reorder-tile.page-dragging { opacity: 0.35; }
-.book-reorder-tile-label { font-size: 0.62rem; text-align: center; padding: 0.4rem 0; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
+/* La "tarjeta" visual (fondo blanco + sombra, como una página impresa)
+   vive en .book-reorder-tile-grid, no en el tile entero — así la
+   leyenda de página (.book-reorder-tile-label) queda debajo, como el
+   margen de un libro real, en vez de una barra pegada arriba de las
+   fotos (ver CLAUDE.md → "Fotolibro: vista única en miniatura"). */
+.book-reorder-tile-grid { position: relative; aspect-ratio: 1; overflow: hidden; background: white; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+.book-reorder-tile-label { font-size: 0.68rem; text-align: center; color: var(--ink-muted); display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .book-reorder-page-handle { cursor: grab; font-size: 0.8rem; line-height: 1; }
-.book-reorder-tile-grid { aspect-ratio: 1; overflow: hidden; }
 .book-insert-gap {
   flex: 0 0 24px; height: 24px; align-self: center; padding: 0;
   border: none; border-radius: 50%; background: rgba(26,26,24,0.12); color: var(--ink-muted);
@@ -1103,8 +1102,8 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
     </div>
     <div class="help-section"><div class="help-section-title">📖 Fotolibro</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Tamaño</strong> elige el tamaño de hoja real — la página adopta esa proporción, igual a como se va a imprimir.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Reordenar</strong> muestra varias páginas a la vez — arrastrá el ⠿ de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja — arrastrá el ⠿ de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>El menú <strong>···</strong> del header suma <strong>Tamaño de hoja</strong>, <strong>Agregar página</strong> y <strong>Recrear libro</strong> (rearma todo al azar) — y un toggle para mostrar/ocultar la fecha y el texto de cada foto.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño.</span></div>
       <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
@@ -1146,7 +1145,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.01';
+const APP_VERSION = '2.02';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2490,19 +2489,18 @@ let bookShowText  = true;
 let bookPages     = [];          // [{ images: [driveFileId,...], layout: string|null }]
 let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
 let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
-let bookReorderMode = false;     // true = grilla de páginas en miniatura + drawer, para reordenar
 
 // Carga lenta reportada por el usuario: el fotolibro pedía la miniatura de
-// TODAS las fotos de TODAS las páginas apenas se entraba al tab (o al modo
-// Reordenar) — un libro de 18+ páginas dispara 70+ pedidos a Drive a la
-// vez, saturando la API (que no es un CDN de imágenes). Mismo criterio que
-// ya resolvió esto para las tapas de Home (v1.28, scheduleCoverLoad()):
-// las primeras páginas/fotos piden su miniatura de una, el resto recién
-// cuando está por entrar en pantalla. `bookImgObserver` se recrea al
-// principio de cada render completo (mismo patrón que coverObserver) para
-// no seguir observando nodos ya reemplazados.
+// TODAS las fotos de TODAS las páginas apenas se entraba al tab — un libro
+// de 18+ páginas dispara 70+ pedidos a Drive a la vez, saturando la API
+// (que no es un CDN de imágenes). Mismo criterio que ya resolvió esto para
+// las tapas de Home (v1.28, scheduleCoverLoad()): las primeras páginas
+// piden su miniatura de una, el resto recién cuando está por entrar en
+// pantalla. `bookImgObserver` se recrea al principio de cada render
+// completo (mismo patrón que coverObserver) para no seguir observando
+// nodos ya reemplazados.
 let bookImgObserver = null;
-const EAGER_BOOK_PAGES = 3;         // páginas (inmersiva/Reordenar) cuyas fotos piden ya mismo
+const EAGER_BOOK_PAGES = 3;         // páginas cuyas fotos piden ya mismo
 const EAGER_BOOK_DRAWER_COUNT = 8;  // fotos del drawer ("Sin ubicar") que piden ya mismo
 
 function scheduleBookImgLoad(imgEl, fileId, size, eagerIdx, eagerLimit) {
@@ -2512,11 +2510,11 @@ function scheduleBookImgLoad(imgEl, fileId, size, eagerIdx, eagerLimit) {
   bookImgObserver.observe(imgEl);
 }
 
-// Se llama al principio de cada render completo del Libro (inmersiva o
-// Reordenar) — descarta cualquier observer viejo (nodos ya reemplazados
-// por el innerHTML='' de ese mismo render) y arranca uno nuevo. Sirve a
-// las tres vistas (inmersiva, Reordenar, drawer) con un solo margen que
-// cubre tanto scroll horizontal (páginas/tiles) como vertical (drawer).
+// Se llama al principio de cada render completo del Libro — descarta
+// cualquier observer viejo (nodos ya reemplazados por el innerHTML='' de
+// ese mismo render) y arranca uno nuevo. Sirve tanto a la grilla de
+// páginas como al drawer con un solo margen que cubre scroll horizontal
+// (tiles) y vertical (drawer).
 function resetBookImgObserver() {
   if (bookImgObserver) bookImgObserver.disconnect();
   bookImgObserver = new IntersectionObserver((entries, obs) => {
@@ -3157,11 +3155,16 @@ async function renderBook() {
     }
   }
 
-  bookReorderMode = false;
-  wrap.innerHTML = `<div class="book-controls">${albumCanEdit ? `<button class="book-btn" id="book-pagesize-btn" onclick="openBookPageSizeModal()">Tamaño</button><button class="book-btn" id="book-addpage-btn" onclick="openBookAddPageModal()">Agregar página</button><button class="book-btn" id="book-recreate-btn" onclick="recreateBookRandom()">Recrear libro</button><button class="book-btn" id="book-reorder-btn" onclick="toggleBookReorderMode()">Reordenar</button>` : ''}<button class="book-btn active" id="book-text-btn" onclick="toggleBookText()">Texto</button><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-pages" id="book-pages-container"></div><div class="book-reorder-area" id="book-reorder-area" style="display:none;"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div><div class="book-page-counter" id="book-page-counter"></div>`;
-  renderBookPages();
-  document.getElementById('book-pages-container').addEventListener('scroll', updateBookCounter, { passive: true });
-  updateBookCounter();
+  // Vista única del Libro (v2.02, ver CLAUDE.md → "Fotolibro"): antes
+  // convivían una vista inmersiva (una página a pantalla completa,
+  // swipe) y un modo "Reordenar" (grilla de miniaturas), alternables con
+  // un botón — el usuario pidió sacar la inmersiva del todo, ya que la
+  // grilla sola alcanza para ver de una varias páginas y "imaginarse el
+  // libro impreso" (cada tile ya respeta la proporción real de hoja
+  // elegida, ver "sensación de libro" v1.57). La grilla queda como la
+  // única forma de ver/editar el Libro, sin ningún toggle.
+  wrap.innerHTML = `<div class="book-controls"><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
+  renderBookReorderGrid();
 }
 
 // Tamaños de hoja habituales para fotolibro impreso (ver el research
@@ -3296,27 +3299,18 @@ for (const [key, def] of Object.entries(BOOK_LAYOUTS)) {
   if (def.label) BOOK_LAYOUT_LABELS[key] = def.label;
 }
 
-// Alterna entre la vista inmersiva (una página a pantalla completa) y
-// una grilla de páginas en miniatura + el drawer de fotos sin ubicar,
-// pensada para reordenar y mover fotos entre páginas que no entrarían
-// juntas en la vista inmersiva (ver CLAUDE.md → "Modo reordenar del
-// fotolibro" y "Fotolibro: páginas explícitas + drawer").
-function toggleBookReorderMode() {
-  bookReorderMode = !bookReorderMode;
-  const btn = document.getElementById('book-reorder-btn');
-  btn.classList.toggle('active', bookReorderMode);
-  btn.textContent = bookReorderMode ? 'Listo' : 'Reordenar';
-  document.getElementById('book-pages-container').style.display = bookReorderMode ? 'none' : '';
-  document.getElementById('book-reorder-area').style.display = bookReorderMode ? 'flex' : 'none';
-  document.getElementById('book-page-counter').style.display = bookReorderMode ? 'none' : '';
-  if (bookReorderMode) renderBookReorderGrid();
-  else { renderBookPages(); updateBookCounter(); }
-}
-
-// Grilla de páginas en miniatura + drawer (varias páginas visibles a
-// la vez, a diferencia de la vista inmersiva) — mismo bookPages/
-// bookDrawer, mismo mecanismo de arrastre (initBookDragReorder/
-// initBookTouchReorder), solo cambia cómo se dibuja cada página.
+// Arma la grilla de páginas en miniatura + el drawer de fotos sin
+// ubicar — única vista del tab Libro desde v2.02 (antes convivía con
+// una vista inmersiva de una página a pantalla completa, ver CLAUDE.md
+// → "Fotolibro: vista única en miniatura"). Mismo bookPages/bookDrawer,
+// mismo mecanismo de arrastre (initBookDragReorder/initBookTouchReorder).
+//
+// Como esta grilla ahora es la ÚNICA vista del Libro (antes solo se
+// llegaba acá a través del botón "Reordenar", ya gateado por
+// `albumCanEdit`), todo lo que implica editar — el "+" de agregar
+// página, el drawer entero, y los mecanismos de arrastre — se gatea acá
+// mismo por `albumCanEdit`; un álbum compartido de solo lectura ve las
+// páginas tal cual están, sin ningún affordance de edición.
 function renderBookReorderGrid() {
   const container = document.getElementById('book-reorder-container');
   const drawerEl = document.getElementById('book-drawer-container');
@@ -3329,19 +3323,27 @@ function renderBookReorderGrid() {
   // del botón global "Agregar página", que siempre iba al final) y
   // además sirve de blanco de drop al arrastrar una página existente
   // (ver resolveBookPageDropIndex/initBookPageDragReorder).
-  container.appendChild(buildBookInsertGap(0));
+  if (albumCanEdit) container.appendChild(buildBookInsertGap(0));
   bookPages.forEach((page, idx) => {
     container.appendChild(buildBookReorderTile(page, idx));
-    container.appendChild(buildBookInsertGap(idx + 1));
+    if (albumCanEdit) container.appendChild(buildBookInsertGap(idx + 1));
   });
-  drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
-  const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
-  bookDrawer.forEach((id, idx) => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo, idx)); });
-  drawerEl.appendChild(drawerGrid);
-  initBookDragReorder(area);
-  initBookTouchReorder(area);
-  initBookPageDragReorder(container);
-  initBookPageTouchReorder(container);
+  // El drawer ("Sin ubicar") es puro reacomodo — sin permiso de edición
+  // no hay nada que hacer ahí, se oculta entero (mismo alcance que ya
+  // tenía: antes solo aparecía en el modo Reordenar, que ya estaba
+  // gateado por el botón que llevaba a él).
+  drawerEl.style.display = albumCanEdit ? '' : 'none';
+  if (albumCanEdit) {
+    drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
+    const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
+    bookDrawer.forEach((id, idx) => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo, idx)); });
+    drawerEl.appendChild(drawerGrid);
+    initBookDragReorder(area);
+    initBookTouchReorder(area);
+    initBookPageDragReorder(container);
+    initBookPageTouchReorder(container);
+  }
+  applyBookTextVisibility();
 }
 
 // Botón "+" chico entre dos páginas — ver el comentario en
@@ -3356,36 +3358,32 @@ function buildBookInsertGap(insertIdx) {
 }
 
 function buildBookReorderTile(page, idx) {
-  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx; tile.draggable = true;
-  const label = document.createElement('div'); label.className = 'book-reorder-tile-label';
-  // Manija de arrastre de la PÁGINA entera (a diferencia de la manija
-  // ⠿ de cada foto, que mueve fotos dentro/entre páginas) — en desktop
-  // alcanza con arrastrar cualquier parte del tile (tile.draggable de
-  // arriba), pero en touch hace falta un punto de arranque explícito
-  // para no competir con el scroll horizontal de la tira (mismo criterio
-  // que .bp-drag-handle, ver initBookPageTouchReorder()).
-  const pageHandle = document.createElement('span'); pageHandle.className = 'book-reorder-page-handle'; pageHandle.textContent = '⠿'; pageHandle.title = 'Arrastrar para reordenar';
-  label.appendChild(pageHandle);
-  const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
-  label.appendChild(labelText);
-  tile.appendChild(label);
-  // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
-  // tiene sentido mostrar el botón. `page.images.length` es la capacidad
-  // fija de la página (v3), no la cantidad de fotos puestas ahora.
-  if (page.images.length > 1) {
-    const layoutBtn = document.createElement('button');
-    layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
-    layoutBtn.textContent = '⊞';
-    layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
-    tile.appendChild(layoutBtn);
-  }
-  const deleteBtn = document.createElement('button');
-  deleteBtn.type = 'button'; deleteBtn.className = 'book-reorder-delete-btn'; deleteBtn.title = 'Eliminar página';
-  deleteBtn.textContent = '✕';
-  deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteBookPage(idx); });
-  tile.appendChild(deleteBtn);
+  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
   const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
   wrap.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
+  // Un álbum compartido de solo lectura muestra las páginas tal cual
+  // están, sin ningún affordance de edición — antes esta vista solo se
+  // alcanzaba a través del botón "Reordenar", ya gateado por
+  // `albumCanEdit`; ahora que es la única vista del Libro, el gate pasa
+  // a estar acá adentro.
+  if (albumCanEdit) {
+    tile.draggable = true;
+    // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
+    // tiene sentido mostrar el botón. `page.images.length` es la capacidad
+    // fija de la página (v3), no la cantidad de fotos puestas ahora.
+    if (page.images.length > 1) {
+      const layoutBtn = document.createElement('button');
+      layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
+      layoutBtn.textContent = '⊞';
+      layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
+      wrap.appendChild(layoutBtn);
+    }
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button'; deleteBtn.className = 'book-reorder-delete-btn'; deleteBtn.title = 'Eliminar página';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteBookPage(idx); });
+    wrap.appendChild(deleteBtn);
+  }
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   wrap.appendChild(grid);
   // Se recorre page.images por índice real (nunca compactando) — un
@@ -3399,16 +3397,40 @@ function buildBookReorderTile(page, idx) {
       grid.appendChild(cell);
       return cell;
     }
-    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
+    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES);
     cell.appendChild(imgEl);
-    const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
-    cell.appendChild(handle);
+    // Mismo chip de fecha/caption que mostraba la vista inmersiva (sacada
+    // en v2.02, ver CLAUDE.md) — se porta acá para que el toggle "Texto"
+    // del menú "···" siga teniendo un efecto real en la única vista que
+    // queda del Libro.
+    const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
+    chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
+    cell.appendChild(chip);
+    if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
     grid.appendChild(cell);
     return cell;
   });
   applyBookLayoutGrid(grid, page.layout, cellEls);
   tile.appendChild(wrap);
+  // La leyenda "Página N" va DEBAJO de la tarjeta (no como una barra
+  // encima de las fotos, como era hasta v2.01) — mismo criterio que un
+  // libro impreso, donde el número de página vive en el margen, nunca
+  // superpuesto al contenido (pedido explícito del usuario).
+  const label = document.createElement('div'); label.className = 'book-reorder-tile-label';
+  if (albumCanEdit) {
+    // Manija de arrastre de la PÁGINA entera (a diferencia de la manija
+    // ⠿ de cada foto, que mueve fotos dentro/entre páginas) — en desktop
+    // alcanza con arrastrar cualquier parte del tile (tile.draggable de
+    // arriba), pero en touch hace falta un punto de arranque explícito
+    // para no competir con el scroll horizontal de la tira (mismo criterio
+    // que .bp-drag-handle, ver initBookPageTouchReorder()).
+    const pageHandle = document.createElement('span'); pageHandle.className = 'book-reorder-page-handle'; pageHandle.textContent = '⠿'; pageHandle.title = 'Arrastrar para reordenar';
+    label.appendChild(pageHandle);
+  }
+  const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
+  label.appendChild(labelText);
+  tile.appendChild(label);
   return tile;
 }
 
@@ -3419,91 +3441,6 @@ function buildBookDrawerCell(photo, idx) {
   const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
   cell.appendChild(handle);
   return cell;
-}
-
-// Re-arma las páginas a partir de bookPages (sin volver a pedirle nada
-// a Drive) — se usa en el render inicial y después de cada reorder.
-function renderBookPages() {
-  const container = document.getElementById('book-pages-container');
-  if (!container) return;
-  resetBookImgObserver();
-  container.innerHTML = '';
-  bookPages.forEach((page, idx) => container.appendChild(buildBookPage(page, idx)));
-  fitAllBookPageCards(container);
-  if (albumCanEdit) { initBookDragReorder(container); initBookTouchReorder(container); }
-  applyBookTextVisibility();
-  updateBookCounter();
-}
-
-// La tarjeta de página (.book-page-card) necesita un ancho/alto en PX
-// concretos para que su proporción real (bookPageSize) quede "adentro"
-// del espacio disponible sin recortarse ni deformarse — `aspect-ratio`
-// solo, sin al menos una dimensión definida, no alcanza (un div vacío no
-// tiene tamaño propio del que derivar la otra dimensión, a diferencia de
-// una imagen con `object-fit:contain`, que sí resuelve esto solo pero
-// nunca aplica a un div genérico). Se mide UNA sola vez el espacio
-// disponible (todas las páginas comparten el mismo tamaño de `.book-page`,
-// que es fijo — 100% del carrusel) y se aplica el mismo ancho/alto a
-// todas las tarjetas. `bookPageSize` sigue siendo la fuente de verdad de
-// la PROPORCIÓN — acá solo se resuelve a qué tamaño en pantalla le toca
-// en este momento, nunca al revés.
-function fitAllBookPageCards(container) {
-  if (!bookPageSize) return;
-  const firstPage = container.querySelector('.book-page');
-  if (!firstPage) return;
-  const cs = getComputedStyle(firstPage);
-  const availW = firstPage.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
-  const availH = firstPage.clientHeight - parseFloat(cs.paddingTop || 0) - parseFloat(cs.paddingBottom || 0);
-  if (!(availW > 0) || !(availH > 0)) return;
-  const scale = Math.min(availW / bookPageSize.w, availH / bookPageSize.h);
-  const cardW = Math.round(bookPageSize.w * scale);
-  const cardH = Math.round(bookPageSize.h * scale);
-  container.querySelectorAll('.book-page-card').forEach(card => { card.style.width = `${cardW}px`; card.style.height = `${cardH}px`; });
-}
-
-// Recalcula el tamaño de las tarjetas si el usuario rota el celular o
-// cambia el tamaño de la ventana mientras ya está mirando el tab Libro
-// en la vista inmersiva (`renderBook()` ya recalcula solo al re-entrar
-// al tab, esto cubre quedarse adentro).
-window.addEventListener('resize', () => {
-  const container = document.getElementById('book-pages-container');
-  if (container && container.style.display !== 'none' && container.children.length) fitAllBookPageCards(container);
-});
-
-function buildBookPage(page, idx) {
-  const el = document.createElement('div'); el.className = 'book-page'; el.dataset.pageIdx = idx;
-  const card = document.createElement('div'); card.className = 'book-page-card';
-  card.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
-  el.appendChild(card);
-  const photoArea = document.createElement('div'); photoArea.className = 'book-photo-area';
-  const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
-  // Se recorre page.images por índice real (nunca compactando) — un
-  // hueco (null) se dibuja como celda placeholder en su lugar exacto
-  // (ver buildFixedCapacityPage()); la capacidad de la página ya no
-  // depende de cuántas fotos tenga puestas ahora, así que no hace falta
-  // ningún caso especial para "página sin fotos todavía".
-  const cellEls = page.images.map((fileId, slotIdx) => {
-    const photo = fileId ? bookPhotoByFileId.get(fileId) : null;
-    if (!photo) {
-      const cell = document.createElement('div'); cell.className = 'bp bp-empty';
-      cell.dataset.pageIdx = idx; cell.dataset.slotIdx = slotIdx;
-      grid.appendChild(cell);
-      return cell;
-    }
-    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
-    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w800', idx, EAGER_BOOK_PAGES);
-    cell.appendChild(imgEl);
-    const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
-    chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
-    cell.appendChild(chip);
-    if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
-    grid.appendChild(cell);
-    return cell;
-  });
-  applyBookLayoutGrid(grid, page.layout, cellEls);
-  photoArea.appendChild(grid);
-  card.appendChild(photoArea);
-  return el;
 }
 
 function pickLayout(imgs, seed) {
@@ -3662,7 +3599,7 @@ function confirmBookAddPage(layoutClass) {
   bookPages.splice(idx, 0, { images: Array(capacity).fill(null), layout: layoutClass });
   closeBookAddPageModal();
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
-  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  renderBookReorderGrid();
 }
 
 function closeBookAddPageModal() {
@@ -3724,7 +3661,7 @@ async function recreateBookRandom() {
   bookPages = newPages;
   bookDrawer = [];
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
-  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  renderBookReorderGrid();
 }
 
 // ─── Fotolibro: tamaño de hoja real (Paso 2 de la exportación a PDF,
@@ -3774,7 +3711,7 @@ function applyCustomBookPageSize() {
 function chooseBookPageSize(sizeObj) {
   bookPageSize = { id: sizeObj.id, w: sizeObj.w, h: sizeObj.h };
   closeBookPageSizeModal();
-  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  renderBookReorderGrid();
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
 }
 
@@ -3782,14 +3719,20 @@ function closeBookPageSizeModal() {
   document.getElementById('modal-book-page-size').classList.remove('open');
 }
 
+// El botón que dispara esto vive ahora dentro del menú "···" (ver
+// toggleDiaryMenu()), que se destruye del DOM apenas se elige una
+// opción — a diferencia del viejo "book-text-btn" fijo en
+// `.book-controls`, acá no hay ningún elemento persistente al que
+// pisarle una clase; el estado (`bookShowText`) y su efecto real
+// (applyBookTextVisibility) alcanzan solos, y la próxima vez que se
+// abra el menú su label ya refleja el estado actual.
 function toggleBookText() {
   bookShowText = !bookShowText;
-  document.getElementById('book-text-btn').classList.toggle('active', bookShowText);
   applyBookTextVisibility();
 }
 
-// Se llama también después de cada reorder (renderBookPages) para que
-// el estado del toggle sobreviva a un re-render de las páginas.
+// Se llama también después de cada reorder (renderBookReorderGrid) para
+// que el estado del toggle sobreviva a un re-render de las páginas.
 function applyBookTextVisibility() {
   document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; });
 }
@@ -4023,12 +3966,10 @@ async function startBookExport() {
 // Día (dragstart/dragover/drop para desktop, touch manual con clon
 // para mobile), pero operando sobre bookPages/bookDrawer en vez de un
 // único día — así se puede arrastrar una foto de una página a otra (o
-// al drawer) sin importar de qué fecha sea cada una. Sirve tanto para
-// la vista inmersiva (una página completa) como para la grilla en
-// miniatura + drawer del modo reordenar — ambas comparten estas mismas
-// funciones. Usa delegación de eventos (un solo listener en la raíz)
-// en vez de uno por celda, para poder resolver también drops sobre el
-// fondo de una página o del drawer, no solo sobre otra foto puntual.
+// al drawer) sin importar de qué fecha sea cada una. Usa delegación de
+// eventos (un solo listener en la raíz) en vez de uno por celda, para
+// poder resolver también drops sobre el fondo de una página o del
+// drawer, no solo sobre otra foto puntual.
 let bookDragSrcId = null;
 let bookPageDragSrcIdx = null; // índice de la página que se está arrastrando (arrastre de PÁGINAS enteras, ver más abajo) — null = no hay ninguna en curso
 
@@ -4036,8 +3977,8 @@ let bookPageDragSrcIdx = null; // índice de la página que se está arrastrando
 // — necesario porque en modo reordenar `root` es el área completa
 // (grilla + drawer), pero solo la grilla de páginas hace scroll.
 function bookScrollTarget(root) {
-  if (root.classList && (root.classList.contains('book-pages') || root.classList.contains('book-reorder-grid'))) return root;
-  return root.querySelector('.book-pages, .book-reorder-grid') || root;
+  if (root.classList && root.classList.contains('book-reorder-grid')) return root;
+  return root.querySelector('.book-reorder-grid') || root;
 }
 
 // Interpreta sobre qué se soltó una foto: otra foto puntual (`cell`),
@@ -4054,7 +3995,7 @@ function resolveBookDropTarget(el) {
     return { type: 'cell', fileId: cell.dataset.fileId };
   }
   if (el.closest('.book-drawer')) return { type: 'drawer' };
-  const pageEl = el.closest('.book-reorder-tile, .book-page');
+  const pageEl = el.closest('.book-reorder-tile');
   if (pageEl && pageEl.dataset.pageIdx !== undefined) return { type: 'page', pageIdx: parseInt(pageEl.dataset.pageIdx, 10) };
   return null;
 }
@@ -4294,7 +4235,7 @@ function checkBookEdgeScroll(container, clientX) {
   clearBookEdgeScroll();
   bookEdgeDir = dir;
   bookEdgeTimer = setTimeout(() => {
-    const item = container.querySelector('.book-page, .book-reorder-tile');
+    const item = container.querySelector('.book-reorder-tile');
     const step = item ? item.getBoundingClientRect().width + 12 : container.clientWidth;
     container.scrollBy({ left: dir * step, behavior: 'smooth' });
     bookEdgeTimer = null; bookEdgeDir = null;
@@ -4341,7 +4282,7 @@ function moveBookPhoto(srcId, target) {
   if (!target) return;
   if (target.type === 'cell' && target.fileId === srcId) return;
 
-  const containerId = bookReorderMode ? 'book-reorder-area' : 'book-pages-container';
+  const containerId = 'book-reorder-area';
   const containerEl = document.getElementById(containerId);
   const scrollEl = containerEl ? bookScrollTarget(containerEl) : null;
   const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
@@ -4385,18 +4326,10 @@ function moveBookPhoto(srcId, target) {
   }
 
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
-  if (bookReorderMode) renderBookReorderGrid(); else renderBookPages();
+  renderBookReorderGrid();
   const newContainerEl = document.getElementById(containerId);
   const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
   if (newScrollEl) newScrollEl.scrollLeft = scrollLeft;
-}
-
-function updateBookCounter() {
-  const container = document.getElementById('book-pages-container'); const counter = document.getElementById('book-page-counter');
-  if (!container || !counter) return;
-  const pageIdx = Math.round(container.scrollLeft / container.offsetWidth);
-  const pages = container.querySelectorAll('.book-page');
-  counter.textContent = pages.length ? `${Math.min(pageIdx + 1, pages.length)} / ${pages.length}` : '';
 }
 
 function chunkArray(arr, size) { const chunks = []; for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size)); return chunks; }
@@ -4704,6 +4637,15 @@ function toggleDiaryMenu() {
   // Galería (galleryPhotos) — Mes y Libro no tienen una grilla plana de
   // fotos individuales a la que aplicarle este modo.
   const canSelect = currentTab === 'day' || currentTab === 'list';
+  // Consolidación de v2.02 (ver CLAUDE.md → "Fotolibro"): "Tamaño",
+  // "Agregar página" y "Recrear libro" vivían como pastillas propias
+  // arriba del Libro (`.book-controls`), apiladas en 2 filas apenas
+  // había más de 3-4 botones — se mudan acá, al mismo menú "···" que ya
+  // usan Día/Galería, dejando solo "Exportar" como pastilla visible. El
+  // toggle de texto (antes "book-text-btn", siempre visible) también se
+  // suma acá, sin requerir `albumCanEdit` — es puramente de visualización,
+  // no una acción de edición.
+  const isBook = currentTab === 'book';
   const menu = document.createElement('div');
   menu.className = 'diary-menu-dropdown';
   menu.id = 'diary-menu-dropdown';
@@ -4713,6 +4655,18 @@ function toggleDiaryMenu() {
     </button>` : ''}
     ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">⬆</span> Carga masiva
+    </button>` : ''}
+    ${isBook && albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBookPageSizeModal,50)">
+      <span class="diary-menu-item-icon">▭</span> Tamaño de hoja
+    </button>
+    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBookAddPageModal,50)">
+      <span class="diary-menu-item-icon">＋</span> Agregar página
+    </button>
+    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(recreateBookRandom,50)">
+      <span class="diary-menu-item-icon">🔀</span> Recrear libro
+    </button>` : ''}
+    ${isBook ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(toggleBookText,50)">
+      <span class="diary-menu-item-icon">Aa</span> ${bookShowText ? 'Ocultar' : 'Mostrar'} texto
     </button>` : ''}
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
       <span class="diary-menu-item-icon">▣</span> Ver álbum
