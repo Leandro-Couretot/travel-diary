@@ -1,4 +1,4 @@
 {
-  "version": "2.02",
-  "changelog": "Fotolibro: una sola vista (antes convivía con el modo Reordenar), el número de página va debajo de la tarjeta y los botones sueltos se mudaron al menú ···."
+  "version": "2.03",
+  "changelog": "Fotolibro: ahora podés encuadrar cada foto (zoom + mover) con el ícono ⛶ de la celda."
 }

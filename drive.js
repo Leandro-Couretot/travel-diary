@@ -652,27 +652,58 @@ function normalizeBookPageSize(raw) {
   return null;
 }
 
+// ─── FOTOLIBRO: encuadre (zoom + pan) por foto ───────────────────
+// Cada foto puede tener un encuadre propio dentro de su celda — hasta
+// esta entrega el recorte "cover" siempre centraba automáticamente, sin
+// forma de elegir qué parte de la foto queda visible ni de acercarla
+// (pedido explícito de la esposa del usuario, diseñadora: "poder
+// encuadrar la foto en el layout"). Se guarda por `driveFileId` (no por
+// posición/página — una foto conserva su encuadre aunque se la mueva de
+// página o de layout) como `{ scale, x, y }`:
+//   - `scale`: zoom extra sobre el "cover" de siempre (1 = sin zoom,
+//     tope 8 — arbitrario, solo para no guardar un valor absurdo).
+//   - `x`/`y`: paneo, como FRACCIÓN del tamaño de la celda (mismo
+//     sistema que un `translate(X%, Y%)` de CSS) — independiente de la
+//     resolución real de la celda, así el mismo valor sirve tanto para
+//     la miniatura en pantalla como para el recorte final del PDF (ver
+//     `coverCropToCanvas()`/`effectiveDpiForCell()` en app.html).
+// Una entrada rota (fuera de rango, tipos incorrectos) se descarta en
+// vez de guardarla — esa foto vuelve a mostrarse sin encuadre (cover
+// centrado de siempre) en vez de romper el render.
+function normalizeBookFraming(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [fileId, f] of Object.entries(raw)) {
+    if (!f || typeof f.scale !== 'number' || typeof f.x !== 'number' || typeof f.y !== 'number') continue;
+    if (!(f.scale >= 1 && f.scale <= 8)) continue;
+    if (!(Math.abs(f.x) <= 1) || !(Math.abs(f.y) <= 1)) continue;
+    out[fileId] = { scale: f.scale, x: f.x, y: f.y };
+  }
+  return out;
+}
+
 async function loadBookLayout(albumFolderId) {
   const fileId = await findFileInFolderMigrating(BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId);
   if (!fileId) return null;
   const data = await readJsonFile(fileId);
   const pageSize = normalizeBookPageSize(data?.pageSize);
+  const framing = normalizeBookFraming(data?.framing);
   if (Array.isArray(data?.pages)) {
-    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [], pageSize };
+    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [], pageSize, framing };
   }
   if (Array.isArray(data?.order)) {
     const pages = [];
     for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
-    return { pages, drawer: [], pageSize, _migrated: true };
+    return { pages, drawer: [], pageSize, framing, _migrated: true };
   }
   return null;
 }
 
-async function saveBookLayout(albumFolderId, { pages, drawer, pageSize }) {
+async function saveBookLayout(albumFolderId, { pages, drawer, pageSize, framing }) {
   // v3 (ver CLAUDE.md → "Fotolibro"): cada página tiene un layout siempre
   // concreto (nunca null) del que sale su capacidad — `images` es un
   // array de ese largo fijo, con `null` en los huecos vacíos.
-  await writeJsonFileMigrating({ version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
+  await writeJsonFileMigrating({ version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────

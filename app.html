@@ -350,6 +350,8 @@ audio { width: 100%; height: 32px; }
 .bp-chip-date { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85; }
 .bp-chip-caption { display: block; font-size: 0.72rem; margin-top: 0.1rem; }
 .bp-drag-handle { position: absolute; top: 0.4rem; right: 0.4rem; width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: grab; z-index: 5; }
+.bp-frame-btn { position: absolute; top: 0.4rem; left: 0.4rem; width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; cursor: pointer; z-index: 5; }
+.bp-frame-btn:hover { background: rgba(0,0,0,0.7); }
 .book-page-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #c0bab0; font-size: 0.875rem; gap: 0.5rem; }
 .book-empty-icon { font-size: 2.5rem; opacity: 0.3; }
 .book-reorder-area { display: flex; flex-direction: column; height: 100%; }
@@ -411,6 +413,20 @@ audio { width: 100%; height: 32px; }
 .book-drawer-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin-bottom: 0.5rem; }
 .book-drawer-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 64px; }
 .book-drawer-cell { width: 64px; height: 64px; flex: 0 0 auto; border-radius: 8px; }
+
+/* Editor de encuadre (zoom + pan) por foto — .book-frame-box tiene la
+   MISMA proporción que la celda real (seteada por JS al abrir, ver
+   openBookFrameModal()), así arrastrar/pellizcar ahí adentro produce
+   exactamente lo que se va a ver en la página y en el PDF. */
+.book-frame-stage { display: flex; justify-content: center; margin-bottom: 1rem; }
+.book-frame-box { position: relative; width: 100%; max-width: 320px; overflow: hidden; border-radius: 8px; background: #000; touch-action: none; cursor: grab; }
+.book-frame-box.dragging { cursor: grabbing; }
+.book-frame-box img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; transition: none; }
+.book-frame-zoom-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+.book-frame-zoom-icon { font-size: 0.9rem; color: var(--ink-muted); width: 1.2rem; text-align: center; flex: 0 0 auto; }
+.book-frame-zoom-row input[type="range"] { flex: 1; }
+.book-frame-actions { display: flex; gap: 0.6rem; }
+.book-frame-actions .btn { flex: 1; }
 
 /* Lightbox */
 .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 400; flex-direction: column; align-items: center; justify-content: center; touch-action: none; }
@@ -980,6 +996,28 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-book-frame">
+  <div class="modal modal-book-frame">
+    <div class="modal-header"><div class="modal-title">Encuadrar foto</div><button class="modal-close" onclick="closeBookFrameModal()">×</button></div>
+    <div class="modal-body">
+      <div class="book-frame-stage" id="book-frame-stage">
+        <div class="book-frame-box" id="book-frame-box">
+          <img id="book-frame-img" alt="" draggable="false">
+        </div>
+      </div>
+      <div class="book-frame-zoom-row">
+        <span class="book-frame-zoom-icon">－</span>
+        <input type="range" id="book-frame-zoom" min="1" max="3" step="0.01" value="1">
+        <span class="book-frame-zoom-icon">＋</span>
+      </div>
+      <div class="book-frame-actions">
+        <button class="btn btn-secondary" onclick="resetBookFrame()">Restablecer</button>
+        <button class="btn btn-primary" onclick="confirmBookFrame()">Listo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-share-album">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
@@ -1104,7 +1142,8 @@ audio { width: 100%; height: 32px; }
     <div class="help-section"><div class="help-section-title">📖 Fotolibro</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja — arrastrá el ⠿ de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>El menú <strong>···</strong> del header suma <strong>Tamaño de hoja</strong>, <strong>Agregar página</strong> y <strong>Recrear libro</strong> (rearma todo al azar) — y un toggle para mostrar/ocultar la fecha y el texto de cada foto.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>El ícono <strong>⛶</strong> de cada foto abre un editor para encuadrarla — movela y acercala (pellizcar o la rueda del mouse) para elegir qué parte se ve, se aplica igual en pantalla y en el PDF.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño (encuadrar con mucho zoom también puede bajarla).</span></div>
       <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
     <div class="help-section" id="debug-plan-section">
@@ -1145,7 +1184,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.02';
+const APP_VERSION = '2.03';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2526,6 +2565,7 @@ function resetBookImgObserver() {
   }, { rootMargin: '300px 300px' });
 }
 let bookPageSize  = null;        // { id, w, h } — tamaño de hoja de ESTE álbum, seteado en renderBook() (ver BOOK_PAGE_SIZES)
+let bookFraming   = {};          // driveFileId -> { scale, x, y } — encuadre (zoom+pan) por foto, seteado en renderBook()
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
 function todayStr()  { return new Date().toISOString().slice(0, 10); }
@@ -3124,6 +3164,7 @@ async function renderBook() {
   if (!saved) {
     bookPages = chunkArray(currentIds, 4).map(images => buildFixedCapacityPage(images, null));
     bookDrawer = [];
+    bookFraming = {};
   } else {
     const currentSet = new Set(currentIds);
     let changed = !!saved._migrated;
@@ -3146,12 +3187,21 @@ async function renderBook() {
     const added = currentIds.filter(id => !placedSet.has(id)); // fotos nuevas -> al drawer, nunca a una página sola
     if (added.length) changed = true;
 
+    // Encuadre por foto: se descarta el de cualquier foto que ya no esté
+    // en el álbum (borrada) — no tiene sentido arrastrar para siempre un
+    // valor que ninguna foto real va a volver a usar.
+    const savedFraming = saved.framing || {};
+    bookFraming = {};
+    for (const [fileId, f] of Object.entries(savedFraming)) {
+      if (currentSet.has(fileId)) bookFraming[fileId] = f; else changed = true;
+    }
+
     // Páginas ya NO desaparecen solas por quedar sin fotos — el hueco
     // queda ahí hasta que el usuario la borra a mano ("Eliminar página").
     bookPages = cleanedPages;
     bookDrawer = [...cleanedDrawer, ...added];
     if (albumCanEdit && changed) {
-      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
+      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
     }
   }
 
@@ -3346,6 +3396,23 @@ function renderBookReorderGrid() {
   applyBookTextVisibility();
 }
 
+// ─── Fotolibro: encuadre (zoom + pan) por foto ───────────────────
+// Traduce el `{scale,x,y}` guardado (ver drive.js → normalizeBookFraming)
+// a un `transform` CSS sobre el `<img>` — como el `<img>` ya tiene
+// `object-fit:cover` (ver CSS), un `translate(X%, Y%)` se mide relativo
+// al tamaño de SU PROPIA caja (que con `width/height:100%` es el tamaño
+// de la celda) y un `scale()` amplía alrededor del centro — exactamente
+// el mismo sistema (fracción de la celda) que reproduce a mano
+// `coverCropToCanvas()` para el PDF, así pantalla y PDF nunca pueden
+// mostrar algo distinto. Sin encuadre guardado (o el default,
+// scale:1/x:0/y:0) no se toca el `<img>` — mismo "cover" centrado de
+// siempre, cero riesgo de regresión para el resto del libro.
+function applyBookFramingTransform(imgEl, fileId) {
+  const f = bookFraming[fileId];
+  if (!f || (f.scale === 1 && !f.x && !f.y)) { imgEl.style.transform = ''; return; }
+  imgEl.style.transform = `translate(${(f.x * 100).toFixed(3)}%, ${(f.y * 100).toFixed(3)}%) scale(${f.scale})`;
+}
+
 // Botón "+" chico entre dos páginas — ver el comentario en
 // renderBookReorderGrid() para por qué existe y qué doble rol cumple.
 function buildBookInsertGap(insertIdx) {
@@ -3399,6 +3466,7 @@ function buildBookReorderTile(page, idx) {
     }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES);
+    applyBookFramingTransform(imgEl, photo.driveFileId);
     cell.appendChild(imgEl);
     // Mismo chip de fecha/caption que mostraba la vista inmersiva (sacada
     // en v2.02, ver CLAUDE.md) — se porta acá para que el toggle "Texto"
@@ -3407,7 +3475,22 @@ function buildBookReorderTile(page, idx) {
     const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
     chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
     cell.appendChild(chip);
-    if (albumCanEdit) { const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle); }
+    if (albumCanEdit) {
+      const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle);
+      // Encuadre por foto (zoom + paneo) — pedido de la esposa del usuario
+      // (diseñadora). Vive DENTRO de `.bp`, que es `draggable` (a
+      // diferencia de ⊞/✕ de arriba, que viven en `wrap` y nunca
+      // compiten con ningún drag) — sin el `stopPropagation` en
+      // `mousedown`/`dragstart` un click en desktop podría arrancar un
+      // arrastre de foto en vez de abrir el editor.
+      const frameBtn = document.createElement('button');
+      frameBtn.type = 'button'; frameBtn.className = 'bp-frame-btn'; frameBtn.title = 'Encuadrar foto';
+      frameBtn.textContent = '⛶';
+      frameBtn.addEventListener('mousedown', e => e.stopPropagation());
+      frameBtn.addEventListener('dragstart', e => { e.preventDefault(); e.stopPropagation(); });
+      frameBtn.addEventListener('click', e => { e.stopPropagation(); openBookFrameModal(photo.driveFileId, idx, slotIdx); });
+      cell.appendChild(frameBtn);
+    }
     grid.appendChild(cell);
     return cell;
   });
@@ -3542,7 +3625,7 @@ function chooseBookLayout(layoutClass) {
   if (page) page.layout = layoutClass; // siempre un layout concreto, misma capacidad (ver openBookLayoutModal)
   closeBookLayoutModal();
   renderBookReorderGrid();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el layout:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el layout:', e));
 }
 
 function closeBookLayoutModal() {
@@ -3598,7 +3681,7 @@ function confirmBookAddPage(layoutClass) {
   const idx = (bookAddPageInsertIdx === null) ? bookPages.length : bookAddPageInsertIdx;
   bookPages.splice(idx, 0, { images: Array(capacity).fill(null), layout: layoutClass });
   closeBookAddPageModal();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
 }
 
@@ -3622,7 +3705,7 @@ async function deleteBookPage(idx) {
   if (!ok) return;
   bookDrawer.push(...realPhotos);
   bookPages.splice(idx, 1);
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
 }
 
@@ -3660,7 +3743,7 @@ async function recreateBookRandom() {
   }
   bookPages = newPages;
   bookDrawer = [];
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
 }
 
@@ -3712,7 +3795,7 @@ function chooseBookPageSize(sizeObj) {
   bookPageSize = { id: sizeObj.id, w: sizeObj.w, h: sizeObj.h };
   closeBookPageSizeModal();
   renderBookReorderGrid();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
 }
 
 function closeBookPageSizeModal() {
@@ -3755,9 +3838,16 @@ const EXPORT_MIN_DPI = 200;
 // que sobre) dentro de una celda de `cellMm` (mm). Con cover, el eje que
 // queda MÁS ajustado es el que manda la resolución real lograda — por
 // eso es el mínimo entre los dos ejes, no un promedio.
-function effectiveDpiForCell(imgPx, cellMm) {
+// `framing` (opcional, ver "Fotolibro: encuadre por foto") es el
+// {scale,x,y} que el usuario haya elegido para esta foto puntual — un
+// zoom > 1 usa una porción más chica de la foto (agrandada), así que
+// dividir por `scale` es una aproximación razonable de la resolución
+// REAL disponible tras el recorte (mismo criterio conservador que ya
+// regía acá: mejor avisar de más que de menos).
+function effectiveDpiForCell(imgPx, cellMm, framing) {
   const cellWIn = cellMm.w / 25.4, cellHIn = cellMm.h / 25.4;
-  return Math.min(imgPx.width / cellWIn, imgPx.height / cellHIn);
+  const scale = (framing && framing.scale) || 1;
+  return Math.min((imgPx.width / scale) / cellWIn, (imgPx.height / scale) / cellHIn);
 }
 
 // Recorre bookPages (nunca el drawer — esas fotos no forman parte del
@@ -3796,7 +3886,7 @@ async function checkBookExportResolution(pageWmm, pageHmm) {
     if (!dims) return null;
     const def = bookLayoutDef(layoutClass);
     const rect = computeCellRectMm(pageWmm, pageHmm, def, cellIdx, EXPORT_GAP_MM);
-    const dpi = effectiveDpiForCell(dims, rect);
+    const dpi = effectiveDpiForCell(dims, rect, bookFraming[photo.driveFileId]);
     return dpi < EXPORT_MIN_DPI ? { photo, pageIdx, dpi: Math.round(dpi) } : null;
   });
   return results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
@@ -3833,12 +3923,31 @@ function loadImageElementFromUrl(url) {
 // pantalla (ver CSS) — para que el PDF nunca deforme una foto que en la
 // app se ve recortada, no estirada. Devuelve un <canvas> ya recortado a
 // su resolución nativa (no la reduce), listo para `doc.addImage()`.
-function coverCropToCanvas(imgEl, targetAspect) {
+//
+// `framing` (opcional, `{scale,x,y}` — ver "Fotolibro: encuadre por
+// foto") reproduce a mano, en SOURCE-space (píxeles de la foto), el
+// mismo `transform: translate(X%, Y%) scale(S)` que aplica
+// `applyBookFramingTransform()` en pantalla: el recorte "cover" de
+// siempre (`base`) se achica `scale` veces (un zoom más grande usa una
+// porción más chica de la foto) y se corre por `x`/`y` — misma
+// dirección que un `<img>` real: moverlo a la derecha revela más del
+// costado IZQUIERDO de la foto, por eso se RESTA. Sin `framing` (o el
+// default `scale:1,x:0,y:0`) el resultado es idéntico al de antes de
+// esta entrega.
+function coverCropToCanvas(imgEl, targetAspect, framing) {
   const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
   const srcAspect = iw / ih;
-  let sx = 0, sy = 0, sw = iw, sh = ih;
-  if (srcAspect > targetAspect) { sw = ih * targetAspect; sx = (iw - sw) / 2; }
-  else { sh = iw / targetAspect; sy = (ih - sh) / 2; }
+  let baseW = iw, baseH = ih;
+  if (srcAspect > targetAspect) { baseW = ih * targetAspect; }
+  else { baseH = iw / targetAspect; }
+  const scale = (framing && framing.scale) || 1;
+  const fx = (framing && framing.x) || 0;
+  const fy = (framing && framing.y) || 0;
+  let sw = baseW / scale, sh = baseH / scale;
+  let sx = (iw - sw) / 2 - fx * sw;
+  let sy = (ih - sh) / 2 - fy * sh;
+  sx = Math.max(0, Math.min(iw - sw, sx));
+  sy = Math.max(0, Math.min(ih - sh, sy));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(sw); canvas.height = Math.round(sh);
   canvas.getContext('2d').drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
@@ -3875,7 +3984,7 @@ async function generateBookPdf(bleedMm, onProgress) {
       const blobUrl = await fetchFileAsDataUrl(fileId);
       try {
         const imgEl = await loadImageElementFromUrl(blobUrl);
-        const canvas = coverCropToCanvas(imgEl, rect.w / rect.h);
+        const canvas = coverCropToCanvas(imgEl, rect.w / rect.h, bookFraming[fileId]);
         doc.addImage(canvas, 'JPEG', rect.x, rect.y, rect.w, rect.h);
       } finally {
         URL.revokeObjectURL(blobUrl);
@@ -3960,6 +4069,177 @@ async function startBookExport() {
     _exportLowResConfirmed = false;
   }
 }
+
+// ─── Fotolibro: encuadre (zoom + pan) por foto, editor ─────────────
+// Pedido de la esposa del usuario (diseñadora), tras ver el fotolibro
+// armado: "estaría bueno poder encuadrar la foto en el layout" — hasta
+// esta entrega el recorte "cover" siempre centraba automáticamente, sin
+// forma de elegir qué parte de la foto queda visible ni de acercarla.
+// Se abre desde el ícono ⛶ de cada foto colocada (ver
+// buildBookReorderTile()) — una pantalla dedicada con la foto más
+// grande, mucho más cómoda para arrastrar/pellizcar que la celda de
+// 150px de la grilla.
+//
+// El "frame" (`#book-frame-box`) se arma con la MISMA proporción que la
+// celda real (calculada acá con `computeCellRectMm`, igual que hace el
+// export a PDF) — así lo que se ve/ajusta en el editor es exactamente
+// lo que va a terminar en la página y en el PDF, nunca una aproximación.
+//
+// Los cambios se aplican solo en memoria (`bookFrameCurrent`) mientras
+// el modal está abierto — recién "Listo" los escribe en `bookFraming` y
+// persiste; cerrar con "×" o tocando afuera simplemente descarta lo que
+// se haya movido, sin necesidad de ningún snapshot para "deshacer" (la
+// próxima vez que se abra esta foto, se vuelve a leer de `bookFraming`).
+const BOOK_FRAME_MAX_SCALE = 3; // mismo tope que el atributo `max` de #book-frame-zoom en el HTML
+let bookFrameFileId = null;
+let bookFrameCurrent = { scale: 1, x: 0, y: 0 };
+let bookFrameNatural = { w: 0, h: 0 };
+
+function openBookFrameModal(fileId, pageIdx, slotIdx) {
+  const page = bookPages[pageIdx];
+  if (!page) return;
+  const def = bookLayoutDef(page.layout);
+  // El gap acá es puramente para calcular la PROPORCIÓN de la celda
+  // (no un tamaño en mm real) — 0 alcanza, la relación de aspecto no
+  // cambia de forma perceptible por un gap de 1-2mm sobre una hoja de
+  // varios cm.
+  const rect = computeCellRectMm(bookPageSize.w, bookPageSize.h, def, slotIdx, 0);
+
+  bookFrameFileId = fileId;
+  const existing = bookFraming[fileId];
+  bookFrameCurrent = existing ? { ...existing } : { scale: 1, x: 0, y: 0 };
+  bookFrameNatural = { w: 0, h: 0 };
+
+  const box = document.getElementById('book-frame-box');
+  box.style.aspectRatio = `${rect.w} / ${rect.h}`;
+  const img = document.getElementById('book-frame-img');
+  img.style.transform = '';
+  img.addEventListener('load', onBookFrameImgLoad, { once: true });
+  setAuthImg(img, fileId, 'w1600');
+
+  document.getElementById('book-frame-zoom').value = bookFrameCurrent.scale;
+  document.getElementById('modal-book-frame').classList.add('open');
+}
+
+function onBookFrameImgLoad(e) {
+  bookFrameNatural = { w: e.target.naturalWidth, h: e.target.naturalHeight };
+  applyBookFrameStyle();
+}
+
+// Traslada el estado actual (bookFrameCurrent) al <img> del editor —
+// mismo `transform` que `applyBookFramingTransform()` aplica en la
+// grilla, porque el sistema de coordenadas (fracción de la celda) es a
+// propósito independiente de a qué tamaño en px se esté mostrando.
+function applyBookFrameStyle() {
+  const img = document.getElementById('book-frame-img');
+  img.style.transform = `translate(${(bookFrameCurrent.x * 100).toFixed(3)}%, ${(bookFrameCurrent.y * 100).toFixed(3)}%) scale(${bookFrameCurrent.scale})`;
+  document.getElementById('book-frame-zoom').value = bookFrameCurrent.scale;
+}
+
+// Límite de paneo para un `scale` dado, de forma que la foto SIEMPRE
+// cubra el frame entero (nunca deja ver un hueco vacío en un borde) —
+// mismo cálculo, en fracción del frame, que describe cuánto "sobra" de
+// la foto una vez que ya cubre el frame a ese zoom (ver el comentario
+// de coverCropToCanvas() para la versión espejada en source-space, la
+// que realmente usa el PDF).
+function clampBookFramePan(scale, x, y) {
+  const box = document.getElementById('book-frame-box');
+  const frameW = box.clientWidth, frameH = box.clientHeight;
+  if (!frameW || !frameH || !bookFrameNatural.w || !bookFrameNatural.h) return { x: 0, y: 0 };
+  const frameAspect = frameW / frameH;
+  const photoAspect = bookFrameNatural.w / bookFrameNatural.h;
+  let coverBaseW, coverBaseH;
+  if (photoAspect > frameAspect) { coverBaseH = frameH; coverBaseW = frameH * photoAspect; }
+  else { coverBaseW = frameW; coverBaseH = frameW / photoAspect; }
+  const dispW = coverBaseW * scale, dispH = coverBaseH * scale;
+  const maxXfrac = Math.max(0, (dispW - frameW) / 2) / frameW;
+  const maxYfrac = Math.max(0, (dispH - frameH) / 2) / frameH;
+  return { x: Math.max(-maxXfrac, Math.min(maxXfrac, x)), y: Math.max(-maxYfrac, Math.min(maxYfrac, y)) };
+}
+
+function setBookFrameScale(scale) {
+  const clampedScale = Math.max(1, Math.min(BOOK_FRAME_MAX_SCALE, scale));
+  const pan = clampBookFramePan(clampedScale, bookFrameCurrent.x, bookFrameCurrent.y);
+  bookFrameCurrent = { scale: clampedScale, x: pan.x, y: pan.y };
+  applyBookFrameStyle();
+}
+
+function resetBookFrame() {
+  bookFrameCurrent = { scale: 1, x: 0, y: 0 };
+  applyBookFrameStyle();
+}
+
+function confirmBookFrame() {
+  if (bookFrameCurrent.scale === 1 && !bookFrameCurrent.x && !bookFrameCurrent.y) {
+    delete bookFraming[bookFrameFileId]; // encuadre default -> nada que guardar
+  } else {
+    bookFraming[bookFrameFileId] = { ...bookFrameCurrent };
+  }
+  closeBookFrameModal();
+  renderBookReorderGrid();
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el encuadre:', e));
+}
+
+function closeBookFrameModal() {
+  document.getElementById('modal-book-frame').classList.remove('open');
+  bookFrameFileId = null;
+}
+
+// Arrastre (mouse + touch, un dedo) para el paneo, rueda del mouse y
+// pellizco (touch, dos dedos) para el zoom — se registra una sola vez
+// al cargar la página, ya que `#book-frame-box`/`#book-frame-img` son
+// elementos fijos del HTML (nunca se recrean), a diferencia de las
+// celdas de la grilla que sí se arman de nuevo en cada render.
+(function initBookFrameInteractions() {
+  const box = document.getElementById('book-frame-box');
+  let panning = false, startX = 0, startY = 0, startFx = 0, startFy = 0;
+  let pinchStartDist = 0, pinchStartScale = 1;
+
+  function startPan(clientX, clientY) {
+    panning = true; box.classList.add('dragging');
+    startX = clientX; startY = clientY;
+    startFx = bookFrameCurrent.x; startFy = bookFrameCurrent.y;
+  }
+  function movePan(clientX, clientY) {
+    if (!panning) return;
+    const rect = box.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dx = (clientX - startX) / rect.width;
+    const dy = (clientY - startY) / rect.height;
+    const pan = clampBookFramePan(bookFrameCurrent.scale, startFx + dx, startFy + dy);
+    bookFrameCurrent.x = pan.x; bookFrameCurrent.y = pan.y;
+    applyBookFrameStyle();
+  }
+  function endPan() { panning = false; pinchStartDist = 0; box.classList.remove('dragging'); }
+
+  box.addEventListener('mousedown', e => { startPan(e.clientX, e.clientY); e.preventDefault(); });
+  window.addEventListener('mousemove', e => movePan(e.clientX, e.clientY));
+  window.addEventListener('mouseup', endPan);
+
+  box.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) startPan(e.touches[0].clientX, e.touches[0].clientY);
+    else pinchStartDist = 0; // arranca un pellizco nuevo — se ancla en el próximo touchmove
+  }, { passive: true });
+  box.addEventListener('touchmove', e => {
+    if (e.touches.length === 1) { movePan(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }
+    else if (e.touches.length === 2) {
+      const [t1, t2] = e.touches;
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      if (!pinchStartDist) { pinchStartDist = dist; pinchStartScale = bookFrameCurrent.scale; }
+      else setBookFrameScale(pinchStartScale * (dist / pinchStartDist));
+      e.preventDefault();
+    }
+  }, { passive: false });
+  box.addEventListener('touchend', endPan);
+  box.addEventListener('touchcancel', endPan);
+
+  box.addEventListener('wheel', e => {
+    e.preventDefault();
+    setBookFrameScale(bookFrameCurrent.scale + (e.deltaY > 0 ? -0.08 : 0.08));
+  }, { passive: false });
+
+  document.getElementById('book-frame-zoom').addEventListener('input', e => setBookFrameScale(parseFloat(e.target.value)));
+})();
 
 // ─── Fotolibro: reordenar arrastrando (independiente de la fecha) ──
 // Mismo mecanismo que initDragReorder/initTouchReorder de la pestaña
@@ -4121,7 +4401,7 @@ function moveBookPage(srcIdx, targetInsertIdx) {
   const [page] = bookPages.splice(srcIdx, 1);
   const insertAt = targetInsertIdx > srcIdx ? targetInsertIdx - 1 : targetInsertIdx;
   bookPages.splice(insertAt, 0, page);
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el orden de páginas:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el orden de páginas:', e));
   renderBookReorderGrid();
 }
 
@@ -4325,7 +4605,7 @@ function moveBookPhoto(srcId, target) {
     bookDrawer.push(srcId);
   }
 
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
   const newContainerEl = document.getElementById(containerId);
   const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
@@ -4953,6 +5233,7 @@ document.getElementById('modal-confirm').addEventListener('click', e => { if (e.
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
 document.getElementById('modal-book-layout').addEventListener('click', e => { if (e.target === e.currentTarget) closeBookLayoutModal(); });
 document.getElementById('modal-book-add-page').addEventListener('click', e => { if (e.target === e.currentTarget) closeBookAddPageModal(); });
+document.getElementById('modal-book-frame').addEventListener('click', e => { if (e.target === e.currentTarget) closeBookFrameModal(); });
 document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-fab-sheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeFabSheet(); });
