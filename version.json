@@ -1,4 +1,4 @@
 {
-  "version": "2.06",
-  "changelog": "Se mide el embudo completo de Meta Ads, de la home hasta la suscripción."
+  "version": "2.07",
+  "changelog": "Se mide de dónde viene cada usuario (Meta, Google, calle) con parámetros UTM."
 }

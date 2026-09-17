@@ -1202,7 +1202,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.06';
+const APP_VERSION = '2.07';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -1231,6 +1231,53 @@ const DIARY_TAB_PAGEVIEWS = {
 function trackDiaryTabPageview(tab) {
   const entry = DIARY_TAB_PAGEVIEWS[tab];
   if (entry) trackVirtualPageview(entry.path, entry.title);
+}
+
+// ─── Atribución: UTM de la primera visita ────────────────
+// El registro real (Google OAuth) puede pasar días después de la primera
+// vez que alguien entra desde un anuncio — para esa fecha la URL con los
+// utm_* ya se perdió hace rato. Se capturan acá, en la primera carga de la
+// página, y se guardan en localStorage como "primer touch" pendiente;
+// establishSession()/establishSessionWithCode() (billing.js) los suman al
+// pedido a /api/auth/session recién cuando la cuenta se registra de
+// verdad, y auth-session.js los persiste SOLO si es un signup nuevo (mismo
+// criterio que ya usa fbp/fbc, ver Meta Ads más abajo) — así quedan pegados
+// para siempre al primer touch real, sin que un login posterior los pise.
+// Excepción explícita a la convención #2 (nunca localStorage para datos) —
+// mismo criterio que ya usan drive_token/td_debug_plan/install_dismissed:
+// es metadata de atribución, no contenido del diario, y vive un rato corto
+// (se borra apenas se manda al servidor, ver applySessionResponse en
+// billing.js).
+const UTM_FIRST_TOUCH_KEY = 'td_first_touch';
+const UTM_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_adsetname', 'utm_adsetid', 'utm_adname', 'utm_adid'];
+function captureUtmFirstTouch() {
+  try {
+    if (localStorage.getItem(UTM_FIRST_TOUCH_KEY)) return; // ya hay un primer touch guardado, no lo pisamos
+    const sp = new URLSearchParams(location.search);
+    const data = {};
+    let hasAny = false;
+    UTM_FIELDS.forEach(f => {
+      const v = sp.get(f);
+      if (v) { data[f] = v; hasAny = true; }
+    });
+    if (hasAny) localStorage.setItem(UTM_FIRST_TOUCH_KEY, JSON.stringify(data));
+  } catch (e) { /* localStorage puede fallar (Safari privado, cuota) — nunca romper la carga por esto */ }
+}
+captureUtmFirstTouch();
+// Leídas por billing.js (establishSession()/establishSessionWithCode()) al
+// armar el pedido de login, y limpiada por applySessionResponse() una vez
+// que el servidor confirma haber recibido el intento — mismo patrón que ya
+// usa debug.js para leer globals de este script inline desde otro archivo
+// que carga antes: son funciones, se resuelven recién cuando billing.js las
+// llama de verdad (siempre después de que este script ya corrió entero).
+function getStoredUtmFirstTouch() {
+  try {
+    const raw = localStorage.getItem(UTM_FIRST_TOUCH_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function clearStoredUtmFirstTouch() {
+  try { localStorage.removeItem(UTM_FIRST_TOUCH_KEY); } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════

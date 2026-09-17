@@ -308,6 +308,67 @@ cuenta/dashboard externo más para mantener sincronizado con el repo. Ver
 "Meta Pixel + Conversions API: 3b/3c" en "Funcionando bien" para el detalle
 completo de esta decisión.
 
+### Atribución de campaña (UTM) → Supabase, primer touch (v2.07)
+Además de Meta Ads, el usuario va a lanzar campañas de Google Ads más
+adelante y repartir tarjetas físicas en la calle — necesitaba saber, por
+cuenta, de dónde vino cada usuario (Meta, Google, orgánico) sin depender
+100% del propio Ads Manager de cada plataforma. Se agregó un mecanismo
+genérico de "primer touch" — **no específico de Meta**, reusable el día de
+mañana para `gclid` de Google Ads o cualquier otra campaña con UTMs.
+
+- **Campos**: `utm_source`, `utm_medium`, `utm_campaign`, `utm_adsetname`,
+  `utm_adsetid`, `utm_adname`, `utm_adid` — 7 columnas nuevas en
+  `subscriptions` (`functions/schema.sql`, `if not exists`). Nombrado
+  genérico a propósito (no "meta_adset_id") porque sirve para cualquier
+  plataforma de ads que use esa jerarquía campaña→conjunto→anuncio.
+- **Captura, `app.html`** (`captureUtmFirstTouch()`, corre una sola vez por
+  carga de página, arriba de todo del script, sin depender de que el
+  usuario llegue a conectar Drive ni de ninguna otra condición): lee
+  `utm_*` de `location.search` y, si hay al menos uno, los guarda en
+  `localStorage` bajo `td_first_touch` — **excepción explícita a la
+  convención #2** (nunca `localStorage` para datos), mismo criterio que ya
+  usan `drive_token`/`td_debug_plan`/`install_dismissed`: es metadata de
+  atribución de corta vida, no contenido del diario. Si ya hay un primer
+  touch guardado, no lo pisa — el primero en llegar es el que cuenta, así
+  una visita orgánica días después de haber entrado por un anuncio no borra
+  el touch real.
+- **Envío, `billing.js`**: `establishSession()`/`establishSessionWithCode()`
+  leen `getStoredUtmFirstTouch()` (función global de `app.html` — mismo
+  patrón que ya usa `debug.js` para leer globals de un script que carga
+  antes, resuelto en tiempo de llamada, no de parseo) y lo suman al body de
+  `/api/auth/session` si existe. `applySessionResponse()` lo borra de
+  `localStorage` al final, haya o no haya sido un signup nuevo — evita
+  reenviar datos viejos en cada reconexión futura y evita que quede pegado
+  a la próxima cuenta que use el mismo navegador.
+- **Persistencia, `functions/auth-session.js`**: los 7 campos se agregan a
+  `upsertRow` **solo dentro del `if (isNewUser)`** — mismo criterio que
+  `fbp`/`fbc` (Meta CAPI): un re-login o sesión restaurada nunca pisa el
+  primer touch real de la cuenta, aunque el cliente los mande de más (el
+  gate es del lado del servidor, no confía en que el cliente no los mande
+  fuera de lugar).
+- **Sin ninguna Cloud Function nueva** — reusa `/api/auth/session` por
+  completo, el mismo endpoint que ya resuelve identidad y calcula
+  `isNewUser` para `signup_completed`/`CompleteRegistration`.
+- **Ventana de atribución de campaña vs. señal cruda de Pixel**: si alguien
+  hace clic en un anuncio de Meta y recién se registra 60+ días después,
+  Meta NO va a atribuirle esa conversión a la campaña en sus reportes (la
+  ventana máxima desde 2021 es 7 días clic / 1 día vista) — pero el Pixel sí
+  sigue viendo el evento como señal cruda, útil para armar públicos
+  personalizados/similares aunque no sirva para optimizar la campaña en sí.
+  Por eso no conviene usar `CreateAlbum2`-`CreateAlbum4` (eventos tardíos
+  del funnel) como objetivo de optimización de una campaña — son buenos
+  para retargeting, no para "optimizar hacia esto".
+- **Idea evaluada, sin implementar todavía**: comprar un dominio fácil de
+  recordar (ej. `legadoapp.com`) para imprimir en tarjetas físicas de calle,
+  con un redirect a la URL real de producción con sus propios `utm_*`
+  baked-in — permite medir "tráfico de la calle" como canal propio.
+  Alternativas evaluadas: forwarding a nivel de registrador (gratis, rápido,
+  un solo destino fijo) vs. sumar el dominio a este mismo proyecto de
+  Firebase Hosting con reglas de redirect en `firebase.json` (más trabajo,
+  pero permite varios paths — ej. `/feria` vs. `/cafe` — cada uno con su
+  propia campaña, para comparar puntos de reparto distintos). Pendiente de
+  que el usuario elija/compre el dominio.
+
 ---
 
 ## Features implementadas
@@ -344,6 +405,9 @@ completo de esta decisión.
 ## Estado actual y pendientes
 
 ### Funcionando bien
+- **Atribución de campaña (UTM) → Supabase, primer touch** (v2.07): además de Meta Ads, el usuario va a lanzar campañas de Google Ads más adelante y repartir tarjetas en la calle — pidió poder distinguir en Supabase de dónde vino cada cuenta (Meta, Google, orgánico, calle) sin depender solo de cada Ads Manager. Ver el detalle completo de diseño en la sección nueva **"Atribución de campaña (UTM) → Supabase, primer touch"**, dentro de "Meta Ads: funnel completo instrumentado" más arriba en este archivo. Resumen: `app.html` captura `utm_*` de la URL en la primera visita y los guarda en `localStorage` como primer touch pendiente; `billing.js` los suma al pedido de login (`/api/auth/session`) y los borra apenas el servidor responde; `auth-session.js` los persiste en 7 columnas nuevas de `subscriptions` **solo si es un signup nuevo de verdad** (mismo criterio que ya usa `fbp`/`fbc` para Meta CAPI), nunca en un re-login. Sin ninguna Cloud Function nueva — reusa el mismo endpoint que ya resolvía identidad. Deliberadamente genérico (no atado a Meta): sirve igual el día que arranquen campañas de Google Ads.
+  - La idea de un dominio corto para tarjetas de calle (`legadoapp.com` o similar, con redirect a la URL real con sus propios `utm_*`) quedó evaluada y anotada en "Pendientes conocidos" — falta que el usuario elija/compre el dominio antes de implementar el redirect.
+  - Verificado con `test_utm_attribution.js` (nuevo: `captureUtmFirstTouch()` guarda los 7 campos cuando vienen en la URL, no escribe nada sin ningún `utm_*`, y nunca pisa un primer touch ya guardado; `establishSession()`/`establishSessionWithCode()` suman el primer touch guardado al body del pedido y lo limpian de `localStorage` apenas el servidor responde, sin mandar nada si no hay ninguno pendiente; `auth-session.js` persiste los 7 campos solo cuando `isNewUser`, nunca en un re-login aunque el cliente los mande, y no agrega campos `undefined` cuando no vino ninguno) + `node --check` en `auth-session.js` y `billing.js`.
 - **Meta Ads: funnel completo instrumentado, de la home a la suscripción — Fase 3.1** (v2.06): el usuario, antes de arrancar a pautar, pidió medir 9 pasos del embudo completo (home → clic login/registro → CompleteRegistration → crear álbum 1-4 → ViewContent → InitiateCheckout → Subscribe) — ver el detalle completo de nombres de evento, puntos de código exactos y el mecanismo de deduplicación hybrid en la sección nueva **"Meta Ads: funnel completo instrumentado"**, más arriba en este archivo (deliberadamente NO como una entrada más de este changelog — es referencia viva que hay que consultar antes de tocar cualquiera de los puntos de código que dispara un evento).
   - Dos decisiones resueltas con el usuario antes de programar: (1) "clic en iniciar sesión/registrarse" resultó ser en realidad dos clics distintos en el flujo actual — se trackean ambos como eventos separados (`ClickLandingCTA`/`ClickContinueGoogle`) en vez de elegir uno; (2) para los dos eventos que sí tienen un momento server-side útil (`CompleteRegistration`, `InitiateCheckout`) se sumó CAPI además del Pixel que ya existía, con el mismo criterio "hybrid" que ya usaba `Subscribe` — mejor resiliencia a adblockers en los dos pasos de mayor valor antes de un registro/pago real.
   - `functions/lib/metaCapi.js` (nuevo): extrae `readFbCookie()`/`sendMetaCapiEvent()` de donde vivían (duplicados solo en `webhook-mercadopago.js`) a un módulo compartido — necesario porque pasaron de 1 a 3 Cloud Functions que llaman a la Graph API de Meta.
@@ -678,6 +742,7 @@ completo de esta decisión.
   - **Modelo de monetización acordado con el usuario** (no le cerraba cobrar por uso Y tener plan premium a la vez — "me queda raro el modelo"): no son dos cobros separados, es una sola escalera — el plan premium **incluye una cuota de créditos por mes** (ej. 20 fotos editadas) para cubrir el uso típico, y créditos extra se compran sueltos a la carta para los que se pasan de esa cuota (cubre el costo variable de la API sin que la suscripción tenga que subir de precio para todos). Usuarios free tendrían 1-2 créditos de prueba para probar la calidad antes de pagar. Mismo esquema que usan Canva (créditos de IA dentro de Canva Pro) o Adobe (créditos de Firefly dentro de Creative Cloud).
   - **Sin implementar todavía** — solo evaluado y anotado a pedido del usuario. Si se retoma: falta investigar qué API de inpainting conviene (precio por imagen, calidad, límites) para tener números concretos, y el modelo de créditos necesitaría una columna/tabla nueva en Supabase (extensión del schema de `subscriptions`, ver "Suscripciones") más una Cloud Function que decremente el crédito antes de llamar a la API externa.
 - **Meta Ads — nada pendiente**: las 3 fases de `GROWTH_PLAN.md` (onboarding ✅ v1.61, métricas de producto ✅ v1.62, Pixel/Conversions API ✅ v2.04-v2.06 incluyendo el funnel completo de la Fase 3.1) están implementadas y deployadas — ver **"Meta Ads: funnel completo instrumentado"** más arriba en este archivo para la referencia viva de cada evento antes de tocar cualquiera de sus puntos de código.
+- **Atribución UTM → Supabase: dominio corto para tarjetas de calle, sin comprar todavía**: el mecanismo de primer touch (v2.07, ver "Meta Ads: funnel completo instrumentado" más arriba) ya está listo para recibir tráfico de cualquier campaña con `utm_*` en la URL, incluida "calle". Falta la otra mitad de la idea: un dominio corto (ej. `legadoapp.com`) para imprimir en tarjetas físicas, con un redirect a la URL real de producción llevando sus propios `utm_*` — evaluado con el usuario (forwarding a nivel de registrador vs. sumar el dominio a este mismo proyecto de Firebase Hosting con reglas de redirect en `firebase.json`, esto último si se quieren varios paths/campañas distintas por punto de reparto) pero sin implementar — el usuario todavía no eligió/compró el dominio.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
 - **Streaming real de video**: hoy el video se descarga entero (como blob URL) antes de reproducirse — no hay range requests. La solución de fondo (un service worker que intercepte el pedido a Drive, inyecte el header `Authorization` vía postMessage desde la página, y reenvíe Range/206) quedó deliberadamente afuera de la Fase 6 del plan de auditoría por su complejidad y riesgo (reescribe el pipeline de video) sin poder probarla en un dispositivo real. Retomar cuando se pueda testear en mobile.
 

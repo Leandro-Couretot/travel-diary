@@ -16,6 +16,13 @@ const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 // para reforzar por CAPI el mismo Pixel que dispara el cliente.
 const META_CAPI_ACCESS_TOKEN = defineSecret('META_CAPI_ACCESS_TOKEN');
 
+// Atribución (UTM de la primera visita, ver captureUtmFirstTouch() en
+// app.html) — mismos 7 campos que manda el cliente cuando hay un primer
+// touch pendiente en localStorage. Se persisten más abajo SOLO si
+// isNewUser, mismo criterio que ya usan fbp/fbc: un login posterior nunca
+// pisa el primer touch real de la cuenta.
+const UTM_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_adsetname', 'utm_adsetid', 'utm_adname', 'utm_adid'];
+
 // Error tipado con el status HTTP que corresponde devolver — así el catch
 // general de abajo no tiene que adivinar 401 vs 500 mirando el mensaje.
 class AuthError extends Error {
@@ -129,6 +136,17 @@ exports.authSession = onRequest(
 
       const upsertRow = { google_sub: userInfo.sub, email: userInfo.email };
       if (refreshToken) upsertRow.drive_refresh_token = refreshToken;
+      // Atribución: solo se graba en el signup real — un re-login/sesión
+      // restaurada nunca debería mandar esto (no hay primer touch pendiente
+      // en ese localStorage, ver captureUtmFirstTouch()), pero el gate por
+      // isNewUser es la garantía real, no confiar en que el cliente no lo
+      // mande de más.
+      if (isNewUser) {
+        UTM_FIELDS.forEach(f => {
+          const v = req.body && req.body[f];
+          if (v && typeof v === 'string') upsertRow[f] = v;
+        });
+      }
 
       const { data, error } = await supabase
         .from('subscriptions')

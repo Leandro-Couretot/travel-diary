@@ -164,10 +164,15 @@ function isPaidUser() {
 // CLAUDE.md → "Auth de Drive: de implícito a refresh_token real").
 async function establishSession(googleAccessToken) {
   try {
+    // Atribución (ver captureUtmFirstTouch() en app.html): si esta cuenta
+    // tiene un primer touch pendiente (utm_* de la primera visita, guardado
+    // en localStorage), se manda junto con el login — auth-session.js lo
+    // persiste solo si es un signup nuevo de verdad.
+    const firstTouch = typeof getStoredUtmFirstTouch === 'function' ? getStoredUtmFirstTouch() : null;
     const res = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
-      body: JSON.stringify({ access_token: googleAccessToken }),
+      body: JSON.stringify({ access_token: googleAccessToken, ...(firstTouch || {}) }),
     });
     if (!res.ok) return;
     applySessionResponse(await res.json());
@@ -187,10 +192,12 @@ async function establishSession(googleAccessToken) {
 // intento de conectar por un error de red pasajero.
 async function establishSessionWithCode(code) {
   try {
+    // Ver el mismo comentario de atribución en establishSession() arriba.
+    const firstTouch = typeof getStoredUtmFirstTouch === 'function' ? getStoredUtmFirstTouch() : null;
     const res = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, ...(firstTouch || {}) }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -222,6 +229,11 @@ function applySessionResponse(data) {
   // disparó del lado del servidor (solo viene si isNewUser) — deduplicación,
   // no un evento nuevo.
   if (data.isNewUser) trackMetaPixelEvent('CompleteRegistration', {}, data.metaEventId);
+  // El primer touch ya viajó al servidor en este mismo pedido (sea que haya
+  // persistido algo o no — solo lo hace si isNewUser) — se limpia para no
+  // reenviar datos viejos en cada reconexión futura, y para no dejarlos
+  // pegados a la próxima cuenta que use este mismo navegador.
+  if (typeof clearStoredUtmFirstTouch === 'function') clearStoredUtmFirstTouch();
 }
 
 // Pide un access_token de Drive nuevo usando el refresh_token guardado del

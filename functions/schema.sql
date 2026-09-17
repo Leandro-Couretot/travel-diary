@@ -63,6 +63,22 @@ alter table travel_diary.subscriptions add column if not exists drive_refresh_to
 alter table travel_diary.subscriptions add column if not exists fbp text;
 alter table travel_diary.subscriptions add column if not exists fbc text;
 
+-- Atribución de campaña (UTM), primer touch — capturados por app.html en la
+-- primera visita (localStorage, ver captureUtmFirstTouch()) y persistidos
+-- acá recién en el signup real, vía auth-session.js, SOLO si la cuenta es
+-- nueva de verdad (mismo criterio que fbp/fbc arriba: un login posterior
+-- nunca pisa el primer touch ya guardado). Sirve tanto para campañas de Meta
+-- como, el día de mañana, de Google Ads — de ahí el nombre genérico
+-- utm_adsetname/utm_adsetid/utm_adname/utm_adid en vez de algo específico de
+-- una sola plataforma.
+alter table travel_diary.subscriptions add column if not exists utm_source text;
+alter table travel_diary.subscriptions add column if not exists utm_medium text;
+alter table travel_diary.subscriptions add column if not exists utm_campaign text;
+alter table travel_diary.subscriptions add column if not exists utm_adsetname text;
+alter table travel_diary.subscriptions add column if not exists utm_adsetid text;
+alter table travel_diary.subscriptions add column if not exists utm_adname text;
+alter table travel_diary.subscriptions add column if not exists utm_adid text;
+
 -- Log crudo de cada notificación de Mercado Pago, para poder auditar pagos
 -- después. Nunca se borra ni se actualiza, solo se inserta.
 create table if not exists travel_diary.subscription_events (

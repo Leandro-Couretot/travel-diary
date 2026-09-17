@@ -287,6 +287,22 @@ evento, su punto de código exacto, y por qué no hace falta deduplicar
 `CompleteRegistration`/`InitiateCheckout` vía Google Tag Manager y se
 descartó por el mismo motivo que ya se descartó para `Subscribe` en 3c.
 
+### Fase 3.2 — atribución de campaña (UTM) → Supabase, primer touch ✅ (v2.07)
+
+Por fuera de Meta Ads en sí: el usuario va a lanzar campañas de Google Ads
+más adelante y repartir tarjetas físicas en la calle, y quería poder ver en
+Supabase de dónde vino cada cuenta sin depender solo del Ads Manager de cada
+plataforma. Ver la sección **"Atribución de campaña (UTM) → Supabase,
+primer touch"** en `CLAUDE.md` para el diseño completo — resumen: `app.html`
+captura `utm_source/utm_medium/utm_campaign/utm_adsetname/utm_adsetid/
+utm_adname/utm_adid` de la URL en la primera visita (localStorage, "primer
+touch"), `billing.js` los suma al login real, y `auth-session.js` los
+persiste en `subscriptions` solo si es un signup nuevo de verdad — mismo
+criterio que ya usan `fbp`/`fbc`. Sin ninguna Cloud Function nueva. Deja
+pendiente, sin implementar (falta que el usuario elija/compre un dominio),
+la otra mitad de la idea original: un dominio corto para tarjetas de calle
+con redirect propio — ver "Pendientes conocidos" en `CLAUDE.md`.
+
 ---
 
 ## Checklist rápido de lo que falta de vos, por fase
@@ -295,3 +311,7 @@ descartó por el mismo motivo que ya se descartó para `Subscribe` en 3c.
 - **Fase 2**: ✅ nada pendiente.
 - **Fase 3 (+ 3.1, funnel completo)**: ✅ nada pendiente — código completo,
   secret ya cargado, deployado y confirmado en producción.
+- **Fase 3.2 (UTM → Supabase, primer touch)**: ✅ nada pendiente de código —
+  falta solo, del lado del usuario y sin apuro, elegir/comprar el dominio
+  corto para el redirect de tarjetas de calle (ver "Pendientes conocidos"
+  en `CLAUDE.md`).
