@@ -14,3 +14,4 @@ exports.subscriptionStatus = require('./subscription-status').subscriptionStatus
 exports.webhookMercadopago = require('./webhook-mercadopago').webhookMercadopago;
 exports.trackEvent = require('./track-event').trackEvent;
 exports.driveTokenRefresh = require('./drive-token-refresh').driveTokenRefresh;
+exports.campaignLink = require('./campaign-link').campaignLink;

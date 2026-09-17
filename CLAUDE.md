@@ -358,16 +358,83 @@ mañana para `gclid` de Google Ads o cualquier otra campaña con UTMs.
   Por eso no conviene usar `CreateAlbum2`-`CreateAlbum4` (eventos tardíos
   del funnel) como objetivo de optimización de una campaña — son buenos
   para retargeting, no para "optimizar hacia esto".
-- **Idea evaluada, sin implementar todavía**: comprar un dominio fácil de
-  recordar (ej. `legadoapp.com`) para imprimir en tarjetas físicas de calle,
-  con un redirect a la URL real de producción con sus propios `utm_*`
-  baked-in — permite medir "tráfico de la calle" como canal propio.
-  Alternativas evaluadas: forwarding a nivel de registrador (gratis, rápido,
-  un solo destino fijo) vs. sumar el dominio a este mismo proyecto de
-  Firebase Hosting con reglas de redirect en `firebase.json` (más trabajo,
-  pero permite varios paths — ej. `/feria` vs. `/cafe` — cada uno con su
-  propia campaña, para comparar puntos de reparto distintos). Pendiente de
-  que el usuario elija/compre el dominio.
+### Links de campaña con slug (`legadofamiliar.com.ar/{slug}`) — afiliados + calle (v2.08)
+
+El usuario compró **`legadofamiliar.com.ar`**, pensado como dominio único
+para dos usos: (1) que sea el dominio real de la app (no un simple
+redirect-only hacia el `.web.app` — se agrega como dominio personalizado de
+Firebase Hosting apuntando al mismo sitio, así los usuarios ven
+`legadofamiliar.com.ar` en la barra, nunca `family-fotos-491610.web.app`;
+de paso esto es lo que va a permitir resolver el bloqueo de verificación de
+marca de OAuth, ver "Pendientes conocidos" → OAuth, ya que `.web.app` es un
+dominio compartido de Google, no "propio", y por eso Google rechazaba la
+verificación) y (2) marketing por afiliados — darle a un instagrammer una
+URL corta tipo `legadofamiliar.com.ar/christian` para que la publique (en
+su bio, en un post, o incluso en sus propios ads pagados — el mecanismo no
+le importa de dónde vino el click, solo que haya pasado por ese link).
+
+**Decisión: slugs por path, no subdominios.** Un subdominio por afiliado
+(`christian.legadofamiliar.com.ar`) hubiera necesitado un alta manual de
+dominio personalizado por persona en Firebase Hosting (sin soporte simple
+de wildcard) — con slugs por path (`/christian`) alcanza con el dominio
+dado de alta **una sola vez**, y cualquier slug nuevo funciona solo, sin
+tocar infraestructura. También es la convención esperada para este tipo de
+link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
+
+- **`travel_diary.campaign_links`** (`functions/schema.sql`, tabla nueva):
+  `slug` (primary key, siempre en minúscula), `utm_source`, `utm_medium`,
+  `utm_campaign` (opcional), `active`, `notes`. Genérico a propósito — sirve
+  tanto para un afiliado (`utm_source: 'christian', utm_medium: 'affiliate'`)
+  como para un punto de reparto de tarjetas en la calle
+  (`utm_source: 'feria-palermo', utm_medium: 'street', utm_campaign: 'lanzamiento2026'`),
+  reusando los mismos campos que ya existen en `subscriptions` desde v2.07 —
+  ver "Atribución de campaña (UTM)" arriba. Agregar/editar/desactivar un
+  link es un `insert`/`update` en esta tabla (a mano desde el SQL Editor o
+  el Table Editor de Supabase) — **sin ningún deploy**.
+- **`utm_source` = quién trajo la visita (el afiliado), `utm_medium` =
+  constante `affiliate`** — no al revés (lo que se planteó al principio) —
+  para que después sea intuitivo filtrar "todo lo de afiliados"
+  (`utm_medium = affiliate`) y rankear por persona (`group by utm_source`).
+- **`functions/campaign-link.js`** (Cloud Function nueva, `campaignLink`):
+  resuelve el slug contra `campaign_links` y redirige (302, nunca 301 —
+  la fila puede cambiar) a `/app.html?utm_source=...&utm_medium=...` — el
+  destino es siempre una **ruta relativa**, nunca un dominio hardcodeado,
+  así funciona igual sirviéndose desde `legadofamiliar.com.ar` o desde el
+  `.web.app` viejo sin tocar código el día que se termine de migrar. Un
+  slug que no existe en la tabla (typo, link viejo, o el navegador pidiendo
+  `/favicon.ico`/`/robots.txt` porque no son archivos reales de este repo)
+  redirige igual a `/app.html` **sin ningún UTM**, nunca un 404 — mismo
+  criterio de "nunca romper un link ya impreso/publicado" que rige el resto
+  de esta app. Una lista `RESERVED_SLUGS` evita consultar Supabase de más
+  para esos casos conocidos.
+- **`firebase.json`**: rewrite nuevo `{"source": "/:slug", "function": "campaignLink"}`
+  — Firebase Hosting le da prioridad a un archivo estático real por sobre
+  cualquier rewrite genérico, así que `/app.html`, `/privacy.html`,
+  `/style.css`, etc. se siguen sirviendo tal cual; solo un path de un único
+  segmento que NO coincide con ningún archivo real cae en este rewrite.
+- **`app.html` no necesitó ningún cambio** — `captureUtmFirstTouch()`
+  (v2.07) ya lee `utm_*` de `location.search` en cualquier carga de página,
+  sin importar si esos parámetros llegaron por un link armado a mano para
+  un ads o por este redirect — el mismo mecanismo de "primer touch" cubre
+  los dos casos sin duplicar nada.
+- **Pasos manuales pendientes, fuera del código** (mismo patrón que cada
+  vez que se agrega una tabla nueva, ver "Suscripciones" → Supabase): (1)
+  correr `functions/schema.sql` de nuevo en el SQL Editor de Supabase para
+  crear `campaign_links`; (2) activarla en Dashboard → Settings → Data API
+  → Exposed tables (sin esto, `campaign-link.js` nunca va a encontrar la
+  fila — pero como el `try/catch` la trata igual que "slug no encontrado",
+  el síntoma sería que TODOS los links redirigen sin UTMs, nunca un error
+  visible); (3) agregar `legadofamiliar.com.ar` como dominio personalizado
+  en Firebase Console → Hosting (apuntando al mismo sitio, no hace falta
+  tocar `firebase.json` para esto) y cargar los registros DNS que Firebase
+  indique en el registrador del dominio.
+- Verificado con `test_campaign_link.js` (nuevo: un slug activo redirige
+  con `utm_source`/`utm_medium` y suma `utm_campaign` solo si está presente;
+  un slug desconocido o inactivo (`active:false`) redirige a `/app.html`
+  sin ningún UTM; un slug reservado (`favicon.ico`) redirige sin siquiera
+  consultar Supabase; el path raíz no rompe nada; el slug se normaliza a
+  minúscula antes de buscar) + `node --check` en `campaign-link.js` e
+  `index.js`.
 
 ---
 
@@ -405,8 +472,11 @@ mañana para `gclid` de Google Ads o cualquier otra campaña con UTMs.
 ## Estado actual y pendientes
 
 ### Funcionando bien
+- **Links de campaña con slug (`legadofamiliar.com.ar/{slug}`) — afiliados + calle** (v2.08): cierra la idea de dominio corto que había quedado pendiente en v2.07, ahora extendida a un segundo caso de uso que surgió en la misma conversación — marketing por afiliados (darle a un instagrammer un link corto tipo `legadofamiliar.com.ar/christian` para que lo publique, orgánico o en sus propios ads pagados). Ver el detalle completo de diseño en la sección nueva **"Links de campaña con slug"**, dentro de "Meta Ads: funnel completo instrumentado" más arriba en este archivo. Resumen: tabla nueva `travel_diary.campaign_links` (slug → utm_source/utm_medium/utm_campaign, editable sin deploy desde Supabase) + Cloud Function nueva `campaign-link.js` que resuelve el slug y redirige (302, ruta relativa, nunca un dominio hardcodeado) a `/app.html` con esos UTMs — `app.html` no necesitó ningún cambio, el mismo `captureUtmFirstTouch()` de v2.07 ya cubre esto. Decisión explícita: slugs por path (`/christian`), no subdominios — evita un alta manual de dominio personalizado por afiliado en Firebase Hosting, que no soporta wildcard de forma simple. **Deploy pendiente de 2 pasos manuales del usuario**: correr `schema.sql` de nuevo en Supabase + activar `campaign_links` en Data API → Exposed tables (mismo patrón de siempre para una tabla nueva) — hasta entonces, cualquier slug redirige igual pero sin UTMs (fail-safe, nunca un error visible).
+  - **El dominio nuevo (`legadofamiliar.com.ar`) también va a ser el dominio REAL de la app**, no un simple forwarder hacia `family-fotos-491610.web.app` — se agrega como dominio personalizado de Firebase Hosting apuntando al mismo sitio, así los usuarios ven `legadofamiliar.com.ar` en la barra del navegador. Esto además es lo que va a permitir resolver el bloqueo de verificación de marca de OAuth (ver "Pendientes conocidos" → verificación OAuth): Google rechazaba `family-fotos-491610.web.app` como home page porque `.web.app` es un dominio compartido de Google, no registrado a nombre del usuario — con un dominio propio, ese chequeo debería pasar.
+  - Verificado con `test_campaign_link.js` (nuevo: un slug activo redirige con `utm_source`/`utm_medium`, suma `utm_campaign` solo si está presente; un slug desconocido o inactivo redirige sin ningún UTM en vez de romper; un slug reservado como `favicon.ico` ni siquiera consulta Supabase; el slug se normaliza a minúscula antes de buscar) + `node --check` en `campaign-link.js` e `index.js`.
 - **Atribución de campaña (UTM) → Supabase, primer touch** (v2.07): además de Meta Ads, el usuario va a lanzar campañas de Google Ads más adelante y repartir tarjetas en la calle — pidió poder distinguir en Supabase de dónde vino cada cuenta (Meta, Google, orgánico, calle) sin depender solo de cada Ads Manager. Ver el detalle completo de diseño en la sección nueva **"Atribución de campaña (UTM) → Supabase, primer touch"**, dentro de "Meta Ads: funnel completo instrumentado" más arriba en este archivo. Resumen: `app.html` captura `utm_*` de la URL en la primera visita y los guarda en `localStorage` como primer touch pendiente; `billing.js` los suma al pedido de login (`/api/auth/session`) y los borra apenas el servidor responde; `auth-session.js` los persiste en 7 columnas nuevas de `subscriptions` **solo si es un signup nuevo de verdad** (mismo criterio que ya usa `fbp`/`fbc` para Meta CAPI), nunca en un re-login. Sin ninguna Cloud Function nueva — reusa el mismo endpoint que ya resolvía identidad. Deliberadamente genérico (no atado a Meta): sirve igual el día que arranquen campañas de Google Ads.
-  - La idea de un dominio corto para tarjetas de calle (`legadoapp.com` o similar, con redirect a la URL real con sus propios `utm_*`) quedó evaluada y anotada en "Pendientes conocidos" — falta que el usuario elija/compre el dominio antes de implementar el redirect.
+  - El dominio corto para tarjetas de calle terminó siendo `legadofamiliar.com.ar`, comprado por el usuario — ver "Links de campaña con slug" (v2.08) arriba para la implementación final.
   - Verificado con `test_utm_attribution.js` (nuevo: `captureUtmFirstTouch()` guarda los 7 campos cuando vienen en la URL, no escribe nada sin ningún `utm_*`, y nunca pisa un primer touch ya guardado; `establishSession()`/`establishSessionWithCode()` suman el primer touch guardado al body del pedido y lo limpian de `localStorage` apenas el servidor responde, sin mandar nada si no hay ninguno pendiente; `auth-session.js` persiste los 7 campos solo cuando `isNewUser`, nunca en un re-login aunque el cliente los mande, y no agrega campos `undefined` cuando no vino ninguno) + `node --check` en `auth-session.js` y `billing.js`.
 - **Meta Ads: funnel completo instrumentado, de la home a la suscripción — Fase 3.1** (v2.06): el usuario, antes de arrancar a pautar, pidió medir 9 pasos del embudo completo (home → clic login/registro → CompleteRegistration → crear álbum 1-4 → ViewContent → InitiateCheckout → Subscribe) — ver el detalle completo de nombres de evento, puntos de código exactos y el mecanismo de deduplicación hybrid en la sección nueva **"Meta Ads: funnel completo instrumentado"**, más arriba en este archivo (deliberadamente NO como una entrada más de este changelog — es referencia viva que hay que consultar antes de tocar cualquiera de los puntos de código que dispara un evento).
   - Dos decisiones resueltas con el usuario antes de programar: (1) "clic en iniciar sesión/registrarse" resultó ser en realidad dos clics distintos en el flujo actual — se trackean ambos como eventos separados (`ClickLandingCTA`/`ClickContinueGoogle`) en vez de elegir uno; (2) para los dos eventos que sí tienen un momento server-side útil (`CompleteRegistration`, `InitiateCheckout`) se sumó CAPI además del Pixel que ya existía, con el mismo criterio "hybrid" que ya usaba `Subscribe` — mejor resiliencia a adblockers en los dos pasos de mayor valor antes de un registro/pago real.
@@ -730,6 +800,7 @@ mañana para `gclid` de Google Ads o cualquier otra campaña con UTMs.
 ### Pendientes conocidos
 - **Verificación formal de OAuth ante Google + "Incremental authorization"** (detectados junto con "Use secure flows" en v1.92, ver esa entrada en "Funcionando bien" para el fix ya resuelto de los tres) — dos avisos del mismo Project Checkup de Google Cloud Console todavía sin resolver, ambos sobre el client `travel-diary`:
   - **"OAuth app verification"**: "Your app requires verification by Google. To submit your app for verification, go to the Verification Center section." — Google exige que cualquier app que pida scopes por fuera de un puñado mínimo ("non-sensitive") pase su revisión formal antes de que cualquier cuenta que no sea de prueba pueda usarla sin ver la pantalla de advertencia "Google no verificó esta app" (la que el usuario reportó en esta entrega). Con `drive.file` + `userinfo.email` + `userinfo.profile`, es esperable que la app necesite verificación — **según CLAUDE.md, "la app ya pasó la verificación de OAuth de Google" en algún momento anterior** (ver "OAuth / Drive config"), así que hay que confirmar primero si este aviso es sobre ese mismo proceso (¿venció? ¿un scope nuevo lo reabrió?) o es una verificación distinta — no investigado en detalle todavía, no se tocó nada de Cloud Console para esto. Submission real (botón "Prepare for verification" / "Verification Center") es un proceso que corre el usuario desde su cuenta de Google Cloud — probablemente necesite la URL de política de privacidad (`privacy.html`, ya existe, servida en producción) y de términos (`terms.html`, ídem), una justificación de para qué se usa cada scope, y tiempo de revisión de Google (puede ser días). Nada de esto se puede resolver solo editando código del repo.
+    - **Bloqueante concreto encontrado en la práctica (post-v2.08)**: la verificación de **Branding** del consent screen la rechazó explícitamente con "The website of your home page URL 'https://family-fotos-491610.web.app/app.html' is not registered to you" — `web.app` está en la Public Suffix List (dominio compartido de Google/Firebase, no "propiedad" de nadie en particular vía WHOIS), así que aunque la verificación de Search Console sobre ese subdominio sea válida, no alcanza para este chequeo puntual. El plan (ver "Links de campaña con slug" en "Meta Ads: funnel completo instrumentado"): una vez que `legadofamiliar.com.ar` esté sirviendo la app como dominio personalizado de Firebase Hosting, verificarlo en Search Console por **DNS (dominio completo, no prefijo de URL)** con la misma cuenta de Google dueña del proyecto, y recién ahí cambiar "Application home page"/Authorized domains en el consent screen a ese dominio y pedir la re-verificación.
   - **"Incremental authorization"**: "One or more of your OAuth clients may not properly support incremental authorization... The following OAuth clients don't support incremental authorization: • travel-diary" — causa y fix concretos sin investigar todavía. Retomar junto con lo de arriba.
 - ✅ **Fotolibro: ajustar zoom/encuadre por foto — resuelto en v2.03**: pedido original del usuario junto con el orden manual del fotolibro (v1.23), retomado y cerrado en v2.03 (ícono ⛶ por foto → editor dedicado con zoom + paneo, clamping para nunca dejar huecos, aplicado igual en pantalla y en el PDF) — ver "Funcionando bien".
 - **Fotolibro: siguientes pasos de "páginas explícitas + drawer" (v1.26)**: quedaron pendientes, en este orden acordado con el usuario — ✅ (1) **miniaturas del modo reordenar con forma real de libro — resuelto en v1.47**, ver "Funcionando bien"; ✅ (2) **botón "+" para crear una página nueva aislada — resuelto en v1.69 como "Agregar página"** (ver "Funcionando bien"): en vez de arrastrar una foto para aislarla, el usuario elige primero cuántas fotos va a tener la página nueva y después el layout — cubre el mismo caso de uso (aislar fotos puntuales en su propia página) sin depender de que ya exista una página con lugar; ✅ (3) **selector para forzar el layout de una página puntual — resuelto en v1.46**, ver "Funcionando bien"; ✅ (4) **botón para vaciar una página con confirmación — resuelto en v1.69 como "Eliminar página"** (ver "Funcionando bien"): a diferencia del "Recrear libro" original (vaciar TODAS las páginas de una), el usuario puede borrar página por página con el mismo aviso de "vuelven a Sin ubicar" — cubre el caso de "entré a mirar, ahora quiero rearmar esto" sin necesitar una acción masiva aparte; (5) adaptar toda la interacción a celular — el usuario pidió explícitamente resolver primero en PC y dejar esto para el final, sigue pendiente.
@@ -742,7 +813,7 @@ mañana para `gclid` de Google Ads o cualquier otra campaña con UTMs.
   - **Modelo de monetización acordado con el usuario** (no le cerraba cobrar por uso Y tener plan premium a la vez — "me queda raro el modelo"): no son dos cobros separados, es una sola escalera — el plan premium **incluye una cuota de créditos por mes** (ej. 20 fotos editadas) para cubrir el uso típico, y créditos extra se compran sueltos a la carta para los que se pasan de esa cuota (cubre el costo variable de la API sin que la suscripción tenga que subir de precio para todos). Usuarios free tendrían 1-2 créditos de prueba para probar la calidad antes de pagar. Mismo esquema que usan Canva (créditos de IA dentro de Canva Pro) o Adobe (créditos de Firefly dentro de Creative Cloud).
   - **Sin implementar todavía** — solo evaluado y anotado a pedido del usuario. Si se retoma: falta investigar qué API de inpainting conviene (precio por imagen, calidad, límites) para tener números concretos, y el modelo de créditos necesitaría una columna/tabla nueva en Supabase (extensión del schema de `subscriptions`, ver "Suscripciones") más una Cloud Function que decremente el crédito antes de llamar a la API externa.
 - **Meta Ads — nada pendiente**: las 3 fases de `GROWTH_PLAN.md` (onboarding ✅ v1.61, métricas de producto ✅ v1.62, Pixel/Conversions API ✅ v2.04-v2.06 incluyendo el funnel completo de la Fase 3.1) están implementadas y deployadas — ver **"Meta Ads: funnel completo instrumentado"** más arriba en este archivo para la referencia viva de cada evento antes de tocar cualquiera de sus puntos de código.
-- **Atribución UTM → Supabase: dominio corto para tarjetas de calle, sin comprar todavía**: el mecanismo de primer touch (v2.07, ver "Meta Ads: funnel completo instrumentado" más arriba) ya está listo para recibir tráfico de cualquier campaña con `utm_*` en la URL, incluida "calle". Falta la otra mitad de la idea: un dominio corto (ej. `legadoapp.com`) para imprimir en tarjetas físicas, con un redirect a la URL real de producción llevando sus propios `utm_*` — evaluado con el usuario (forwarding a nivel de registrador vs. sumar el dominio a este mismo proyecto de Firebase Hosting con reglas de redirect en `firebase.json`, esto último si se quieren varios paths/campañas distintas por punto de reparto) pero sin implementar — el usuario todavía no eligió/compró el dominio.
+- **Links de campaña (v2.08) — 3 pasos manuales pendientes del usuario, código ya deployado**: ver el detalle completo en "Links de campaña con slug" dentro de "Meta Ads: funnel completo instrumentado" más arriba. (1) Correr `functions/schema.sql` de nuevo en el SQL Editor de Supabase (crea `campaign_links`); (2) activarla en Dashboard → Settings → Data API → Exposed tables; (3) agregar `legadofamiliar.com.ar` como dominio personalizado en Firebase Console → Hosting (apuntando al mismo sitio que ya sirve `family-fotos-491610.web.app`) + cargar los registros DNS que Firebase indique, en el panel del registrador donde se compró el dominio. Hasta que estén los 3, `campaignLink` sigue deployado y funcionando (falla en modo seguro: redirige sin UTMs) pero no hay ningún slug real cargado ni el dominio propio sirviendo la app todavía.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
 - **Streaming real de video**: hoy el video se descarga entero (como blob URL) antes de reproducirse — no hay range requests. La solución de fondo (un service worker que intercepte el pedido a Drive, inyecte el header `Authorization` vía postMessage desde la página, y reenvíe Range/206) quedó deliberadamente afuera de la Fase 6 del plan de auditoría por su complejidad y riesgo (reescribe el pipeline de video) sin poder probarla en un dispositivo real. Retomar cuando se pueda testear en mobile.
 

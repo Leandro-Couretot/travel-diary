@@ -108,9 +108,27 @@ create table if not exists travel_diary.usage_events (
 create index if not exists usage_events_google_sub_idx on travel_diary.usage_events (google_sub);
 create index if not exists usage_events_event_name_idx on travel_diary.usage_events (event_name);
 
+-- Links de campaña con slug corto (legadofamiliar.com.ar/{slug}) — mecanismo
+-- genérico para afiliados (.../christian) y puntos de reparto en la calle
+-- (.../feria), ver CLAUDE.md → "Atribución de campaña (UTM) → Supabase,
+-- primer touch". campaign-link.js resuelve el slug acá y redirige a
+-- app.html con estos UTMs baked-in — agregar/editar/desactivar un link es
+-- un insert/update en esta tabla, sin ningún deploy. slug siempre en
+-- minúscula (así lo normaliza campaign-link.js antes de buscar).
+create table if not exists travel_diary.campaign_links (
+  slug         text primary key,
+  utm_source   text not null,
+  utm_medium   text not null,
+  utm_campaign text,
+  active       boolean not null default true,
+  notes        text,
+  created_at   timestamptz not null default now()
+);
+
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 alter table travel_diary.usage_events enable row level security;
+alter table travel_diary.campaign_links enable row level security;
 -- Sin policies = solo la service_role key (usada por las Cloud Functions)
 -- puede leer/escribir. Igual que en cualquier otro cliente de la agencia.
 

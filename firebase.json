@@ -16,7 +16,8 @@
       { "source": "/api/subscription/status", "function": "subscriptionStatus" },
       { "source": "/api/webhooks/mercadopago", "function": "webhookMercadopago" },
       { "source": "/api/track", "function": "trackEvent" },
-      { "source": "/api/drive/token/refresh", "function": "driveTokenRefresh" }
+      { "source": "/api/drive/token/refresh", "function": "driveTokenRefresh" },
+      { "source": "/:slug", "function": "campaignLink" }
     ],
     "headers": [
       {
