@@ -70,6 +70,26 @@ async function appCheckTokenValue() {
   }
 }
 
+// ─── Meta Pixel (Fase 3 de GROWTH_PLAN.md) ─────────────────────────
+// El snippet base (`fbq`, con el Pixel ID) vive en el <head> de app.html —
+// acá solo el wrapper defensivo que usan los call-sites de eventos, mismo
+// criterio que appCheckHeaders()/getDebugPlanOverride(): un adblocker que
+// bloquee fbevents.js (frecuente, no es un caso raro) nunca puede romper
+// nada de la app real, solo perderse ese evento puntual de medición.
+// Sincronizar con functions/checkout-create.js → PRECIOS_ARS si cambian
+// los precios (mismo comentario de sync que ya usa el texto de los
+// botones del modal de suscripción en app.html).
+const META_PIXEL_PLAN_PRICES_ARS = { monthly: 14000, annual: Math.round(14000 * 12 * 0.8) };
+
+function trackMetaPixelEvent(eventName, params) {
+  try {
+    if (typeof fbq !== 'function') return;
+    fbq('track', eventName, params || {});
+  } catch (e) {
+    console.warn('No se pudo trackear el evento de Meta Pixel ' + eventName + ':', e);
+  }
+}
+
 // ─── Debug: forzar plan localmente, sin tocar Mercado Pago ─────────
 // Con un solo usuario de test (el propio dev) no hay forma de probar el
 // gating free/pro pagándose a sí mismo o creando una segunda cuenta de
@@ -166,6 +186,12 @@ function applySessionResponse(data) {
   // sesión restaurada al abrir la app), no por request — ver
   // ANALYTICS_PLAN.md, tabla AARRR.
   trackEvent('login');
+  // Fase 3d de GROWTH_PLAN.md: señal de signup para Meta Ads, solo la
+  // primera vez que esta cuenta de Google se conecta de verdad — nunca en
+  // una sesión restaurada ni en un re-login (data.isNewUser lo calcula
+  // auth-session.js del lado del servidor, antes del upsert en Supabase,
+  // así que no depende de nada que el cliente pueda falsear o perder).
+  if (data.isNewUser) trackMetaPixelEvent('CompleteRegistration');
 }
 
 // Pide un access_token de Drive nuevo usando el refresh_token guardado del
@@ -211,6 +237,7 @@ async function refreshSubscriptionStatus() {
 
 async function startCheckout(planType) {
   if (!sessionToken) { alert('Conectá Drive primero para poder suscribirte.'); return; }
+  trackMetaPixelEvent('InitiateCheckout', { value: META_PIXEL_PLAN_PRICES_ARS[planType], currency: 'ARS', content_name: planType });
   try {
     const res = await fetch('/api/checkout/create', {
       method: 'POST',

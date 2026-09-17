@@ -15,6 +15,24 @@
   // mandan a mano, ver trackVirtualPageview() más abajo en el inline script.
   gtag('config', 'G-0ZM7BKFP5G', { send_page_view: false });
 </script>
+<!-- Meta Pixel Code (Fase 3 de GROWTH_PLAN.md — mide el embudo de Meta Ads,
+     de un clic en un anuncio a un registro/suscripción). Snippet base
+     estándar de Meta, sin modificar — fbq() queda global, billing.js y el
+     script inline de más abajo lo llaman a través de trackMetaPixelEvent()
+     (billing.js), que nunca rompe nada si un adblocker lo bloquea. -->
+<script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '1609371220699065');
+  fbq('track', 'PageView');
+</script>
+<!-- End Meta Pixel Code -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1184,7 +1202,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.03';
+const APP_VERSION = '2.04';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -1300,6 +1318,7 @@ function openSubscribeModal(context) {
   if (context) { ctxEl.textContent = context; ctxEl.style.display = 'block'; }
   else { ctxEl.style.display = 'none'; }
   document.getElementById('modal-subscribe').classList.add('open');
+  trackMetaPixelEvent('ViewContent', { content_name: 'plan_pro' });
 }
 function closeSubscribeModal() { document.getElementById('modal-subscribe').classList.remove('open'); }
 

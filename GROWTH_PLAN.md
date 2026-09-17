@@ -168,51 +168,91 @@ servidor, mismo síntoma que ya pasó una vez con `subscriptions`.
 
 ---
 
-## Fase 3 — Meta Pixel + Conversions API (última, pendiente de credenciales)
+## Fase 3 — Meta Pixel + Conversions API (en curso — 3a/3d ✅ v2.04, 3b/3c pendientes de credenciales)
 
 ### Qué hace falta del usuario antes de arrancar esta fase
 
-1. Un Pixel creado en Meta Events Manager (Business Manager) → el **Pixel ID**.
+1. Un Pixel creado en Meta Events Manager (Business Manager) → el **Pixel ID**
+   — ✅ ya lo tenemos: `1609371220699065` (el usuario compartió el link a su
+   dataset en Events Manager).
 2. Un **access token de Conversions API** (Events Manager → Configuración →
-   Conversions API → Generar token de acceso).
+   Conversions API → Generar token de acceso) — **todavía falta**, bloquea
+   3b/3c.
 
-Sin esto la fase queda bloqueada — está bien, por eso va última.
+Como el Pixel ID no es un secreto (cualquier navegador que corre la página lo
+ve igual que ve `G-0ZM7BKFP5G`, el measurement ID de GA ya hardcodeado desde
+v2.00), 3a y 3d no necesitaban esperar al access token — se implementaron ya.
 
-### Sub-pasos (una vez estén las credenciales)
+### Sub-pasos
 
-- **3a — Pixel del lado del cliente**: `fbq()` base en `app.html`. Eventos
-  estándar de Meta: `PageView` (automático), `ViewContent` al abrir el modal
-  de suscripción, `InitiateCheckout` al tocar un plan (`startCheckout()`).
-  Verificable con la extensión "Meta Pixel Helper" sin tocar nada del backend.
-- **3b — Guardar `fbp`/`fbc` en el checkout**: para que el evento de compra
-  confirmada (3c, del lado del servidor) tenga buen matching, `checkout-create.js`
-  guarda la cookie `_fbp` y el click id `fbc` (si vino de un anuncio) junto a
-  la fila de `subscriptions` — 2 columnas nuevas en `schema.sql`.
-- **3c — Conversions API en el webhook**: cuando `webhook-mercadopago.js`
-  confirma `status: 'authorized'` (la fuente de verdad real de "pagó"),
-  dispara `Subscribe`/`Purchase` a la API de Meta con el `fbp`/`fbc` de 3b +
-  el monto real (`PRECIOS_ARS`, ya existe en `checkout-create.js`). Secrets
-  nuevos: `META_PIXEL_ID`, `META_CAPI_ACCESS_TOKEN` (mismo patrón que
-  `MP_ACCESS_TOKEN`).
-- **3d — `Lead`/`CompleteRegistration`** al conectar Drive por primera vez
-  (evento de signup, no de pago) — alcanza con dispararlo del lado del
-  cliente, es una señal de menor riesgo que la de 3c.
-- **Privacidad**: sumar una línea a `privacy.html` declarando el uso de Meta
-  Pixel/Conversions API con fines publicitarios — texto a preparar y pasar
-  para aprobación antes de shippear esta fase.
+- ✅ **3a — Pixel del lado del cliente (v2.04)**: `fbq()` base (snippet
+  estándar de Meta, sin modificar) agregado al `<head>` de `app.html`, con el
+  Pixel ID de arriba y `PageView` automático. `trackMetaPixelEvent(name, params)`
+  (`billing.js`, junto a `appCheckHeaders()`) es el wrapper defensivo que usan
+  el resto de los eventos — `try/catch` + chequeo de `typeof fbq`, mismo
+  criterio que el resto de las llamadas a servicios externos de esta app: un
+  adblocker que bloquee `fbevents.js` (caso frecuente, no un borde raro) nunca
+  puede romper nada real, solo perderse ese evento puntual de medición.
+  `ViewContent` se dispara al abrir el modal de suscripción
+  (`openSubscribeModal()`), `InitiateCheckout` al tocar un plan
+  (`startCheckout()`, con `value`/`currency` desde `META_PIXEL_PLAN_PRICES_ARS`
+  — mismo comentario de sincronización manual que ya usa el texto de los
+  botones del modal con `PRECIOS_ARS` en `functions/checkout-create.js`).
+  Verificable con la extensión "Meta Pixel Helper", sin tocar nada del backend.
+- ✅ **3d — `CompleteRegistration` (v2.04)**: se dispara al conectar Drive,
+  pero **solo si es un signup genuino** — nunca en una sesión restaurada ni un
+  re-login, que hubiera inflado el conteo de registros en Meta Ads Manager con
+  cada apertura de la app. `auth-session.js` ya calculaba `isNewUser`
+  internamente (chequeando si la fila de `subscriptions` existía antes del
+  upsert, para `signup_completed` de la Fase 2) — solo hacía falta devolverlo
+  también en la respuesta JSON. `applySessionResponse()` (`billing.js`) lo lee
+  y dispara el evento únicamente si `data.isNewUser === true`.
+- ⬜ **3b — Guardar `fbp`/`fbc` en el checkout** (pendiente del token): para
+  que el evento de compra confirmada (3c) tenga buen matching,
+  `checkout-create.js` guarda la cookie `_fbp` y el click id `fbc` (si vino de
+  un anuncio) junto a la fila de `subscriptions` — 2 columnas nuevas en
+  `schema.sql`.
+- ⬜ **3c — Conversions API en el webhook** (pendiente del token): cuando
+  `webhook-mercadopago.js` confirma `status: 'authorized'` (la fuente de
+  verdad real de "pagó"), dispara `Subscribe`/`Purchase` a la API de Meta con
+  el `fbp`/`fbc` de 3b + el monto real (`PRECIOS_ARS`, ya existe en
+  `checkout-create.js`). Secrets nuevos: `META_PIXEL_ID` (no es secreto en sí,
+  pero Secret Manager es donde ya viven el resto de las claves de backend —
+  mismo lugar que `MP_ACCESS_TOKEN`), `META_CAPI_ACCESS_TOKEN` (este sí es
+  sensible). **Decisión pendiente de confirmar con el usuario**: si mandar
+  además email/teléfono hasheado para el Advanced Matching de Meta (mejora el
+  matching de conversiones) — la app ya tiene una postura explícita opuesta
+  para Google Analytics (v2.00: nunca PII, por los ToS de GA), pero la
+  recomendación/postura de Meta para Conversions API es la contraria (hashear
+  y mandar PII es su práctica estándar) — no asumir un default sin
+  preguntarle, mismo criterio que ya se usó para la decisión de GA.
+- ⬜ **Privacidad** (pendiente, antes de cerrar la fase): sumar una línea a
+  `privacy.html` declarando el uso de Meta Pixel/Conversions API con fines
+  publicitarios — texto a preparar y pasar para aprobación.
 
 ### Tests + deploy
 
-Mismo patrón. Esta fase sí toca `functions/schema.sql` de nuevo (columnas
-`fbp`/`fbc`) y suma 2 secrets nuevos en Firebase Functions Secret Manager —
-recordar el paso manual de Cloud Run Invoker si en algún momento se separa
-esto en una Cloud Function propia en vez de colgarlo de `webhook-mercadopago.js`
-(que ya lo tiene concedido).
+`test_meta_pixel.js` (vm-sandbox, corrido contra `billing.js` real): confirma
+que `trackMetaPixelEvent()` nunca rompe nada (sin `fbq`, o si `fbq()` tira),
+que llama a `fbq('track', eventName, params)` correctamente, que
+`META_PIXEL_PLAN_PRICES_ARS` sigue sincronizado con `PRECIOS_ARS`, y que
+`applySessionResponse()` dispara `CompleteRegistration` únicamente cuando
+`isNewUser:true` (nunca en sesión restaurada/re-login). `node --check` en
+`app.html`, `billing.js`, `functions/auth-session.js`.
+
+3b/3c sí van a tocar `functions/schema.sql` de nuevo (columnas `fbp`/`fbc`) y
+sumar 2 secrets nuevos en Firebase Functions Secret Manager — recordar el
+paso manual de Cloud Run Invoker si en algún momento se separa esto en una
+Cloud Function propia en vez de colgarlo de `webhook-mercadopago.js` (que ya
+lo tiene concedido).
 
 ---
 
 ## Checklist rápido de lo que falta de vos, por fase
 
-- **Fase 1**: aprobar el copy del modal de onboarding (te lo paso antes de programar).
-- **Fase 2**: nada externo — solo repetir los pasos manuales de Supabase (Exposed tables + GRANTs) para `usage_events` cuando llegue el momento.
-- **Fase 3**: Pixel ID + access token de Conversions API de Meta Business Manager.
+- **Fase 1**: ✅ nada pendiente.
+- **Fase 2**: ✅ nada pendiente.
+- **Fase 3**: ✅ Pixel ID ya lo tenemos. Todavía falta el **access token de
+  Conversions API** (Events Manager → Configuración → Conversions API →
+  Generar token de acceso) para 3b/3c, y una decisión tuya sobre el Advanced
+  Matching (PII hasheada) antes de implementarlos.

@@ -180,6 +180,12 @@ exports.authSession = onRequest(
         // (drive-token-refresh.js) en vez del silencioso basado en cookies
         // de Google en el navegador.
         hasRefreshToken: !!data.drive_refresh_token,
+        // Fase 3d de GROWTH_PLAN.md (Meta Pixel): le dice al frontend si
+        // esta conexión es un registro genuino (no una sesión restaurada
+        // ni un re-login) para disparar CompleteRegistration una sola vez
+        // por cuenta real — mismo booleano que ya se usa arriba para
+        // signup_completed, ahora también expuesto al cliente.
+        isNewUser,
       });
     } catch (e) {
       if (e instanceof AuthError) {
