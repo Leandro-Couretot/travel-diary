@@ -7,6 +7,48 @@ const SUPABASE_URL = defineSecret('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 const MP_ACCESS_TOKEN = defineSecret('MP_ACCESS_TOKEN');
 const MP_WEBHOOK_SECRET = defineSecret('MP_WEBHOOK_SECRET');
+// Fase 3c de GROWTH_PLAN.md — el único secreto de verdad de esta entrega
+// (generado en Meta Events Manager → Configuración → Conversions API →
+// Integración directa). El Pixel ID no va en Secret Manager porque no es
+// sensible — es el mismo valor que ya vive hardcodeado en app.html.
+const META_CAPI_ACCESS_TOKEN = defineSecret('META_CAPI_ACCESS_TOKEN');
+const META_PIXEL_ID = '1609371220699065';
+
+// Manda el evento `Subscribe` a la Conversions API de Meta — best-effort,
+// nunca puede romper el procesamiento del webhook real (mismo criterio que
+// logEvent()/el resto de este archivo: MP ya recibió su 200 antes de que
+// esto corra). Deliberadamente SIN ningún dato personal del usuario (email,
+// teléfono) — decisión explícita del usuario, misma postura que ya tiene
+// esta app con Google Analytics (nunca PII, ver CLAUDE.md v2.00) — el
+// matching se apoya solo en `fbp`/`fbc`, las cookies de primera parte que ya
+// capturó checkout-create.js (3b). Sin ninguna de las dos (adblocker, o el
+// checkout nunca pasó por un navegador con el Pixel activo) no hay ningún
+// identificador para mandar — Meta rechaza un evento sin al menos uno, así
+// que directamente no se manda nada en vez de mandar un evento inválido.
+async function sendMetaSubscribeEvent({ fbp, fbc, value, currency, accessToken }) {
+  if (!fbp && !fbc) return;
+  try {
+    const userData = {};
+    if (fbp) userData.fbp = fbp;
+    if (fbc) userData.fbc = fbc;
+    const res = await fetch(`https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${accessToken}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: [{
+          event_name: 'Subscribe',
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: 'website',
+          user_data: userData,
+          custom_data: { value: value || undefined, currency: currency || 'ARS' },
+        }],
+      }),
+    });
+    if (!res.ok) console.error('Meta Conversions API error:', await res.text());
+  } catch (e) {
+    console.error('No se pudo mandar el evento Subscribe a Meta Conversions API:', e);
+  }
+}
 
 // Formato de x-signature: "ts=<timestamp_ms>,v1=<hmac_hex>"
 // Manifest a firmar: "id:<data.id>;request-id:<x-request-id>;ts:<ts>;"
@@ -47,7 +89,7 @@ async function logEvent(supabase, { googleSub, topic, resourceId, payload }) {
 exports.webhookMercadopago = onRequest(
   {
     region: 'southamerica-east1',
-    secrets: [SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET],
+    secrets: [SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, META_CAPI_ACCESS_TOKEN],
   },
   async (req, res) => {
     if (req.method !== 'POST') {
@@ -78,10 +120,32 @@ exports.webhookMercadopago = onRequest(
         });
         if (mpRes.ok) {
           const mpData = await mpRes.json();
+          // Se lee el status/fbp/fbc ANTES de actualizar para saber si esta
+          // notificación es la que recién confirma el pago — sin esto,
+          // cualquier webhook posterior con el mismo status:'authorized'
+          // (MP reintenta notificaciones) dispararía `Subscribe` de nuevo.
+          const { data: existing } = await supabase
+            .from('subscriptions')
+            .select('status, fbp, fbc')
+            .eq('mp_preapproval_id', dataId)
+            .maybeSingle();
+          const justAuthorized = mpData.status === 'authorized' && existing && existing.status !== 'authorized';
+
           await supabase
             .from('subscriptions')
             .update({ status: mpData.status })
             .eq('mp_preapproval_id', dataId);
+
+          if (justAuthorized) {
+            await sendMetaSubscribeEvent({
+              fbp: existing.fbp,
+              fbc: existing.fbc,
+              value: mpData.auto_recurring && mpData.auto_recurring.transaction_amount,
+              currency: mpData.auto_recurring && mpData.auto_recurring.currency_id,
+              accessToken: META_CAPI_ACCESS_TOKEN.value(),
+            });
+          }
+
           await logEvent(supabase, { googleSub: mpData.external_reference, topic, resourceId: dataId, payload: mpData });
         } else {
           await logEvent(supabase, { topic, resourceId: dataId, payload: { error: 'preapproval_fetch_failed' } });

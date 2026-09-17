@@ -53,6 +53,16 @@ create table if not exists travel_diary.subscriptions (
 -- con el flujo nuevo (migración lazy, no se fuerza a nadie de una).
 alter table travel_diary.subscriptions add column if not exists drive_refresh_token text;
 
+-- Fase 3b de GROWTH_PLAN.md (Meta Pixel + Conversions API): `_fbp`/`_fbc`,
+-- las cookies de primera parte que pone el Pixel (`fbp` siempre que carga en
+-- cualquier visita, `fbc` solo si vino de un clic real en un anuncio con
+-- `fbclid`) — capturadas por checkout-create.js al crear el `preapproval` y
+-- guardadas acá para que el webhook (3c) las tenga a mano cuando Mercado
+-- Pago confirma el pago, sin depender de ningún dato del usuario (nunca
+-- email/teléfono — decisión explícita, ver CLAUDE.md → "Suscripciones").
+alter table travel_diary.subscriptions add column if not exists fbp text;
+alter table travel_diary.subscriptions add column if not exists fbc text;
+
 -- Log crudo de cada notificación de Mercado Pago, para poder auditar pagos
 -- después. Nunca se borra ni se actualiza, solo se inserta.
 create table if not exists travel_diary.subscription_events (

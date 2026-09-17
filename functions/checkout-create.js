@@ -24,6 +24,19 @@ const FREQUENCY_BY_PLAN = {
   annual: { frequency: 12, frequency_type: 'months' },
 };
 
+// Fase 3b de GROWTH_PLAN.md: `_fbp`/`_fbc` son cookies de PRIMERA parte que
+// el Pixel de Meta pone en este mismo dominio (`fbevents.js`, cargado en
+// app.html) — como /api/checkout/create es same-origin (rewrite de Firebase
+// Hosting), viajan solas en el header `Cookie` de este POST, sin que el
+// frontend tenga que leerlas ni mandarlas a mano. Se leen acá (no en
+// auth-session.js) porque recién en el checkout tiene sentido guardarlas —
+// es el único momento donde el evento de conversión real (3c) las necesita.
+function readCookie(req, name) {
+  const header = req.headers.cookie || '';
+  const match = header.split(';').map((p) => p.trim()).find((p) => p.startsWith(name + '='));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+}
+
 exports.checkoutCreate = onRequest(
   {
     region: 'southamerica-east1',
@@ -77,10 +90,22 @@ exports.checkoutCreate = onRequest(
         return;
       }
 
+      const fbp = readCookie(req, '_fbp');
+      const fbc = readCookie(req, '_fbc');
+
       const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
       const { error } = await supabase
         .from('subscriptions')
-        .update({ mp_preapproval_id: mpData.id, plan: planType, status: 'pending' })
+        .update({
+          mp_preapproval_id: mpData.id,
+          plan: planType,
+          status: 'pending',
+          // null si el navegador no tiene la cookie (adblocker, o nunca vino
+          // de un anuncio en el caso de fbc) — el helper de 3c simplemente
+          // no manda ese campo a Meta si está vacío.
+          fbp: fbp || null,
+          fbc: fbc || null,
+        })
         .eq('google_sub', session.sub);
 
       if (error) {

@@ -1,4 +1,4 @@
 {
-  "version": "2.04",
-  "changelog": "Empieza a medirse el embudo de Meta Ads (Pixel), para optimizar campañas."
+  "version": "2.05",
+  "changelog": "Se completa la medición del embudo de Meta Ads: aviso de conversión al confirmarse un pago."
 }

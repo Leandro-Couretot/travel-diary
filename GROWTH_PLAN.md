@@ -168,7 +168,7 @@ servidor, mismo síntoma que ya pasó una vez con `subscriptions`.
 
 ---
 
-## Fase 3 — Meta Pixel + Conversions API (en curso — 3a/3d ✅ v2.04, 3b/3c pendientes de credenciales)
+## Fase 3 — Meta Pixel + Conversions API (código completo ✅ v2.05 — deploy bloqueado hasta setear el secret)
 
 ### Qué hace falta del usuario antes de arrancar esta fase
 
@@ -176,12 +176,34 @@ servidor, mismo síntoma que ya pasó una vez con `subscriptions`.
    — ✅ ya lo tenemos: `1609371220699065` (el usuario compartió el link a su
    dataset en Events Manager).
 2. Un **access token de Conversions API** (Events Manager → Configuración →
-   Conversions API → Generar token de acceso) — **todavía falta**, bloquea
-   3b/3c.
+   Conversions API → Integración directa → Generar token de acceso) — ✅ el
+   usuario ya lo generó (vía "Integración directa", sin pasar por Google Tag
+   Manager — evaluado y descartado: el evento crítico de esta app, el pago
+   confirmado, nace en un webhook de servidor, no en el navegador, así que
+   GTM no simplifica nada acá, solo agrega una cuenta/dashboard más que
+   mantener sincronizado con el código). **Falta cargarlo**: `firebase
+   functions:secrets:set META_CAPI_ACCESS_TOKEN` desde la máquina del
+   usuario — bloquea el deploy hasta que se corra (mismo patrón que
+   `GOOGLE_CLIENT_SECRET` en v1.91).
 
 Como el Pixel ID no es un secreto (cualquier navegador que corre la página lo
 ve igual que ve `G-0ZM7BKFP5G`, el measurement ID de GA ya hardcodeado desde
-v2.00), 3a y 3d no necesitaban esperar al access token — se implementaron ya.
+v2.00), 3a y 3d no necesitaban esperar al access token — se implementaron en
+v2.04. 3b/3c sí lo necesitaban del lado del servidor y quedaron completas en
+v2.05, con el código ya commiteado pero **sin deployar** hasta que el secret
+esté cargado.
+
+### Decisión de Advanced Matching (PII hasheada) — resuelta
+
+Preguntado al usuario explícitamente (mismo criterio que la decisión de "sin
+PII" ya tomada para Google Analytics en v2.00): **no** se manda ningún dato
+personal (email/teléfono, ni hasheado) en las llamadas a Conversions API — el
+matching se apoya únicamente en `fbp`/`fbc` (cookies de primera parte del
+propio Pixel). El único costo real: si alguien clickea el anuncio desde un
+dispositivo y paga desde otro, ese caso puntual no matchea tan bien como con
+email hasheado — aceptado como un caso chico para el volumen actual de la
+app, a cambio de no abrir una categoría nueva de dato sensible que esta app
+nunca manejó.
 
 ### Sub-pasos
 
@@ -207,28 +229,34 @@ v2.00), 3a y 3d no necesitaban esperar al access token — se implementaron ya.
   upsert, para `signup_completed` de la Fase 2) — solo hacía falta devolverlo
   también en la respuesta JSON. `applySessionResponse()` (`billing.js`) lo lee
   y dispara el evento únicamente si `data.isNewUser === true`.
-- ⬜ **3b — Guardar `fbp`/`fbc` en el checkout** (pendiente del token): para
-  que el evento de compra confirmada (3c) tenga buen matching,
-  `checkout-create.js` guarda la cookie `_fbp` y el click id `fbc` (si vino de
-  un anuncio) junto a la fila de `subscriptions` — 2 columnas nuevas en
-  `schema.sql`.
-- ⬜ **3c — Conversions API en el webhook** (pendiente del token): cuando
-  `webhook-mercadopago.js` confirma `status: 'authorized'` (la fuente de
-  verdad real de "pagó"), dispara `Subscribe`/`Purchase` a la API de Meta con
-  el `fbp`/`fbc` de 3b + el monto real (`PRECIOS_ARS`, ya existe en
-  `checkout-create.js`). Secrets nuevos: `META_PIXEL_ID` (no es secreto en sí,
-  pero Secret Manager es donde ya viven el resto de las claves de backend —
-  mismo lugar que `MP_ACCESS_TOKEN`), `META_CAPI_ACCESS_TOKEN` (este sí es
-  sensible). **Decisión pendiente de confirmar con el usuario**: si mandar
-  además email/teléfono hasheado para el Advanced Matching de Meta (mejora el
-  matching de conversiones) — la app ya tiene una postura explícita opuesta
-  para Google Analytics (v2.00: nunca PII, por los ToS de GA), pero la
-  recomendación/postura de Meta para Conversions API es la contraria (hashear
-  y mandar PII es su práctica estándar) — no asumir un default sin
-  preguntarle, mismo criterio que ya se usó para la decisión de GA.
-- ⬜ **Privacidad** (pendiente, antes de cerrar la fase): sumar una línea a
-  `privacy.html` declarando el uso de Meta Pixel/Conversions API con fines
-  publicitarios — texto a preparar y pasar para aprobación.
+- ✅ **3b — Guardar `fbp`/`fbc` en el checkout (v2.05)**: `checkout-create.js`
+  lee las cookies `_fbp`/`_fbc` directo de `req.headers.cookie`
+  (`readCookie()`) — como `/api/checkout/create` es same-origin (rewrite de
+  Firebase Hosting), viajan solas en el pedido, sin que el frontend tenga que
+  leerlas ni mandarlas a mano — y las guarda junto al resto de la fila de
+  `subscriptions` en el mismo `.update()` que ya corría ahí. 2 columnas
+  nuevas en `schema.sql` (`fbp`, `fbc`, `if not exists`).
+- ✅ **3c — Conversions API en el webhook (v2.05)**: `sendMetaSubscribeEvent()`
+  (`webhook-mercadopago.js`) dispara `Subscribe` a la Graph API de Meta con
+  el `fbp`/`fbc` guardados en 3b + el monto/moneda reales (leídos de la
+  respuesta de Mercado Pago, `mpData.auto_recurring`, no de una copia
+  hardcodeada de `PRECIOS_ARS`). Se dispara únicamente en la **transición**
+  a `status:'authorized'` (se lee el status anterior de la fila ANTES de
+  actualizarlo) — sin esto, cada reintento de notificación de Mercado Pago
+  con el mismo status ya confirmado dispararía el evento de nuevo. Sin
+  `fbp` ni `fbc` (adblocker, o un checkout que nunca pasó por un navegador
+  con el Pixel activo) no se manda nada — Meta rechaza un evento sin al
+  menos un identificador, así que mandar uno vacío sería peor que no mandar
+  nada. **Sin ningún dato personal** (email/teléfono, ni hasheado) — ver
+  "Decisión de Advanced Matching" más arriba. Solo `META_CAPI_ACCESS_TOKEN`
+  es un secret nuevo (`META_PIXEL_ID` quedó hardcodeado como constante, igual
+  que ya vive en `app.html` — no es sensible, no ameritaba Secret Manager).
+- ✅ **Privacidad (v2.05)**: `privacy.html` — sección 5 ("Compartir datos con
+  terceros") ampliada para nombrar Google Analytics y el Píxel de Meta
+  (aprovechado para cerrar de paso que GA nunca había quedado declarado ahí
+  desde que se agregó en v2.00), aclarando que ninguna de las dos recibe
+  nombre/email/contenido real, solo datos agregados y (para Meta) un
+  identificador de navegador sin PII.
 
 ### Tests + deploy
 
@@ -252,7 +280,8 @@ lo tiene concedido).
 
 - **Fase 1**: ✅ nada pendiente.
 - **Fase 2**: ✅ nada pendiente.
-- **Fase 3**: ✅ Pixel ID ya lo tenemos. Todavía falta el **access token de
-  Conversions API** (Events Manager → Configuración → Conversions API →
-  Generar token de acceso) para 3b/3c, y una decisión tuya sobre el Advanced
-  Matching (PII hasheada) antes de implementarlos.
+- **Fase 3**: ✅ Pixel ID + access token ya los tenemos, y la decisión de
+  Advanced Matching ya está tomada (sin PII). Código de 3a-3d completo y
+  commiteado. Solo falta un paso tuyo para que llegue a producción: `firebase
+  functions:secrets:set META_CAPI_ACCESS_TOKEN` desde tu máquina — recién
+  ahí se puede correr el deploy.
