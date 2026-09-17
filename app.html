@@ -1202,7 +1202,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.05';
+const APP_VERSION = '2.06';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -1704,12 +1704,14 @@ function renderDisconnected() {
 function openOnboardingModal() {
   document.getElementById('modal-onboarding').classList.add('open');
   trackEvent('onboarding_viewed');
+  trackMetaPixelCustomEvent('ClickLandingCTA');
 }
 function closeOnboardingModal() {
   document.getElementById('modal-onboarding').classList.remove('open');
 }
 function startOnboardingLogin() {
   trackEvent('signup_started');
+  trackMetaPixelCustomEvent('ClickContinueGoogle');
   closeOnboardingModal();
   handleDriveBtn();
 }
@@ -2209,6 +2211,13 @@ async function submitNewAlbum() {
     }
     btn.textContent = 'Creando...';
     await createAlbum({ id, name, dateFrom, dateTo });
+    // Funnel de Meta Ads (ver CLAUDE.md → "Meta Ads: funnel completo
+    // instrumentado"): `albums` todavía tiene la lista de ANTES de este
+    // álbum (recién se refresca con renderAlbums() más abajo), así que
+    // +1 es exactamente qué número de álbum propio activo es este —
+    // solo se trackea hasta el 4º, que es donde termina el funnel pedido.
+    const albumOrdinal = albums.length + 1;
+    if (albumOrdinal >= 1 && albumOrdinal <= 4) trackMetaPixelCustomEvent(`CreateAlbum${albumOrdinal}`);
     if (hasMigratable) { btn.textContent = 'Migrando días...'; await migrateOldDaysToAlbum(id); }
     closeNewAlbumModal(); await renderAlbums(); await checkMigratable();
   } catch(e) { showAlbumError(e.message); btn.textContent = 'Crear álbum'; btn.disabled = false; }

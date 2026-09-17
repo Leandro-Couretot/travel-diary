@@ -1,4 +1,4 @@
 {
-  "version": "2.05",
-  "changelog": "Se completa la medición del embudo de Meta Ads: aviso de conversión al confirmarse un pago."
+  "version": "2.06",
+  "changelog": "Se mide el embudo completo de Meta Ads, de la home hasta la suscripción."
 }

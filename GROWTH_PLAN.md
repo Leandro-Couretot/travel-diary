@@ -274,14 +274,24 @@ paso manual de Cloud Run Invoker si en algún momento se separa esto en una
 Cloud Function propia en vez de colgarlo de `webhook-mercadopago.js` (que ya
 lo tiene concedido).
 
+### Fase 3.1 — funnel completo, de la home a la suscripción ✅ (v2.06)
+
+Antes de arrancar a pautar, el usuario pidió medir 9 pasos del embudo
+completo, no solo el tramo de pago — ver la sección dedicada **"Meta Ads:
+funnel completo instrumentado"** en `CLAUDE.md` para el detalle de cada
+evento, su punto de código exacto, y por qué no hace falta deduplicar
+"usuarios únicos" a mano (Meta Ads Manager ya lo calcula). Resumen:
+`PageView` → `ClickLandingCTA` → `ClickContinueGoogle` → `CompleteRegistration`
+(hybrid Pixel+CAPI) → `CreateAlbum1`…`CreateAlbum4` → `ViewContent` →
+`InitiateCheckout` (hybrid Pixel+CAPI) → `Subscribe`. Se evaluó integrar
+`CompleteRegistration`/`InitiateCheckout` vía Google Tag Manager y se
+descartó por el mismo motivo que ya se descartó para `Subscribe` en 3c.
+
 ---
 
 ## Checklist rápido de lo que falta de vos, por fase
 
 - **Fase 1**: ✅ nada pendiente.
 - **Fase 2**: ✅ nada pendiente.
-- **Fase 3**: ✅ Pixel ID + access token ya los tenemos, y la decisión de
-  Advanced Matching ya está tomada (sin PII). Código de 3a-3d completo y
-  commiteado. Solo falta un paso tuyo para que llegue a producción: `firebase
-  functions:secrets:set META_CAPI_ACCESS_TOKEN` desde tu máquina — recién
-  ahí se puede correr el deploy.
+- **Fase 3 (+ 3.1, funnel completo)**: ✅ nada pendiente — código completo,
+  secret ya cargado, deployado y confirmado en producción.

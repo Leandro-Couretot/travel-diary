@@ -81,13 +81,40 @@ async function appCheckTokenValue() {
 // botones del modal de suscripción en app.html).
 const META_PIXEL_PLAN_PRICES_ARS = { monthly: 14000, annual: Math.round(14000 * 12 * 0.8) };
 
-function trackMetaPixelEvent(eventName, params) {
+// `eventId` (opcional, Fase 3.1 — funnel completo de Ads, ver CLAUDE.md →
+// "Meta Ads: funnel completo instrumentado") es el mecanismo oficial de
+// deduplicación de Meta cuando el mismo evento lógico se manda por Pixel Y
+// por Conversions API (`CompleteRegistration`/`InitiateCheckout`, los dos
+// únicos con un momento server-side útil) — Meta cuenta las dos llegadas
+// como una sola si comparten `eventID`/`event_id` exactos. Para el resto de
+// los eventos (Pixel-only) se omite sin cambiar nada de comportamiento.
+function trackMetaPixelEvent(eventName, params, eventId) {
   try {
     if (typeof fbq !== 'function') return;
-    fbq('track', eventName, params || {});
+    fbq('track', eventName, params || {}, eventId ? { eventID: eventId } : undefined);
   } catch (e) {
     console.warn('No se pudo trackear el evento de Meta Pixel ' + eventName + ':', e);
   }
+}
+
+// Eventos que no son parte del set estándar de Meta (PageView, ViewContent,
+// InitiateCheckout, CompleteRegistration, Subscribe) tienen que mandarse con
+// `trackCustom`, no `track` — mismos pasos del funnel nuevo (clics del
+// onboarding, "creaste tu álbum N") que no tienen un nombre estándar de Meta.
+function trackMetaPixelCustomEvent(eventName, params) {
+  try {
+    if (typeof fbq !== 'function') return;
+    fbq('trackCustom', eventName, params || {});
+  } catch (e) {
+    console.warn('No se pudo trackear el evento custom de Meta Pixel ' + eventName + ':', e);
+  }
+}
+
+// Un id de evento nuevo para el mecanismo de deduplicación de arriba — mismo
+// criterio que newAuthState() en app.html (crypto.randomUUID con fallback
+// para navegadores viejos que no lo tengan).
+function newMetaEventId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
 // ─── Debug: forzar plan localmente, sin tocar Mercado Pago ─────────
@@ -191,7 +218,10 @@ function applySessionResponse(data) {
   // una sesión restaurada ni en un re-login (data.isNewUser lo calcula
   // auth-session.js del lado del servidor, antes del upsert en Supabase,
   // así que no depende de nada que el cliente pueda falsear o perder).
-  if (data.isNewUser) trackMetaPixelEvent('CompleteRegistration');
+  // Fase 3.1: mismo event_id que usó el refuerzo CAPI que auth-session.js ya
+  // disparó del lado del servidor (solo viene si isNewUser) — deduplicación,
+  // no un evento nuevo.
+  if (data.isNewUser) trackMetaPixelEvent('CompleteRegistration', {}, data.metaEventId);
 }
 
 // Pide un access_token de Drive nuevo usando el refresh_token guardado del
@@ -237,12 +267,19 @@ async function refreshSubscriptionStatus() {
 
 async function startCheckout(planType) {
   if (!sessionToken) { alert('Conectá Drive primero para poder suscribirte.'); return; }
-  trackMetaPixelEvent('InitiateCheckout', { value: META_PIXEL_PLAN_PRICES_ARS[planType], currency: 'ARS', content_name: planType });
+  // Fase 3.1 (funnel completo de Ads, ver CLAUDE.md): mismo id para las dos
+  // llegadas de este evento (Pixel acá mismo, CAPI en checkout-create.js
+  // apenas se cree el preapproval) — es lo que le permite a Meta deduplicar
+  // en una sola conversión en vez de contar InitiateCheckout dos veces.
+  // Se genera ANTES del fetch para no demorar el disparo del Pixel esperando
+  // a la red.
+  const eventId = newMetaEventId();
+  trackMetaPixelEvent('InitiateCheckout', { value: META_PIXEL_PLAN_PRICES_ARS[planType], currency: 'ARS', content_name: planType }, eventId);
   try {
     const res = await fetch('/api/checkout/create', {
       method: 'POST',
       headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
-      body: JSON.stringify({ planType }),
+      body: JSON.stringify({ planType, eventId }),
     });
     if (!res.ok) { alert('No se pudo iniciar la suscripción. Probá de nuevo en un rato.'); return; }
     const { init_point } = await res.json();

@@ -1,13 +1,20 @@
+const crypto = require('crypto');
 const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { getSupabaseClient } = require('./lib/supabase');
 const { signSession } = require('./lib/session');
+const { readFbCookie, sendMetaCapiEvent } = require('./lib/metaCapi');
 
 const GOOGLE_CLIENT_ID = defineSecret('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_CLIENT_SECRET');
 const SESSION_JWT_SECRET = defineSecret('SESSION_JWT_SECRET');
 const SUPABASE_URL = defineSecret('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
+// Fase 3.1 (funnel completo de Ads, ver CLAUDE.md): CompleteRegistration
+// hybrid Pixel+CAPI — este endpoint ya sabe en el momento exacto si es un
+// signup genuino (isNewUser, ver más abajo), así que es el lugar natural
+// para reforzar por CAPI el mismo Pixel que dispara el cliente.
+const META_CAPI_ACCESS_TOKEN = defineSecret('META_CAPI_ACCESS_TOKEN');
 
 // Error tipado con el status HTTP que corresponde devolver — así el catch
 // general de abajo no tiene que adivinar 401 vs 500 mirando el mensaje.
@@ -68,7 +75,7 @@ async function resolveGoogleIdentity(accessToken) {
 exports.authSession = onRequest(
   {
     region: 'southamerica-east1',
-    secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
+    secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, META_CAPI_ACCESS_TOKEN],
     // App Check (ver CLAUDE.md → "App Check", Fase 2): rechaza automáticamente
     // cualquier pedido sin un token válido de X-Firebase-AppCheck, antes de
     // que el handler llegue a correr — así el tráfico bot/script directo a
@@ -135,6 +142,11 @@ exports.authSession = onRequest(
         return;
       }
 
+      // Se genera ANTES de saber si es nuevo porque el ID en sí no es
+      // sensible ni depende de nada — más simple que meterlo dentro del if.
+      // Solo se usa (y se manda al cliente) cuando isNewUser es true.
+      const metaEventId = crypto.randomUUID();
+
       if (isNewUser) {
         // Best-effort, nunca bloquea ni rompe el login real si falla —
         // mismo criterio que el resto de los gates de esta app (el
@@ -144,6 +156,17 @@ exports.authSession = onRequest(
         } catch (e) {
           console.warn('No se pudo registrar signup_completed:', e);
         }
+        // Fase 3.1: refuerzo CAPI del mismo CompleteRegistration que el
+        // cliente dispara por Pixel con este mismo metaEventId (ver
+        // applySessionResponse() en billing.js) — best-effort, best-effort
+        // real porque sendMetaCapiEvent() ya traga cualquier error adentro.
+        await sendMetaCapiEvent({
+          eventName: 'CompleteRegistration',
+          eventId: metaEventId,
+          fbp: readFbCookie(req, '_fbp'),
+          fbc: readFbCookie(req, '_fbc'),
+          accessToken: META_CAPI_ACCESS_TOKEN.value(),
+        });
       }
 
       const token = signSession(SESSION_JWT_SECRET.value(), {
@@ -186,6 +209,12 @@ exports.authSession = onRequest(
         // por cuenta real — mismo booleano que ya se usa arriba para
         // signup_completed, ahora también expuesto al cliente.
         isNewUser,
+        // Fase 3.1: mismo id que usó el refuerzo CAPI de arriba — el
+        // cliente lo pasa a su propio fbq('track', 'CompleteRegistration', ...)
+        // para que Meta deduplique las dos llegadas en una sola conversión.
+        // Solo tiene sentido cuando isNewUser es true (billing.js lo ignora
+        // en cualquier otro caso).
+        metaEventId: isNewUser ? metaEventId : undefined,
       });
     } catch (e) {
       if (e instanceof AuthError) {

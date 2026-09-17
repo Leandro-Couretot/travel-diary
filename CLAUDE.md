@@ -214,6 +214,102 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 
 ---
 
+## Meta Ads: funnel completo instrumentado — ⚠️ leer antes de tocar estos puntos
+
+Fase 3.1 de `GROWTH_PLAN.md` (v2.06, sobre la base de la Fase 3 — Pixel/CAPI
+básico, v2.04/v2.05). El usuario pidió medir el embudo completo de punta a
+punta antes de arrancar a pautar en Meta Ads: **9 pasos**, cada uno atado a
+un punto de código muy específico. Si se refactoriza cualquiera de esas
+funciones, hay que mover el disparo del evento junto con la lógica — si no,
+el funnel queda con un agujero silencioso en Meta Ads Manager (nadie se
+entera hasta que se nota que un paso dejó de tener datos).
+
+| # | Evento (nombre exacto) | Se dispara en... | Pixel | CAPI |
+|---|---|---|---|---|
+| 1 | `PageView` (estándar) | `<head>` de `app.html`, automático al cargar | ✅ | — |
+| 2 | `ClickLandingCTA` (custom) | `openOnboardingModal()`, `app.html` — clic en el botón de la landing "Iniciar sesión / Registrarse" | ✅ | — |
+| 3 | `ClickContinueGoogle` (custom) | `startOnboardingLogin()`, `app.html` — clic en "Continuar con Google" dentro del modal, el que de verdad dispara el login | ✅ | — |
+| 4 | `CompleteRegistration` (estándar) | `applySessionResponse()` en `billing.js` (Pixel) + el bloque `if (isNewUser)` de `auth-session.js` (CAPI) — solo en un signup genuino, nunca en sesión restaurada/re-login | ✅ | ✅ hybrid |
+| 5-8 | `CreateAlbum1`…`CreateAlbum4` (custom) | rama "crear" de `submitNewAlbum()`, `app.html`, justo después de que `createAlbum()` resuelve | ✅ | — |
+| 9 | `ViewContent` (estándar) | `openSubscribeModal()`, `app.html` — se abre el paywall | ✅ | — |
+| 10 | `InitiateCheckout` (estándar) | `startCheckout()` en `billing.js` (Pixel) + `checkout-create.js` (CAPI) — se tocó "Mensual"/"Anual" | ✅ | ✅ hybrid |
+| 11 | `Subscribe` (estándar) | `webhook-mercadopago.js`, únicamente en la transición a `status:'authorized'` | — | ✅ |
+
+(El pedido original numeraba 9 pasos contando `CreateAlbumN` como uno solo — quedan 11 nombres de evento reales porque son 4 álbumes + Pixel/CAPI cuentan como una sola fila cada uno arriba.)
+
+### Por qué el split Pixel vs. CAPI es el que es
+Los eventos 1-3, 5-9 son puramente de UI en el navegador — no hay ningún
+Cloud Function corriendo en simultáneo del que colgarse, así que agregar CAPI
+ahí implicaría sumar infraestructura solo para reportar un clic, sin ningún
+beneficio real. Los eventos 4 y 10 sí tienen un momento del lado del
+servidor que ya existe por otro motivo (`auth-session.js` ya sabe si es
+signup nuevo; `checkout-create.js` ya crea el `preapproval`) — ahí CAPI es
+"gratis" y vale la pena por la resiliencia extra contra adblockers. El
+evento 11 (`Subscribe`) es CAPI-only a propósito — nunca puede ser el
+cliente el que reporte "se confirmó un pago", porque el cliente no tiene
+forma de saber eso con certeza; la única fuente de verdad es el webhook de
+Mercado Pago.
+
+### El mecanismo de deduplicación hybrid (eventos 4 y 10)
+Cuando el mismo evento lógico sale por Pixel Y por CAPI, las dos llegadas
+tienen que compartir el mismo `eventID`/`event_id` — es el campo que usa
+Meta para colapsarlas en una sola conversión en vez de contar doble.
+- **CompleteRegistration**: el servidor (`auth-session.js`) ya sabe en su
+  propio momento si es un signup nuevo, así que genera el id
+  (`crypto.randomUUID()`) y se lo manda de vuelta al cliente en la respuesta
+  JSON (`metaEventId`, solo presente si `isNewUser`); `applySessionResponse()`
+  lo usa al llamar `trackMetaPixelEvent('CompleteRegistration', {}, data.metaEventId)`.
+- **InitiateCheckout**: acá es al revés — el cliente dispara su Pixel
+  ANTES de llamar a la red (para no demorar el evento esperando el
+  round-trip), así que es el cliente el que genera el id
+  (`newMetaEventId()` en `startCheckout()`) y lo manda en el body de
+  `/api/checkout/create`; `checkout-create.js` lo reusa tal cual al llamar
+  a `sendMetaCapiEvent()`.
+- El helper compartido que arma el POST a la Graph API de Meta para
+  cualquiera de estos tres endpoints server-side es
+  **`functions/lib/metaCapi.js`** (`readFbCookie()`/`sendMetaCapiEvent()`)
+  — extraído en esta entrega porque pasaron de 1 a 3 call-sites
+  (`webhook-mercadopago.js`, `auth-session.js`, `checkout-create.js`); antes
+  vivía duplicado solo en el primero.
+
+### Ordinal de `CreateAlbum1`-`CreateAlbum4`
+No hay ningún flag persistente de "¿ya disparé este paso alguna vez?" —
+`submitNewAlbum()` simplemente mira `albums.length + 1` (la variable de
+módulo que ya tiene la lista de álbumes propios **activos**, todavía sin
+refrescar en ese punto exacto — `renderAlbums()`, que sí la recalcula, corre
+recién después) y dispara `CreateAlbumN` si `N` está entre 1 y 4. **Límite
+conocido y aceptado**: como cuenta álbumes activos y no un total histórico,
+archivar un álbum de los primeros 4 y crear uno nuevo puede volver a
+disparar un número ya alcanzado antes (ej. `CreateAlbum3` una segunda vez).
+Se aceptó este caso borde a cambio de no sumar ningún estado nuevo que
+persistir — ver también la sección "Usuarios únicos", más abajo.
+
+### "Usuarios únicos" — no hace falta deduplicar nada del lado nuestro
+El pedido original habla de "usuarios únicos" en cada paso — eso **no** se
+resuelve escribiendo lógica de "ya disparé esto antes" en el código. Meta
+Ads Manager ya calcula esa métrica solo (columna "Alcance"/"Eventos únicos"
+en vez de "Eventos totales"), deduplicando por su propia identidad de
+persona (cookie `fbp`/`fbc`, o mejor aún si hay Advanced Matching — que esta
+app decidió explícitamente no usar, ver "Decisión de Advanced Matching" en
+`GROWTH_PLAN.md`). La única deduplicación que sí importa programar a mano es
+la del mecanismo hybrid de arriba (Pixel+CAPI del mismo evento lógico) — ahí
+sí hace falta el `eventID` compartido, porque si no Meta cuenta la misma
+conversión dos veces.
+
+### Se evaluó Google Tag Manager para esto y se descartó
+Meta Events Manager ofrece una integración directa vía Google Tag Manager
+(server-side) para configurar Conversions API sin escribir código propio —
+se evaluó explícitamente y NO se usó: el evento de mayor valor de este
+funnel (`Subscribe`) nace en un webhook de Mercado Pago, no en el
+navegador, así que GTM no tiene ninguna forma de verlo sin que igual haya
+que mandarle un ping desde el propio código del servidor — la misma
+cantidad de trabajo que llamar directo a la Graph API, pero sumando una
+cuenta/dashboard externo más para mantener sincronizado con el repo. Ver
+"Meta Pixel + Conversions API: 3b/3c" en "Funcionando bien" para el detalle
+completo de esta decisión.
+
+---
+
 ## Features implementadas
 
 ### Home (`#view-home`)
@@ -248,6 +344,10 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 ## Estado actual y pendientes
 
 ### Funcionando bien
+- **Meta Ads: funnel completo instrumentado, de la home a la suscripción — Fase 3.1** (v2.06): el usuario, antes de arrancar a pautar, pidió medir 9 pasos del embudo completo (home → clic login/registro → CompleteRegistration → crear álbum 1-4 → ViewContent → InitiateCheckout → Subscribe) — ver el detalle completo de nombres de evento, puntos de código exactos y el mecanismo de deduplicación hybrid en la sección nueva **"Meta Ads: funnel completo instrumentado"**, más arriba en este archivo (deliberadamente NO como una entrada más de este changelog — es referencia viva que hay que consultar antes de tocar cualquiera de los puntos de código que dispara un evento).
+  - Dos decisiones resueltas con el usuario antes de programar: (1) "clic en iniciar sesión/registrarse" resultó ser en realidad dos clics distintos en el flujo actual — se trackean ambos como eventos separados (`ClickLandingCTA`/`ClickContinueGoogle`) en vez de elegir uno; (2) para los dos eventos que sí tienen un momento server-side útil (`CompleteRegistration`, `InitiateCheckout`) se sumó CAPI además del Pixel que ya existía, con el mismo criterio "hybrid" que ya usaba `Subscribe` — mejor resiliencia a adblockers en los dos pasos de mayor valor antes de un registro/pago real.
+  - `functions/lib/metaCapi.js` (nuevo): extrae `readFbCookie()`/`sendMetaCapiEvent()` de donde vivían (duplicados solo en `webhook-mercadopago.js`) a un módulo compartido — necesario porque pasaron de 1 a 3 Cloud Functions que llaman a la Graph API de Meta.
+  - Verificado con `test_ads_funnel_client.js` (nuevo: `trackMetaPixelCustomEvent()` usa `trackCustom` no `track`, `trackMetaPixelEvent()` con un `eventId` manda `{eventID}` como 4to argumento de `fbq()`, `newMetaEventId()` da valores distintos; el ordinal de `CreateAlbumN` en `submitNewAlbum()` dispara `CreateAlbum1`/`CreateAlbum4` según cuántos álbumes propios activos había antes, y no dispara nada del 5to en adelante) + `test_ads_funnel_backend.js` (nuevo: `metaCapi.js` mantiene el mismo comportamiento que tenía `sendMetaSubscribeEvent()` antes de extraerlo, generalizado a cualquier `eventName`/`eventId`/`customData`; `webhook-mercadopago.js` sigue disparando `Subscribe` solo en la transición a `authorized` ahora vía el módulo compartido; `checkout-create.js` dispara `InitiateCheckout` con el MISMO `eventId` que mandó el cliente; `auth-session.js` dispara `CompleteRegistration` y devuelve `metaEventId` únicamente cuando `isNewUser` es real, nunca en un re-login) + `node --check` en los 5 archivos de backend tocados, `billing.js` y el inline script de `app.html`.
 - **Meta Pixel + Conversions API: 3b/3c, cierra la Fase 3 de `GROWTH_PLAN.md` — código completo, deploy pendiente del secret** (v2.05): siguiendo a v2.04 (3a/3d, del lado del cliente), el usuario generó el **access token de Conversions API** desde Meta Events Manager → Configuración → Conversions API → Integración directa (eligiendo explícitamente saltear la opción de integrarlo vía **Google Tag Manager** que también ofrece esa pantalla — se le recomendó no usarla: el evento crítico de esta app, el pago confirmado, nace en un webhook de servidor de Mercado Pago, no en el navegador, así que GTM —cliente o server-side— no simplifica nada ahí, solo suma una cuenta/dashboard más para mantener sincronizado con el código, cuando la llamada directa a la Graph API de Meta desde la Cloud Function que ya existe es la misma cantidad de código). Antes de programar 3c se resolvió con el usuario, vía pregunta directa, la única decisión de diseño real que quedaba pendiente: **no mandar ningún dato personal** (email/teléfono, ni hasheado) en las llamadas a Conversions API — mismo criterio ya establecido con Google Analytics (v2.00), el matching se apoya solo en `fbp`/`fbc`.
   - **3b — `checkout-create.js` guarda `fbp`/`fbc`**: `readCookie(req, name)` (función nueva) lee las cookies `_fbp`/`_fbc` directo de `req.headers.cookie` — como `/api/checkout/create` es same-origin (rewrite de Firebase Hosting hacia la Cloud Function, mismo dominio que sirve `app.html`), esas cookies de primera parte que ya pone `fbevents.js` viajan solas en el pedido, sin que el frontend tenga que leerlas ni mandarlas a mano en el body. Se suman al mismo `.update()` de `subscriptions` que ya corría ahí (junto con `mp_preapproval_id`/`plan`/`status`) — 2 columnas nuevas en `schema.sql` (`fbp`, `fbc`, con `if not exists`, mismo patrón que `drive_refresh_token`).
   - **3c — `webhook-mercadopago.js` dispara `Subscribe` a la Graph API de Meta**: `sendMetaSubscribeEvent({fbp, fbc, value, currency, accessToken})` (función nueva) arma el POST a `graph.facebook.com/v21.0/{PIXEL_ID}/events` con `user_data: {fbp, fbc}` únicamente (nunca email/teléfono) y `custom_data: {value, currency}` leídos de la respuesta real de Mercado Pago (`mpData.auto_recurring`), no de una copia hardcodeada de precios. **Se dispara solo en la transición a `status:'authorized'`**: se lee el `status` (+ `fbp`/`fbc`) de la fila ANTES de actualizarla, y se compara contra el `status` nuevo que devuelve la consulta a Mercado Pago — sin este chequeo, cada reintento de notificación de Mercado Pago con el mismo estado ya confirmado (MP reintenta webhooks) hubiera vuelto a disparar el evento, infrando el conteo de conversiones en Meta Ads Manager. Sin `fbp` **ni** `fbc` (adblocker, o un checkout que nunca pasó por un navegador con el Pixel activo) directamente no se manda nada — Meta rechaza cualquier evento sin al menos un identificador, así que mandar uno vacío sería peor que no mandar nada; con al menos `fbp` (que existe en cualquier visita, haya venido o no de un anuncio) alcanza. Mismo criterio "nunca puede romper el flujo real" que ya rige el resto de este archivo — `webhook-mercadopago.js` ya le respondió `200` a Mercado Pago antes de que esto corra, así que un `fetch` que tira o una respuesta no-ok de Meta solo se loguean, nunca se propagan.
@@ -577,7 +677,7 @@ Travel Diary **no tiene su propio proyecto Supabase** — usa `pluxow-clients`, 
 - **Idea evaluada: editor de fotos con borrado de objetos (candidato fuerte a feature paga, con modelo de créditos)**: surgió de una investigación de mercado del usuario sobre la competencia. Se evaluaron 3 enfoques: (1) **clone stamp manual** (estilo Photoshop clásico, el usuario elige a mano de dónde copiar píxeles) — 100% client-side con `<canvas>`, sin backend ni costo por uso, complejidad baja (es UI: pincel, tamaño, deshacer); (2) **Content-Aware Fill propio** (el algoritmo **PatchMatch** que Adobe metió en Photoshop CS5, previo a la era de IA moderna — busca y propaga parches de píxeles parecidos automáticamente) — sin costo por uso porque no depende de una API externa, pero programarlo bien (rápido en celular sin GPU dedicada, resultado prolijo en bordes/texturas) es un algoritmo de visión por computadora real, semanas de desarrollo y ajuste fino — la parte genuinamente cara de construir; (3) **borrador con IA vía API externa de inpainting** (Clipdrop, Replicate, etc., tipo Magic Eraser) — el desarrollo es comparativamente simple (una Cloud Function más, mismo patrón que `checkout-create.js`/`webhook-mercadopago.js`: validar sesión, llamar la API con un secret, devolver resultado) pero tiene **costo por imagen procesada**, a diferencia de (1) y (2). Conclusión: para esta feature puntual conviene la opción (3) — se paga con dinero (API) en vez de con tiempo de desarrollo (programar PatchMatch desde cero).
   - **Modelo de monetización acordado con el usuario** (no le cerraba cobrar por uso Y tener plan premium a la vez — "me queda raro el modelo"): no son dos cobros separados, es una sola escalera — el plan premium **incluye una cuota de créditos por mes** (ej. 20 fotos editadas) para cubrir el uso típico, y créditos extra se compran sueltos a la carta para los que se pasan de esa cuota (cubre el costo variable de la API sin que la suscripción tenga que subir de precio para todos). Usuarios free tendrían 1-2 créditos de prueba para probar la calidad antes de pagar. Mismo esquema que usan Canva (créditos de IA dentro de Canva Pro) o Adobe (créditos de Firefly dentro de Creative Cloud).
   - **Sin implementar todavía** — solo evaluado y anotado a pedido del usuario. Si se retoma: falta investigar qué API de inpainting conviene (precio por imagen, calidad, límites) para tener números concretos, y el modelo de créditos necesitaría una columna/tabla nueva en Supabase (extensión del schema de `subscriptions`, ver "Suscripciones") más una Cloud Function que decremente el crédito antes de llamar a la API externa.
-- **Meta Pixel + Conversions API — deploy pendiente de un secret** (Fase 3 de `GROWTH_PLAN.md`, código completo ✅ v2.05): ver **[`GROWTH_PLAN.md`](./GROWTH_PLAN.md)** para el plan completo de 3 fases, las tres con su código ya implementado (Fase 1 onboarding ✅ v1.61, Fase 2 métricas de producto ✅ v1.62, Fase 3 Meta Pixel/CAPI ✅ v2.04+v2.05 — ver esas entradas en "Funcionando bien"). Único paso que falta, 100% del lado del usuario: correr `firebase functions:secrets:set META_CAPI_ACCESS_TOKEN` desde su máquina — sin eso, el deploy de esta rama falla (mismo bloqueo que `GOOGLE_CLIENT_SECRET` en v1.91).
+- **Meta Ads — nada pendiente**: las 3 fases de `GROWTH_PLAN.md` (onboarding ✅ v1.61, métricas de producto ✅ v1.62, Pixel/Conversions API ✅ v2.04-v2.06 incluyendo el funnel completo de la Fase 3.1) están implementadas y deployadas — ver **"Meta Ads: funnel completo instrumentado"** más arriba en este archivo para la referencia viva de cada evento antes de tocar cualquiera de sus puntos de código.
 - **Compartir múltiples fotos**: implementado con Web Share API. En iOS funciona bien; en desktop hace descarga individual como fallback.
 - **Streaming real de video**: hoy el video se descarga entero (como blob URL) antes de reproducirse — no hay range requests. La solución de fondo (un service worker que intercepte el pedido a Drive, inyecte el header `Authorization` vía postMessage desde la página, y reenvíe Range/206) quedó deliberadamente afuera de la Fase 6 del plan de auditoría por su complejidad y riesgo (reescribe el pipeline de video) sin poder probarla en un dispositivo real. Retomar cuando se pueda testear en mobile.
 
