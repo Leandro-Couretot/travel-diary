@@ -538,7 +538,7 @@ audio { width: 100%; height: 32px; }
   text-decoration: underline; cursor: pointer; padding: 0.4rem;
 }
 .btn-delete-album:hover { opacity: 0.7; }
-.confirm-message { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.5; margin-bottom: 1.25rem; }
+.confirm-message { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.5; margin-bottom: 1.25rem; white-space: pre-line; }
 .confirm-actions { display: flex; gap: 0.75rem; }
 .confirm-actions .btn { flex: 1; }
 .subscribe-context {
@@ -579,6 +579,7 @@ audio { width: 100%; height: 32px; }
 .bulk-dupe-warning { font-size: 0.75rem; color: var(--red); margin-bottom: 0.35rem; }
 .bulk-dupe-list { margin: 0 0 0.5rem; padding-left: 1.1rem; font-size: 0.78rem; color: var(--ink-muted); }
 .bulk-dupe-list li { padding: 0.1rem 0; }
+.bulk-dupe-list li.bulk-dupe-item-excluded { text-decoration: line-through; opacity: 0.55; }
 .bulk-dupe-actions { display: flex; gap: 0.5rem; }
 .bulk-dupe-btn {
   flex: 1; min-width: 0; padding: 0.4rem 0.5rem; font-size: 0.76rem;
@@ -1202,7 +1203,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.09';
+const APP_VERSION = '2.10';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2134,11 +2135,12 @@ async function handleAlbumMenuAction(action, album) {
 
 // ─── Confirmación propia (reemplaza confirm() nativo) ────────
 // Devuelve una Promise<boolean> — usar con await en vez de confirm().
-function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar' } = {}) {
+function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar', cancelLabel = 'Cancelar' } = {}) {
   return new Promise(resolve => {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').textContent = message;
     document.getElementById('confirm-ok-btn').textContent = confirmLabel;
+    document.getElementById('confirm-cancel-btn').textContent = cancelLabel;
     const modal = document.getElementById('modal-confirm');
     const okBtn = document.getElementById('confirm-ok-btn');
     const cancelBtn = document.getElementById('confirm-cancel-btn');
@@ -2367,7 +2369,7 @@ function renderBulkDatedList(datedList, grouped) {
       const dupBox = document.createElement('div'); dupBox.className = 'bulk-day-dupes';
       dupBox.innerHTML = `
         <div class="bulk-dupe-warning">${warnText}</div>
-        <ul class="bulk-dupe-list">${dupes.map(f => `<li>${escHtml(f.name)}</li>`).join('')}</ul>
+        <ul class="bulk-dupe-list">${dupes.map(f => `<li class="${f._excluded ? 'bulk-dupe-item-excluded' : ''}">${escHtml(f.name)}</li>`).join('')}</ul>
         <div class="bulk-dupe-actions">
           <button type="button" class="bulk-dupe-btn${allOmitted ? ' active' : ''}" data-date="${date}" data-action="omit">Omitir estas</button>
           <button type="button" class="bulk-dupe-btn${allOmitted ? '' : ' active'}" data-date="${date}" data-action="include">Subir de todos modos</button>
@@ -2523,7 +2525,7 @@ async function confirmBulkUpload() {
       if (kept.length) allGroups[date] = kept;
     });
     bulkGrouped.undated.forEach(file => { const date = bulkUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
-    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir (quedaron todos destildados).'; btn.disabled = false; return; }
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir — todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
     });
@@ -2900,6 +2902,33 @@ async function saveCurrentDay() {
 }
 
 // ─── Media render ──────────────────────────────────────────
+// Arma el <video> de una tarjeta con un frame real como portada — sin
+// esto, iOS Safari (y Chrome en algunos casos) muestra un rectángulo
+// negro con el botón de play nativo hasta que el video se reproduce, ya
+// que `preload="metadata"` solo trae duración/dimensiones, nunca un
+// frame decodificado. Se fuerza un seek chiquito apenas hay metadata y
+// se captura ese frame a un <canvas> para usarlo como `poster` — funciona
+// sin problemas de CORS porque `src` siempre es un blob: o data: URL del
+// mismo origen (nunca un video remoto), así el canvas nunca queda "sucio".
+function buildVideoThumbEl(src) {
+  const v = document.createElement('video');
+  v.className = 'video-thumb'; v.controls = true; v.playsinline = true; v.preload = 'metadata';
+  v.addEventListener('loadedmetadata', () => {
+    try { v.currentTime = Number.isFinite(v.duration) && v.duration > 0 ? Math.min(0.1, v.duration / 2) : 0.1; } catch {}
+  }, { once: true });
+  v.addEventListener('seeked', () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      if (!canvas.width || !canvas.height) return;
+      canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+      v.poster = canvas.toDataURL('image/jpeg', 0.7);
+    } catch {} // fallo al capturar (formato no soportado, etc.) — el video sigue andando, solo sin poster
+  }, { once: true });
+  v.src = src;
+  return v;
+}
+
 function renderMedia() {
   const grid  = document.getElementById('media-grid');
   const empty = document.getElementById('empty-media');
@@ -2948,12 +2977,12 @@ function renderMedia() {
           </div>
         </div>`;
       const src = item.data || '';
-      if (src) { const v = document.createElement('video'); v.className = 'video-thumb'; v.controls = true; v.playsinline = true; v.preload = 'metadata'; v.src = src; card.querySelector(`#vt-${idx}`).replaceWith(v); }
+      if (src) { card.querySelector(`#vt-${idx}`).replaceWith(buildVideoThumbEl(src)); }
       else if (item.driveFileId) {
         fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
           item.data = dataUrl;
           const el = card.querySelector(`#vt-${idx}`);
-          if (el) { const v = document.createElement('video'); v.className = 'video-thumb'; v.controls = true; v.playsinline = true; v.preload = 'metadata'; v.src = dataUrl; el.replaceWith(v); }
+          if (el) el.replaceWith(buildVideoThumbEl(dataUrl));
         }).catch(() => {
           const el = card.querySelector(`#vt-${idx}`);
           if (el && el.lastElementChild) el.lastElementChild.textContent = 'Video no disponible';
@@ -3034,8 +3063,9 @@ async function processFiles(files) {
     const otherDays = Object.keys(grouped.dated).filter(d => d !== currentDate);
     if (otherDays.length > 0) {
       const otherCount = otherDays.reduce((n, d) => n + grouped.dated[d].length, 0);
-      const msg = `${otherCount} archivo${otherCount > 1 ? 's' : ''} son de otro${otherDays.length > 1 ? 's' : ''} día${otherDays.length > 1 ? 's' : ''}:\n` + otherDays.map(d => `• ${formatDate(d)}: ${grouped.dated[d].length} archivo${grouped.dated[d].length > 1 ? 's' : ''}`).join('\n') + `\n\nAceptar = Guardar cada foto en su día\nCancelar = Guardar todo acá`;
-      if (confirm(msg)) { await saveFilesToCorrectDays(grouped, audio); return; }
+      const msg = `${otherCount} archivo${otherCount > 1 ? 's' : ''} son de otro${otherDays.length > 1 ? 's' : ''} día${otherDays.length > 1 ? 's' : ''}:\n` + otherDays.map(d => `• ${formatDate(d)}: ${grouped.dated[d].length} archivo${grouped.dated[d].length > 1 ? 's' : ''}`).join('\n');
+      const saveEachInItsDay = await customConfirm(msg, { title: 'Fotos de otro día', confirmLabel: 'Guardar cada foto en su día', cancelLabel: 'Guardar todo acá' });
+      if (saveEachInItsDay) { await saveFilesToCorrectDays(grouped, audio); return; }
     }
   }
   addFilesToCurrentDay([...imgVid, ...audio]);
@@ -4739,7 +4769,7 @@ async function confirmBulkDiary() {
       if (kept.length) allGroups[date] = kept;
     });
     bulkDiaryGrouped.undated.forEach(file => { const date = bulkDiaryUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
-    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir (quedaron todos destildados).'; btn.disabled = false; return; }
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir — todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);
     });

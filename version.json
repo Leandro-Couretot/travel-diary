@@ -1,4 +1,4 @@
 {
-  "version": "2.09",
-  "changelog": "Techo de instancias en las Cloud Functions, para acotar el peor caso ante tráfico anómalo."
+  "version": "2.10",
+  "changelog": "3 fixes: aviso de duplicados más claro, diálogo de \"otro día\" con nuestra identidad, y miniatura real en los videos."
 }
