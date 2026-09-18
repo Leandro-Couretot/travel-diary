@@ -24,6 +24,7 @@ exports.trackEvent = onRequest(
   {
     region: 'southamerica-east1',
     secrets: [SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
+    maxInstances: 10, // ver CLAUDE.md → "Techo de instancias (maxInstances)"
   },
   async (req, res) => {
     if (req.method !== 'POST') {

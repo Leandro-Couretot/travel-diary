@@ -53,6 +53,12 @@ exports.webhookMercadopago = onRequest(
   {
     region: 'southamerica-east1',
     secrets: [SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, META_CAPI_ACCESS_TOKEN],
+    // Sin App Check a propósito — la llaman los servidores de Mercado Pago,
+    // nunca un navegador (se autentica con su propia firma x-signature). Tope
+    // más alto que el resto (ver CLAUDE.md → "Techo de instancias
+    // (maxInstances)") para no descartar reintentos legítimos de MP en un
+    // pico real de pagos, mientras sigue acotando el peor caso.
+    maxInstances: 20,
   },
   async (req, res) => {
     if (req.method !== 'POST') {

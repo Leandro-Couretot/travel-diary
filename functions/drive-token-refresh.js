@@ -22,6 +22,7 @@ exports.driveTokenRefresh = onRequest(
     region: 'southamerica-east1',
     secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
     enforceAppCheck: true, // ver CLAUDE.md → "App Check"
+    maxInstances: 10, // ver CLAUDE.md → "Techo de instancias (maxInstances)"
   },
   async (req, res) => {
     if (req.method !== 'POST') {

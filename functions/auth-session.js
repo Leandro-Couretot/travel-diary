@@ -88,6 +88,12 @@ exports.authSession = onRequest(
     // que el handler llegue a correr — así el tráfico bot/script directo a
     // /api/* nunca dispara las llamadas caras de acá abajo (Google, Supabase).
     enforceAppCheck: true,
+    // Techo duro de instancias concurrentes (ver CLAUDE.md → "Techo de
+    // instancias (maxInstances)") — sin esto, Cloud Run escala sin límite
+    // ante cualquier pico de tráfico (ataque o no), y con App Check ya
+    // rechazando lo que no viene de la app real, esto es la última red de
+    // seguridad contra un golpe de facturación.
+    maxInstances: 10,
   },
   async (req, res) => {
     if (req.method !== 'POST') {

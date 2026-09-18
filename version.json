@@ -1,4 +1,4 @@
 {
-  "version": "2.08",
-  "changelog": "Links de campaña con slug (legadofamiliar.com.ar/nombre) para afiliados y calle."
+  "version": "2.09",
+  "changelog": "Techo de instancias en las Cloud Functions, para acotar el peor caso ante tráfico anómalo."
 }

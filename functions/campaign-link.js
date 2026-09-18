@@ -29,6 +29,11 @@ exports.campaignLink = onRequest(
   {
     region: 'southamerica-east1',
     secrets: [SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
+    // Sin App Check acá a propósito — la pisa cualquiera que abra el link
+    // publicado (Instagram, una tarjeta física), no solo la app ya cargada.
+    // maxInstances sigue siendo la red de seguridad contra un bot pegándole
+    // en loop (ver CLAUDE.md → "Techo de instancias (maxInstances)").
+    maxInstances: 10,
   },
   async (req, res) => {
     const slug = String(req.path || '/')
