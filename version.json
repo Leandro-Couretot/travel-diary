@@ -1,4 +1,4 @@
 {
-  "version": "2.10",
-  "changelog": "3 fixes: aviso de duplicados más claro, diálogo de \"otro día\" con nuestra identidad, y miniatura real en los videos."
+  "version": "2.11",
+  "changelog": "Bug real: tocar una foto en la tab Día no hacía nada — ahora abre la vista en tamaño grande."
 }

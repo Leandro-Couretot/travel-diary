@@ -1203,7 +1203,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.10';
+const APP_VERSION = '2.11';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2963,6 +2963,11 @@ function renderMedia() {
       const imgEl = card.querySelector(`#mt-${idx}`);
       if (item.data) imgEl.src = item.data;
       else if (item.driveFileId) setAuthImg(imgEl, item.driveFileId, 'w1200');
+      // El markup ya traía data-lightbox/cursor:zoom-in pero nunca se había
+      // conectado ningún click a openLightbox() — quedó preparado y sin
+      // cablear. En modo selección no abre nada: deja que el click le
+      // llegue al listener de la card entera (ver enterSelectionMode()).
+      imgEl.addEventListener('click', () => { if (!selectionMode) openLightbox(idx); });
 
     } else if (item.type === 'video') {
       card.innerHTML = `
