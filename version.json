@@ -1,4 +1,4 @@
 {
-  "version": "2.12",
-  "changelog": "Bug real: el lightbox de Día abría pero la foto quedaba invisible — ya se ve."
+  "version": "2.13",
+  "changelog": "Bug real: \"hoy\" se calculaba en UTC, no en tu huso horario — ya usa tu hora local."
 }

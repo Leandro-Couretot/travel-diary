@@ -19,7 +19,16 @@ async function getFileDateStr(file) {
     if (file.type.startsWith('video/') || file.type.startsWith('image/')) {
       // Fallback: use file lastModified (not ideal but better than nothing)
       if (file.lastModified) {
-        return new Date(file.lastModified).toISOString().slice(0, 10);
+        // Bug real (v2.13, ver CLAUDE.md): toISOString() da la fecha en
+        // UTC, no en el huso del usuario — un archivo modificado de noche
+        // en un huso negativo (Argentina, UTC-3) podía quedar fechado al
+        // día SIGUIENTE. Se arma la fecha con los componentes locales del
+        // propio Date, nunca con su representación UTC.
+        const d = new Date(file.lastModified);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
       }
     }
   } catch(e) {

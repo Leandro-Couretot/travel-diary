@@ -1203,7 +1203,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.12';
+const APP_VERSION = '2.13';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2422,7 +2422,7 @@ function renderBulkReview() {
     undatedList.appendChild(header);
     bulkGrouped.undated.forEach(file => {
       const row = document.createElement('div'); row.className = 'bulk-undated-file';
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateStr();
       bulkUndatedDates[file.name] = today;
       row.innerHTML = `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(file.name)}</span><input type="date" value="${today}" data-filename="${escHtml(file.name)}">`;
       undatedList.appendChild(row);
@@ -2582,7 +2582,7 @@ let isSharedAlbum = false;
 let albumFolderId = null;
 let albumMeta     = null;
 let albumCanEdit  = true;
-let currentDate   = new Date().toISOString().slice(0, 10);
+let currentDate   = localDateStr();
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
 let currentDayOriginalIds = new Set();
@@ -2645,7 +2645,22 @@ let bookPageSize  = null;        // { id, w, h } — tamaño de hoja de ESTE ál
 let bookFraming   = {};          // driveFileId -> { scale, x, y } — encuadre (zoom+pan) por foto, seteado en renderBook()
 
 function emptyDay() { return { title: '', notes: '', media: [] }; }
-function todayStr()  { return new Date().toISOString().slice(0, 10); }
+// Bug real (v2.13): "hoy" salía de toISOString(), que siempre da la fecha
+// en UTC — para cualquier huso con offset negativo (Argentina, UTC-3) el
+// día calendario de la app cambiaba varias horas ANTES que el reloj real
+// del usuario (a las 21:00 en vez de medianoche, ej. reportado por el
+// usuario a las 22:19 ART todavía viendo "hoy" como si fuera el día
+// siguiente). localDateStr() arma la fecha con los componentes locales del
+// propio Date (getFullYear/getMonth/getDate), nunca con su representación
+// UTC — es la fuente única para "qué día es hoy" en toda la app.
+function localDateStr(d) {
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function todayStr()  { return localDateStr(); }
 function isToday(s)  { return s === todayStr(); }
 
 // Total de audios "vivos" en toda la cuenta ahora mismo — combina lo ya
@@ -2677,7 +2692,7 @@ function audioLimitMessage() {
 // "0 usados todavía", así el cupo se resetea solo el día 1 sin ningún
 // job aparte, mismo espíritu que el reset de AUDIO_FREE_LIMIT al borrar.
 const BOOK_EXPORT_FREE_LIMIT = 1;
-function currentYearMonth() { return new Date().toISOString().slice(0, 7); }
+function currentYearMonth() { return localDateStr().slice(0, 7); }
 function bookExportsUsedThisMonth() {
   return usageState.bookExportMonth === currentYearMonth() ? (usageState.bookExportCount || 0) : 0;
 }
@@ -5319,7 +5334,7 @@ function setStatus(cls, msg) {
   el.textContent = msg; 
 }
 function autoResize(el) { if (!el) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
-function navigate(delta) { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; const date = new Date(currentDate + 'T12:00:00'); date.setDate(date.getDate() + delta); loadDay(date.toISOString().slice(0, 10)); }
+function navigate(delta) { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; const date = new Date(currentDate + 'T12:00:00'); date.setDate(date.getDate() + delta); loadDay(localDateStr(date)); }
 
 function bindDiaryEvents() {
   document.getElementById('day-title').addEventListener('input', e => { currentDay.title = e.target.value; autoResize(e.target); markDirty(); });
