@@ -1,4 +1,4 @@
 {
-  "version": "2.13",
-  "changelog": "Bug real: \"hoy\" se calculaba en UTC, no en tu huso horario — ya usa tu hora local."
+  "version": "2.14",
+  "changelog": "\"Ver álbum\" del menú ··· pasa a llamarse \"Reproducir álbum\", más claro sobre qué hace."
 }

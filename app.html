@@ -1203,7 +1203,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.13';
+const APP_VERSION = '2.14';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -5089,7 +5089,7 @@ function toggleDiaryMenu() {
       <span class="diary-menu-item-icon">Aa</span> ${bookShowText ? 'Ocultar' : 'Mostrar'} texto
     </button>` : ''}
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
-      <span class="diary-menu-item-icon">▣</span> Ver álbum
+      <span class="diary-menu-item-icon">▣</span> Reproducir álbum
     </button>
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openHelp,50)">
       <span class="diary-menu-item-icon">?</span> Ayuda
