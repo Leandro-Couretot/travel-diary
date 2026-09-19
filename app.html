@@ -1223,7 +1223,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.18';
+const APP_VERSION = '2.19';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -4276,7 +4276,22 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   const img = document.getElementById('book-frame-img');
   img.style.transform = '';
   img.addEventListener('load', onBookFrameImgLoad, { once: true });
-  setAuthImg(img, fileId, 'w1600');
+  // A diferencia del resto de las miniaturas de la app (setAuthImg(), que
+  // arranca por la miniatura liviana de drive.google.com/thumbnail), acá
+  // se carga directo el archivo real completo con fetchAuthImgUrl() —
+  // mismo mecanismo (y misma caché por fileId) que ya usa setAuthImg()
+  // como fallback cuando esa miniatura falla. Necesario porque encuadrar
+  // tiene que trabajar sobre los mismos píxeles que después usa el export
+  // a PDF (coverCropToCanvas(), que también baja el archivo completo) —
+  // la miniatura de Drive, para pedidos grandes como el `sz=w1600` que se
+  // usaba antes acá, a veces viene rellenada con una franja de color
+  // sólido en vez de reescalada, mostrando un padding que no es parte de
+  // la foto real (bug reportado por el usuario, v2.19 en CLAUDE.md).
+  img.classList.add('auth-img-loading');
+  fetchAuthImgUrl(fileId).then(url => {
+    if (bookFrameFileId !== fileId) return; // se cerró o cambió de foto mientras bajaba
+    img.src = url || MEDIA_UNAVAILABLE_SVG;
+  });
 
   document.getElementById('book-frame-zoom').value = bookFrameCurrent.scale;
   document.getElementById('modal-book-frame').classList.add('open');
@@ -4284,6 +4299,7 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
 
 function onBookFrameImgLoad(e) {
   bookFrameNatural = { w: e.target.naturalWidth, h: e.target.naturalHeight };
+  e.target.classList.remove('auth-img-loading');
   applyBookFrameStyle();
 }
 

@@ -1,4 +1,4 @@
 {
-  "version": "2.18",
-  "changelog": "Fotolibro: el nombre pasa a la tab, se saca el título repetido de arriba de la grilla."
+  "version": "2.19",
+  "changelog": "Bug real: el editor de encuadre del fotolibro edita ahora la foto real, no una miniatura de Drive."
 }
