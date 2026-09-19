@@ -1,4 +1,4 @@
 {
-  "version": "2.15",
-  "changelog": "Home carga más rápido: se cachean los IDs de Drive ya resueltos, y mientras carga se ve un esqueleto en vez de un spinner."
+  "version": "2.16",
+  "changelog": "Bug real: en Galería, la barra negra de \"Seleccioná fotos\" tapaba la última fila de fotos."
 }

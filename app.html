@@ -340,7 +340,7 @@ audio { width: 100%; height: 32px; }
 
 /* List tab — grilla plana de fotos (v1.88), sin agrupar por día: ver
    CLAUDE.md → "Funcionando bien" para el porqué. */
-.list-tab-wrap { padding: 0.5rem 1rem 4rem; }
+.list-tab-wrap { padding: 0.5rem 1rem 6rem; }
 .list-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 4px; }
 .list-photo-item { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 4px; cursor: pointer; background: var(--accent-light); }
 .list-photo-item.active { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -1216,7 +1216,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.15';
+const APP_VERSION = '2.16';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
