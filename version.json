@@ -1,4 +1,4 @@
 {
-  "version": "2.11",
-  "changelog": "Bug real: tocar una foto en la tab Día no hacía nada — ahora abre la vista en tamaño grande."
+  "version": "2.12",
+  "changelog": "Bug real: el lightbox de Día abría pero la foto quedaba invisible — ya se ve."
 }

@@ -1203,7 +1203,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.11';
+const APP_VERSION = '2.12';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -4847,8 +4847,23 @@ function openLightbox(mediaIdx) {
 function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
 function renderLightbox() {
   const item = lbImages[lbIdx]; const img = document.getElementById('lightbox-img');
-  img.style.opacity = '0'; img.onload = () => { img.style.opacity = '1'; };
-  if (item.data) img.src = item.data; else if (item.driveFileId) setAuthImg(img, item.driveFileId, 'w2000');
+  if (item.data) {
+    // Sin setAuthImg() de por medio (la foto ya está en memoria) — acá sí
+    // hace falta el fade manual, con su propio onload sin nadie que lo pise.
+    img.style.opacity = '0'; img.onload = () => { img.style.opacity = '1'; };
+    img.src = item.data;
+  } else if (item.driveFileId) {
+    // Bug real (v2.11): el onload manual de arriba se pisaba con el que
+    // setAuthImg() pone adentro (drive.js, v1.27) para sacar la clase
+    // auth-img-loading — como este código además dejaba opacity:0 puesto
+    // por INLINE style, ni siquiera la clase (que setAuthImg() sí saca
+    // bien) alcanzaba para revelar la foto: quedaba invisible para
+    // siempre. setAuthImg() ya maneja su propio fade vía esa clase — acá
+    // alcanza con limpiar cualquier opacity inline que haya quedado de una
+    // apertura anterior con item.data.
+    img.style.opacity = '';
+    setAuthImg(img, item.driveFileId, 'w2000');
+  }
   document.getElementById('lightbox-caption').textContent = item.caption || '';
   document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
   document.getElementById('lightbox-prev').disabled = lbIdx === 0;
