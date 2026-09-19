@@ -1,4 +1,4 @@
 {
-  "version": "2.17",
-  "changelog": "Fotolibro: nombre visible + menú \"Opciones\" que junta todas las acciones en un solo lugar."
+  "version": "2.18",
+  "changelog": "Fotolibro: el nombre pasa a la tab, se saca el título repetido de arriba de la grilla."
 }

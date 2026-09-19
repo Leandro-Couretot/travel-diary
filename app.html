@@ -369,11 +369,12 @@ audio { width: 100%; height: 32px; }
 .book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; display: flex; flex-direction: column; }
 /* v2.17: reemplaza .book-controls (flotaba absoluto sobre la grilla, solo
    con "Exportar") — ahora es una barra fija arriba, en flujo normal, con
-   el nombre de la sección + un único botón "Opciones" que abre TODAS las
-   acciones del fotolibro (antes repartidas entre esta pastilla y el "···"
-   genérico del header, ver toggleBookOptionsMenu()). */
-.book-header-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; flex: 0 0 auto; }
-.book-header-title { font-family: 'DM Serif Display', serif; font-size: 1.05rem; color: var(--ink); }
+   un único botón "Opciones" que abre TODAS las acciones del fotolibro
+   (antes repartidas entre esta pastilla y el "···" genérico del header,
+   ver toggleBookOptionsMenu()). El nombre de la sección ya lo dice la
+   tab "Fotolibro" (ver .diary-tab en el HTML) — un título repetido acá
+   abajo era redundante, se sacó a pedido del usuario. */
+.book-header-bar { display: flex; align-items: center; justify-content: flex-end; padding: 0.75rem 1rem; flex: 0 0 auto; }
 .book-btn { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.1); border-radius: 20px; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); transition: all 0.15s; }
 .book-btn:hover { background: white; }
 .book-btn.active { background: var(--ink); color: white; }
@@ -846,7 +847,7 @@ audio { width: 100%; height: 32px; }
     <button class="diary-tab active" data-tab="day" onclick="switchTab('day')">Día</button>
     <button class="diary-tab" data-tab="month" onclick="switchTab('month')">Mes</button>
     <button class="diary-tab" data-tab="list" onclick="switchTab('list')">Galería</button>
-    <button class="diary-tab" data-tab="book" onclick="switchTab('book')">Libro</button>
+    <button class="diary-tab" data-tab="book" onclick="switchTab('book')">Fotolibro</button>
   </div>
   <input type="date" id="date-input" style="position:absolute;opacity:0;pointer-events:none;top:110px;right:1rem;">
 
@@ -1222,7 +1223,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.17';
+const APP_VERSION = '2.18';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -3372,7 +3373,7 @@ async function renderBook() {
   // libro impreso" (cada tile ya respeta la proporción real de hoja
   // elegida, ver "sensación de libro" v1.57). La grilla queda como la
   // única forma de ver/editar el Libro, sin ningún toggle.
-  wrap.innerHTML = `<div class="book-header-bar"><div class="book-header-title">Fotolibro</div><button class="book-btn" id="book-options-btn" onclick="toggleBookOptionsMenu()">Opciones</button></div><div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
+  wrap.innerHTML = `<div class="book-header-bar"><button class="book-btn" id="book-options-btn" onclick="toggleBookOptionsMenu()">Opciones</button></div><div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
   renderBookReorderGrid();
 }
 
