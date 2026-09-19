@@ -366,8 +366,14 @@ audio { width: 100%; height: 32px; }
 .cal-cell.empty { background: none; cursor: default; }
 
 /* Book tab */
-.book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; }
-.book-controls { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 10; display: flex; gap: 0.5rem; }
+.book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; display: flex; flex-direction: column; }
+/* v2.17: reemplaza .book-controls (flotaba absoluto sobre la grilla, solo
+   con "Exportar") — ahora es una barra fija arriba, en flujo normal, con
+   el nombre de la sección + un único botón "Opciones" que abre TODAS las
+   acciones del fotolibro (antes repartidas entre esta pastilla y el "···"
+   genérico del header, ver toggleBookOptionsMenu()). */
+.book-header-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; flex: 0 0 auto; }
+.book-header-title { font-family: 'DM Serif Display', serif; font-size: 1.05rem; color: var(--ink); }
 .book-btn { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.1); border-radius: 20px; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); transition: all 0.15s; }
 .book-btn:hover { background: white; }
 .book-btn.active { background: var(--ink); color: white; }
@@ -385,7 +391,7 @@ audio { width: 100%; height: 32px; }
 .bp-frame-btn:hover { background: rgba(0,0,0,0.7); }
 .book-page-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #c0bab0; font-size: 0.875rem; gap: 0.5rem; }
 .book-empty-icon { font-size: 2.5rem; opacity: 0.3; }
-.book-reorder-area { display: flex; flex-direction: column; height: 100%; }
+.book-reorder-area { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .book-reorder-grid { flex: 1; min-height: 0; display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; padding: 0 1rem; scrollbar-width: none; }
 .book-reorder-grid::-webkit-scrollbar { display: none; }
 .book-reorder-tile { flex: 0 0 150px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 0.35rem; }
@@ -1216,7 +1222,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.16';
+const APP_VERSION = '2.17';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2811,10 +2817,16 @@ async function resolveStartDate() {
 
 function switchTab(tab) {
   closeDiaryMenu();
+  closeBookOptionsMenu();
   if (selectionMode) exitSelectionMode();
   currentTab = tab;
   document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+  // v2.17: en Libro, todas las acciones (incluidas Reproducir álbum/Ayuda)
+  // se consolidan en el botón "Opciones" propio de esa tab — el "···" del
+  // header queda redundante ahí, así que se oculta solo en Libro.
+  const menuBtn = document.getElementById('btn-diary-menu');
+  if (menuBtn) menuBtn.style.display = tab === 'book' ? 'none' : '';
   if (tab === 'list')  renderListTab();
   if (tab === 'month') renderCalendar();
   if (tab === 'book')  renderBook();
@@ -3360,7 +3372,7 @@ async function renderBook() {
   // libro impreso" (cada tile ya respeta la proporción real de hoja
   // elegida, ver "sensación de libro" v1.57). La grilla queda como la
   // única forma de ver/editar el Libro, sin ningún toggle.
-  wrap.innerHTML = `<div class="book-controls"><button class="book-btn" id="book-export-btn" onclick="openBookExportModal()">Exportar</button></div><div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
+  wrap.innerHTML = `<div class="book-header-bar"><div class="book-header-title">Fotolibro</div><button class="book-btn" id="book-options-btn" onclick="toggleBookOptionsMenu()">Opciones</button></div><div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
   renderBookReorderGrid();
 }
 
@@ -3949,13 +3961,14 @@ function closeBookPageSizeModal() {
   document.getElementById('modal-book-page-size').classList.remove('open');
 }
 
-// El botón que dispara esto vive ahora dentro del menú "···" (ver
-// toggleDiaryMenu()), que se destruye del DOM apenas se elige una
-// opción — a diferencia del viejo "book-text-btn" fijo en
-// `.book-controls`, acá no hay ningún elemento persistente al que
-// pisarle una clase; el estado (`bookShowText`) y su efecto real
-// (applyBookTextVisibility) alcanzan solos, y la próxima vez que se
-// abra el menú su label ya refleja el estado actual.
+// El botón que dispara esto vive ahora dentro del menú "Opciones" del
+// Libro (ver toggleBookOptionsMenu(), v2.17 — antes fue el "···" del
+// header, v2.02), que se destruye del DOM apenas se elige una opción — a
+// diferencia del viejo "book-text-btn" fijo en `.book-controls`, acá no
+// hay ningún elemento persistente al que pisarle una clase; el estado
+// (`bookShowText`) y su efecto real (applyBookTextVisibility) alcanzan
+// solos, y la próxima vez que se abra el menú su label ya refleja el
+// estado actual.
 function toggleBookText() {
   bookShowText = !bookShowText;
   applyBookTextVisibility();
@@ -5076,18 +5089,10 @@ function toggleDiaryMenu() {
   diaryMenuOpen = true;
 
   // "Seleccionar fotos" solo tiene sentido en Día (currentDay.media) y
-  // Galería (galleryPhotos) — Mes y Libro no tienen una grilla plana de
-  // fotos individuales a la que aplicarle este modo.
+  // Galería (galleryPhotos) — Mes no tiene una grilla plana de fotos
+  // individuales a la que aplicarle este modo, y Libro ya no pasa por acá
+  // en absoluto (ver más abajo).
   const canSelect = currentTab === 'day' || currentTab === 'list';
-  // Consolidación de v2.02 (ver CLAUDE.md → "Fotolibro"): "Tamaño",
-  // "Agregar página" y "Recrear libro" vivían como pastillas propias
-  // arriba del Libro (`.book-controls`), apiladas en 2 filas apenas
-  // había más de 3-4 botones — se mudan acá, al mismo menú "···" que ya
-  // usan Día/Galería, dejando solo "Exportar" como pastilla visible. El
-  // toggle de texto (antes "book-text-btn", siempre visible) también se
-  // suma acá, sin requerir `albumCanEdit` — es puramente de visualización,
-  // no una acción de edición.
-  const isBook = currentTab === 'book';
   const menu = document.createElement('div');
   menu.className = 'diary-menu-dropdown';
   menu.id = 'diary-menu-dropdown';
@@ -5097,18 +5102,6 @@ function toggleDiaryMenu() {
     </button>` : ''}
     ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">⬆</span> Carga masiva
-    </button>` : ''}
-    ${isBook && albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBookPageSizeModal,50)">
-      <span class="diary-menu-item-icon">▭</span> Tamaño de hoja
-    </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBookAddPageModal,50)">
-      <span class="diary-menu-item-icon">＋</span> Agregar página
-    </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(recreateBookRandom,50)">
-      <span class="diary-menu-item-icon">🔀</span> Recrear libro
-    </button>` : ''}
-    ${isBook ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(toggleBookText,50)">
-      <span class="diary-menu-item-icon">Aa</span> ${bookShowText ? 'Ocultar' : 'Mostrar'} texto
     </button>` : ''}
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
       <span class="diary-menu-item-icon">▣</span> Reproducir álbum
@@ -5135,6 +5128,62 @@ function closeDiaryMenu() {
   diaryMenuOpen = false;
   document.getElementById('diary-menu-dropdown')?.remove();
   document.removeEventListener('click', _closeDiaryMenuOnOutside);
+}
+
+// ─── LIBRO: MENÚ "OPCIONES" ────────────────────────────────
+// v2.17 (ver CLAUDE.md → "Fotolibro"): el "···" del header queda oculto
+// en la tab Libro (ver switchTab()) — todas sus acciones, más las que ya
+// vivían en la pastilla "Exportar", se consolidan acá en un único botón
+// "Opciones" propio de esta tab. Mismo patrón de abrir/cerrar que
+// toggleDiaryMenu(), solo que se ancla al book-wrap en vez de al header.
+let bookOptionsMenuOpen = false;
+
+function toggleBookOptionsMenu() {
+  if (bookOptionsMenuOpen) { closeBookOptionsMenu(); return; }
+  bookOptionsMenuOpen = true;
+  const menu = document.createElement('div');
+  menu.className = 'diary-menu-dropdown';
+  menu.id = 'book-options-dropdown';
+  menu.innerHTML = `
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookExportModal,50)">
+      <span class="diary-menu-item-icon">⬇</span> Exportar
+    </button>
+    ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
+      <span class="diary-menu-item-icon">▭</span> Tamaño de hoja
+    </button>
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookAddPageModal,50)">
+      <span class="diary-menu-item-icon">＋</span> Agregar página
+    </button>
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(recreateBookRandom,50)">
+      <span class="diary-menu-item-icon">🔀</span> Recrear libro
+    </button>` : ''}
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(toggleBookText,50)">
+      <span class="diary-menu-item-icon">Aa</span> ${bookShowText ? 'Ocultar' : 'Mostrar'} texto
+    </button>
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openAlbum,50)">
+      <span class="diary-menu-item-icon">▣</span> Reproducir álbum
+    </button>
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openHelp,50)">
+      <span class="diary-menu-item-icon">?</span> Ayuda
+    </button>`;
+  document.getElementById('book-wrap').appendChild(menu);
+
+  setTimeout(() => {
+    document.addEventListener('click', _closeBookOptionsMenuOnOutside);
+  }, 0);
+}
+
+function _closeBookOptionsMenuOnOutside(e) {
+  const menu = document.getElementById('book-options-dropdown');
+  if (menu && !menu.contains(e.target)) {
+    closeBookOptionsMenu();
+  }
+}
+
+function closeBookOptionsMenu() {
+  bookOptionsMenuOpen = false;
+  document.getElementById('book-options-dropdown')?.remove();
+  document.removeEventListener('click', _closeBookOptionsMenuOnOutside);
 }
 
 // ─── SELECTION MODE ───────────────────────────────────────

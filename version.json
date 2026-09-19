@@ -1,4 +1,4 @@
 {
-  "version": "2.16",
-  "changelog": "Bug real: en Galería, la barra negra de \"Seleccioná fotos\" tapaba la última fila de fotos."
+  "version": "2.17",
+  "changelog": "Fotolibro: nombre visible + menú \"Opciones\" que junta todas las acciones en un solo lugar."
 }
