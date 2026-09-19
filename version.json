@@ -1,4 +1,4 @@
 {
-  "version": "2.14",
-  "changelog": "\"Ver álbum\" del menú ··· pasa a llamarse \"Reproducir álbum\", más claro sobre qué hace."
+  "version": "2.15",
+  "changelog": "Home carga más rápido: se cachean los IDs de Drive ya resueltos, y mientras carga se ve un esqueleto en vez de un spinner."
 }

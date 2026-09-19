@@ -5,6 +5,27 @@ const ROOT_FOLDER     = 'legado';
 const ROOT_FOLDER_OLD = 'travel-diary'; // nombre de antes del rebrand — ver getOrCreateFolderMigrating()
 const SCOPE_VERSION   = 5; // bumped: + userinfo.profile (foto/nombre para el avatar del header, v1.81)
 
+// Caché de IDs de Drive ya resueltos (v2.15) — nunca contenido, solo
+// punteros, mismo criterio que ya se usaba para drive_token. Sin esto,
+// cada carga en frío hacía 3 idas y vueltas SECUENCIALES antes de poder
+// mostrar la primera tarjeta de álbum (buscar la carpeta legado/ por
+// nombre, buscar albums.json por nombre dentro de esa carpeta, y recién
+// ahí leer su contenido) — el usuario lo notó como "tarda unos segundos en
+// cargar Home". Con el ID ya conocido, cada carga salta directo al último
+// paso (leer por ID); si el ID cacheado ya no sirve (archivo/carpeta
+// borrado o movido a mano desde Drive), cada función se lo nota sola
+// (result sin `.albums`, o `trashed:true`) y cae al camino de siempre sin
+// romper nada — nunca se confía ciegamente en el caché.
+const ROOT_FOLDER_ID_CACHE_KEY = 'drive_root_folder_id_cache';
+const ALBUMS_FILE_ID_CACHE_KEY = 'drive_albums_file_id_cache';
+const SHARED_FILE_ID_CACHE_KEY = 'drive_shared_albums_file_id_cache';
+
+function clearDriveIdCache() {
+  localStorage.removeItem(ROOT_FOLDER_ID_CACHE_KEY);
+  localStorage.removeItem(ALBUMS_FILE_ID_CACHE_KEY);
+  localStorage.removeItem(SHARED_FILE_ID_CACHE_KEY);
+}
+
 // ─── STATE ───────────────────────────────────────────────
 let driveToken       = null;
 let rootFolderId     = null;
@@ -22,20 +43,41 @@ function initDrive(onConnectedCallback, onFailureCallback) {
   const savedScope = parseInt(localStorage.getItem('scope_version') || '0');
   if (savedScope < SCOPE_VERSION) {
     localStorage.removeItem('drive_token');
+    clearDriveIdCache(); // una cuenta distinta podría loguearse después — nunca arrastrar IDs de otra
     localStorage.setItem('scope_version', String(SCOPE_VERSION));
   }
   const saved = localStorage.getItem('drive_token');
   if (saved) { driveToken = saved; _bootstrapDrive(); }
 }
 
+// Resuelve la carpeta raíz saltando la búsqueda por nombre si ya se conoce
+// su ID de una carga anterior — un único chequeo liviano (`fields=id,trashed`)
+// confirma que sigue existiendo antes de confiar en él.
+async function resolveRootFolderId() {
+  const cached = localStorage.getItem(ROOT_FOLDER_ID_CACHE_KEY);
+  if (cached) {
+    try {
+      const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${cached}?fields=id,trashed`);
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.trashed) return cached;
+      }
+    } catch {}
+  }
+  const id = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
+  localStorage.setItem(ROOT_FOLDER_ID_CACHE_KEY, id);
+  return id;
+}
+
 async function _bootstrapDrive() {
   try {
-    rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
+    rootFolderId = await resolveRootFolderId();
     if (_onConnected) await _onConnected();
   } catch(e) {
     console.warn('Drive bootstrap error:', e);
     driveToken = null; rootFolderId = null;
     localStorage.removeItem('drive_token');
+    clearDriveIdCache();
     if (_onFailure) _onFailure();
   }
 }
@@ -104,6 +146,7 @@ async function driveReq(method, url, body) {
     if (res.status === 401) {
       driveToken = null; rootFolderId = null;
       localStorage.removeItem('drive_token');
+      clearDriveIdCache();
       throw new Error('Token expirado — reconectá Drive');
     }
     const isRetryable = res.status === 429 || res.status >= 500;
@@ -443,8 +486,21 @@ async function saveUsage(usage) {
 // albums.json lives at root: { albums: [ { id, name, dateFrom, dateTo, coverFileId } ] }
 async function loadAlbums() {
   if (!isDriveConnected()) return [];
+  // Camino rápido (v2.15): si ya conocemos el ID real de albums.json de una
+  // carga anterior, lo leemos directo — sin la búsqueda por nombre previa,
+  // que es la mitad del tiempo que tarda esto. Un ID cacheado que ya no
+  // sirve (archivo borrado/movido a mano) simplemente no trae `.albums` y
+  // cae solo al camino de siempre, sin romper nada.
+  const cachedId = localStorage.getItem(ALBUMS_FILE_ID_CACHE_KEY);
+  if (cachedId) {
+    try {
+      const data = await readJsonFile(cachedId);
+      if (data && data.albums) return data.albums;
+    } catch {}
+  }
   const fileId = await findFileInFolderMigrating(ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId);
   if (fileId) {
+    localStorage.setItem(ALBUMS_FILE_ID_CACHE_KEY, fileId);
     try {
       const data = await readJsonFile(fileId);
       if (data.albums) return data.albums;
@@ -460,7 +516,8 @@ async function loadAlbums() {
   // álbum desaparece.
   const reconstructed = await reconstructAlbumsFromFolders();
   if (reconstructed.length) {
-    await saveAlbums(reconstructed.map(({ _reconstructed, ...a }) => a));
+    const savedId = await saveAlbums(reconstructed.map(({ _reconstructed, ...a }) => a));
+    if (savedId) localStorage.setItem(ALBUMS_FILE_ID_CACHE_KEY, savedId);
   }
   return reconstructed;
 }
@@ -483,7 +540,9 @@ function prettifyFolderName(slug) {
 }
 
 async function saveAlbums(albums) {
-  await writeJsonFileMigrating({ version: 1, albums }, ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId, ALBUMS_JSON_DESCRIPTION);
+  // Devuelve el fileId (v2.15) para que loadAlbums() pueda refrescar el
+  // caché de arriba cuando reconstruye el índice desde cero.
+  return await writeJsonFileMigrating({ version: 1, albums }, ALBUMS_JSON_NAME, ALBUMS_JSON_OLD_NAME, rootFolderId, ALBUMS_JSON_DESCRIPTION);
 }
 
 async function createAlbum(album) {
@@ -880,8 +939,18 @@ function generateShareLink(folderId, name, dateFrom, dateTo) {
 
 async function loadSharedAlbums() {
   if (!isDriveConnected()) return { version: 1, sharedAlbums: [] };
+  // Mismo camino rápido que loadAlbums() (v2.15) — ID cacheado de una carga
+  // anterior, sin buscar por nombre primero.
+  const cachedId = localStorage.getItem(SHARED_FILE_ID_CACHE_KEY);
+  if (cachedId) {
+    try {
+      const data = await readJsonFile(cachedId);
+      if (data && data.sharedAlbums) return { version: 1, sharedAlbums: [], ...data };
+    } catch {}
+  }
   const fileId = await findFileInFolderMigrating(SHARED_ALBUMS_JSON_NAME, SHARED_ALBUMS_JSON_OLD_NAME, rootFolderId);
   if (!fileId) return { version: 1, sharedAlbums: [] };
+  localStorage.setItem(SHARED_FILE_ID_CACHE_KEY, fileId);
   try {
     const data = await readJsonFile(fileId);
     return { version: 1, sharedAlbums: [], ...data };
