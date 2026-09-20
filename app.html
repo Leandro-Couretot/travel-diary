@@ -1223,7 +1223,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.21';
+const APP_VERSION = '2.22';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -1323,6 +1323,7 @@ function navigateTo(view, params = {}) {
     albumId        = params.albumId || null;
     isSharedAlbum  = params.shared  || false;
     albumFolderId  = params.folderId || null;
+    diaryTargetDate = params.targetDate || null;
     document.getElementById('header-subtitle').textContent = params.name || 'diario';
     renderDiaryHeader();
     bootstrapDiaryPage();
@@ -2555,8 +2556,17 @@ async function confirmBulkUpload() {
     });
     bulkGrouped.undated.forEach(file => { const date = bulkUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
     if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir — todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
+    // v2.22: al terminar, en vez de quedarse en Home, entra directo al
+    // diario de ese álbum parado en el día MÁS RECIENTE de lo recién
+    // subido — pensado para poder escribirle una nota ahí mismo sin tener
+    // que buscar el día a mano. `allGroups` está agrupado por fecha
+    // (YYYY-MM-DD), así que el orden alfabético ya es cronológico.
+    const lastDate = Object.keys(allGroups).sort().pop();
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
-      setTimeout(() => { closeBulkUpload(); renderAlbums(); }, 1500);
+      setTimeout(() => {
+        closeBulkUpload();
+        navigateTo('diary', { albumId: album.id, name: album.name, shared: false, targetDate: lastDate });
+      }, 1500);
     });
   } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
   btn.disabled = false;
@@ -2610,6 +2620,11 @@ let albumId       = null;
 let isSharedAlbum = false;
 let albumFolderId = null;
 let albumMeta     = null;
+// v2.22: fuerza el día inicial al entrar al diario (ej. el último día de
+// una carga masiva recién terminada, en vez del día que resolvería
+// resolveStartDate() por su cuenta) — se consume una sola vez en
+// bootstrapDiaryPage() y vuelve a null.
+let diaryTargetDate = null;
 let albumCanEdit  = true;
 let currentDate   = localDateStr();
 let currentDay    = { title: '', notes: '', media: [] };
@@ -2790,7 +2805,13 @@ async function bootstrapDiaryPage() {
     // maybeReconcileAudioUsage() — y esa sí sigue acotada a álbumes editables.
     usageState = await loadUsage();
     if (albumCanEdit) maybeReconcileAudioUsage();
-    currentDate = await resolveStartDate();
+    // v2.22: si `navigateTo('diary', {targetDate})` pidió un día puntual
+    // (ej. el último día de una carga masiva recién terminada), se respeta
+    // ese día en vez de dejar que resolveStartDate() elija el suyo — se
+    // consume una sola vez, para que la próxima entrada al diario (sin
+    // targetDate) vuelva al criterio de siempre.
+    currentDate = diaryTargetDate || await resolveStartDate();
+    diaryTargetDate = null;
     renderDiaryPage();
     await loadDay(currentDate);
   } catch(e) {
@@ -4866,8 +4887,14 @@ async function confirmBulkDiary() {
     });
     bulkDiaryGrouped.undated.forEach(file => { const date = bulkDiaryUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
     if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir — todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
+    // v2.22: al terminar, va al día MÁS RECIENTE de lo recién subido (no
+    // necesariamente el día que estaba abierto antes de la carga masiva) —
+    // mismo criterio que confirmBulkUpload() en Home, para poder escribirle
+    // una nota ahí mismo. Fuerza la tab Día por si la carga se disparó
+    // desde Mes/Galería (el menú "···" que abre este modal es compartido).
+    const lastDate = Object.keys(allGroups).sort().pop();
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
-      setTimeout(() => { closeBulkDiary(); loadDay(currentDate); allDates = []; }, 1500);
+      setTimeout(() => { closeBulkDiary(); switchTab('day'); loadDay(lastDate); allDates = []; }, 1500);
     });
   } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
   btn.disabled = false;
