@@ -1,4 +1,4 @@
 {
-  "version": "2.19",
-  "changelog": "Bug real: el editor de encuadre del fotolibro edita ahora la foto real, no una miniatura de Drive."
+  "version": "2.20",
+  "changelog": "Bug real: al guardar el día, el aviso de \"Guardado en Drive\" se ocultaba antes de llegar a verse."
 }

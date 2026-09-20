@@ -1223,7 +1223,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.19';
+const APP_VERSION = '2.20';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2916,7 +2916,10 @@ async function syncAudioUsageAfterSave() {
   try { await saveUsage(usageState); } catch (e) { console.warn('No se pudo actualizar el contador de audio del plan gratis:', e); }
 }
 
+let saveStatusHideTimer = null;
+
 async function saveCurrentDay() {
+  if (saveStatusHideTimer) { clearTimeout(saveStatusHideTimer); saveStatusHideTimer = null; }
   setStatus('', 'Guardando...');
   try {
     currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay, currentDayOriginalIds);
@@ -2932,7 +2935,16 @@ async function saveCurrentDay() {
     }
     dirty = false;
     setStatus('saved', 'Guardado en Drive ✓');
-    document.querySelector('.save-bar').style.display = 'none';
+    // Bug real (v2.20): antes se ocultaba la barra (display:none) en el
+    // mismo instante que se pintaba este mensaje — el check verde nunca
+    // llegaba a verse, ni un frame. Ahora se deja la barra visible un
+    // rato para que el usuario vea la confirmación, y recién después se
+    // oculta — salvo que mientras tanto ya haya vuelto a editar algo
+    // (dirty:true de nuevo), en cuyo caso no se toca nada.
+    saveStatusHideTimer = setTimeout(() => {
+      saveStatusHideTimer = null;
+      if (!dirty) document.querySelector('.save-bar').style.display = 'none';
+    }, 2200);
   } catch(e) {
     if (e.driveSaveFailedCount) {
       // Guardado parcial: lo que sí subió ya quedó en Drive (saveDayToDrive
