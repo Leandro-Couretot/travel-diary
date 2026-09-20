@@ -414,21 +414,17 @@ audio { width: 100%; height: 32px; }
 }
 .book-insert-gap:hover { background: var(--accent); color: #fff; }
 .book-insert-gap.gap-active { background: var(--accent); color: #fff; transform: scale(1.35); }
-.book-reorder-layout-btn {
-  position: absolute; top: 0.3rem; right: 0.3rem; z-index: 2;
-  width: 22px; height: 22px; border-radius: 4px; border: none;
+/* v2.23: dejaron de flotar sobre las esquinas de la tarjeta (chocaban ahí
+   con los botones de la primera foto de la página, que los tapaban por
+   completo — ver CLAUDE.md) — ahora viven en la fila de la leyenda, debajo
+   de la tarjeta, como botones chicos en línea. */
+.book-reorder-layout-btn, .book-reorder-delete-btn {
+  flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; border: none;
   background: rgba(26,26,24,0.55); color: #fff;
-  font-size: 0.8rem; line-height: 1; cursor: pointer;
+  font-size: 0.62rem; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
 .book-reorder-layout-btn:hover { background: rgba(26,26,24,0.8); }
-.book-reorder-delete-btn {
-  position: absolute; top: 0.3rem; left: 0.3rem; z-index: 2;
-  width: 22px; height: 22px; border-radius: 4px; border: none;
-  background: rgba(26,26,24,0.55); color: #fff;
-  font-size: 0.7rem; line-height: 1; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
 .book-reorder-delete-btn:hover { background: var(--red); }
 .book-layout-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 0.75rem; }
 .book-layout-option {
@@ -1223,7 +1219,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.22';
+const APP_VERSION = '2.23';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -3626,24 +3622,7 @@ function buildBookReorderTile(page, idx) {
   // alcanzaba a través del botón "Reordenar", ya gateado por
   // `albumCanEdit`; ahora que es la única vista del Libro, el gate pasa
   // a estar acá adentro.
-  if (albumCanEdit) {
-    tile.draggable = true;
-    // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
-    // tiene sentido mostrar el botón. `page.images.length` es la capacidad
-    // fija de la página (v3), no la cantidad de fotos puestas ahora.
-    if (page.images.length > 1) {
-      const layoutBtn = document.createElement('button');
-      layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
-      layoutBtn.textContent = '⊞';
-      layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
-      wrap.appendChild(layoutBtn);
-    }
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button'; deleteBtn.className = 'book-reorder-delete-btn'; deleteBtn.title = 'Eliminar página';
-    deleteBtn.textContent = '✕';
-    deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteBookPage(idx); });
-    wrap.appendChild(deleteBtn);
-  }
+  if (albumCanEdit) tile.draggable = true;
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   wrap.appendChild(grid);
   // Se recorre page.images por índice real (nunca compactando) — un
@@ -3672,10 +3651,11 @@ function buildBookReorderTile(page, idx) {
       const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle);
       // Encuadre por foto (zoom + paneo) — pedido de la esposa del usuario
       // (diseñadora). Vive DENTRO de `.bp`, que es `draggable` (a
-      // diferencia de ⊞/✕ de arriba, que viven en `wrap` y nunca
-      // compiten con ningún drag) — sin el `stopPropagation` en
-      // `mousedown`/`dragstart` un click en desktop podría arrancar un
-      // arrastre de foto en vez de abrir el editor.
+      // diferencia de ⊞/✕, que desde v2.23 viven en la leyenda de abajo,
+      // fuera de cualquier `.bp` — nunca compiten con ningún drag) — sin
+      // el `stopPropagation` en `mousedown`/`dragstart` un click en
+      // desktop podría arrancar un arrastre de foto en vez de abrir el
+      // editor.
       const frameBtn = document.createElement('button');
       frameBtn.type = 'button'; frameBtn.className = 'bp-frame-btn'; frameBtn.title = 'Encuadrar foto';
       frameBtn.textContent = '⛶';
@@ -3706,6 +3686,30 @@ function buildBookReorderTile(page, idx) {
   }
   const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
   label.appendChild(labelText);
+  if (albumCanEdit) {
+    // "⊞"/"✕" vivían flotando sobre las esquinas de la tarjeta (wrap) hasta
+    // v2.23 — ahí se superponían pixel a pixel con los botones de la PRIMERA
+    // foto de la página (.bp-drag-handle/.bp-frame-btn, mismas esquinas,
+    // z-index más alto), quedando tapados y sin poder tocarse nunca. Se
+    // mudan acá, a la leyenda de abajo (mismo lugar que pidió el usuario:
+    // "pondría el botón por abajo") — ninguna foto vive ahí, así que no hay
+    // con qué competir.
+    // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
+    // tiene sentido mostrar el botón. `page.images.length` es la capacidad
+    // fija de la página (v3), no la cantidad de fotos puestas ahora.
+    if (page.images.length > 1) {
+      const layoutBtn = document.createElement('button');
+      layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
+      layoutBtn.textContent = '⊞';
+      layoutBtn.addEventListener('click', e => { e.stopPropagation(); openBookLayoutModal(idx); });
+      label.appendChild(layoutBtn);
+    }
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button'; deleteBtn.className = 'book-reorder-delete-btn'; deleteBtn.title = 'Eliminar página';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteBookPage(idx); });
+    label.appendChild(deleteBtn);
+  }
   tile.appendChild(label);
   return tile;
 }
@@ -4308,7 +4312,14 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   box.style.aspectRatio = `${rect.w} / ${rect.h}`;
   const img = document.getElementById('book-frame-img');
   img.style.transform = '';
+  // Sacar cualquier listener de una apertura anterior antes de agregar el
+  // de esta — mismo `onBookFrameImgLoad`/`onBookFrameImgError` de siempre,
+  // así que `addEventListener` los deduplicaría solo, pero ser explícitos
+  // acá deja clara la intención de "una apertura, un listener".
+  img.removeEventListener('load', onBookFrameImgLoad);
+  img.removeEventListener('error', onBookFrameImgError);
   img.addEventListener('load', onBookFrameImgLoad, { once: true });
+  img.addEventListener('error', onBookFrameImgError, { once: true });
   // A diferencia del resto de las miniaturas de la app (setAuthImg(), que
   // arranca por la miniatura liviana de drive.google.com/thumbnail), acá
   // se carga directo el archivo real completo con fetchAuthImgUrl() —
@@ -4324,6 +4335,16 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   fetchAuthImgUrl(fileId).then(url => {
     if (bookFrameFileId !== fileId) return; // se cerró o cambió de foto mientras bajaba
     img.src = url || MEDIA_UNAVAILABLE_SVG;
+    // v2.23: si esta foto ya se había abierto antes en esta misma sesión
+    // (mismo fileId, mismo blob: URL ya cacheado en _imgCache), asignar el
+    // MISMO string a `img.src` es, para el navegador, un no-op — no hay
+    // ninguna re-descarga real de la que colgarse, así que 'load' nunca
+    // vuelve a dispararse. Sin este chequeo, el re-clamp de
+    // onBookFrameImgLoad() (el fix de v2.21 para la franja negra) nunca
+    // llegaba a correr en ese caso puntual — el encuadre restaurado
+    // quedaba sin re-limitar. `img.complete` ya da `true` de una en el
+    // caso de no-op (nada cambió, no hace falta esperar ningún evento).
+    if (img.complete && img.naturalWidth) onBookFrameImgLoad({ target: img });
   });
 
   document.getElementById('book-frame-zoom').value = bookFrameCurrent.scale;
@@ -4331,8 +4352,16 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
 }
 
 function onBookFrameImgLoad(e) {
-  bookFrameNatural = { w: e.target.naturalWidth, h: e.target.naturalHeight };
+  bookFrameNatural = { w: e.target.naturalWidth || 0, h: e.target.naturalHeight || 0 };
   e.target.classList.remove('auth-img-loading');
+  // Defensivo (v2.23): una imagen que "carga" pero no llega a decodificar
+  // bien (blob corrupto/truncado por un corte de red a mitad de la
+  // descarga) puede disparar 'load' con naturalWidth/Height en 0 — sin
+  // este corte, `photoAspect` de clampBookFramePan() daría NaN/Infinity y
+  // el transform resultante quedaría indefinido. Sin dimensiones reales
+  // no hay nada que re-clampear; se deja el <img> tal cual (mismo criterio
+  // que el placeholder de "no disponible" en el resto de la app).
+  if (!bookFrameNatural.w || !bookFrameNatural.h) return;
   // Bug real (v2.21): un encuadre ya guardado (bookFraming[fileId], de un
   // ajuste anterior) se aplicaba tal cual, sin volver a limitarlo contra
   // las dimensiones reales de la foto — recién acá, al terminar de cargar,
@@ -4346,6 +4375,15 @@ function onBookFrameImgLoad(e) {
   const clamped = clampBookFramePan(bookFrameCurrent.scale, bookFrameCurrent.x, bookFrameCurrent.y);
   bookFrameCurrent = { ...bookFrameCurrent, x: clamped.x, y: clamped.y };
   applyBookFrameStyle();
+}
+
+// v2.23: si la descarga del archivo real falla del todo (red, o el archivo
+// ya no existe en Drive), cae al mismo placeholder "No disponible" que ya
+// usa `setAuthImg()` en el resto de la app, en vez de dejar el <img> con
+// un `src` roto o el spinner de carga para siempre.
+function onBookFrameImgError(e) {
+  e.target.classList.remove('auth-img-loading');
+  if (e.target.src !== MEDIA_UNAVAILABLE_SVG) e.target.src = MEDIA_UNAVAILABLE_SVG;
 }
 
 // Traslada el estado actual (bookFrameCurrent) al <img> del editor —

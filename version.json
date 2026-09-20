@@ -1,4 +1,4 @@
 {
-  "version": "2.22",
-  "changelog": "Al terminar una carga masiva, la app te lleva directo al último día de las fotos subidas."
+  "version": "2.23",
+  "changelog": "Fotolibro: se puede eliminar una página (el botón estaba tapado por el de encuadrar) + más resistencia en el editor de encuadre."
 }
