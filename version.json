@@ -1,4 +1,4 @@
 {
-  "version": "2.23",
-  "changelog": "Fotolibro: se puede eliminar una página (el botón estaba tapado por el de encuadrar) + más resistencia en el editor de encuadre."
+  "version": "2.24",
+  "changelog": "Fotolibro: arreglada de raíz la franja negra al encuadrar una foto (bug de Safari, no de datos guardados)."
 }

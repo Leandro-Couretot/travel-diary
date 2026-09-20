@@ -455,7 +455,14 @@ audio { width: 100%; height: 32px; }
 .book-frame-stage { display: flex; justify-content: center; margin-bottom: 1rem; }
 .book-frame-box { position: relative; width: 100%; max-width: 320px; overflow: hidden; border-radius: 8px; background: #000; touch-action: none; cursor: grab; }
 .book-frame-box.dragging { cursor: grabbing; }
-.book-frame-box img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; transition: none; }
+/* v2.24: sin `width/height:100%` ni `object-fit:cover` a propósito — el
+   tamaño y la posición reales los calcula `applyBookFrameStyle()` a mano
+   (ver ese comentario en el JS) y los aplica como `width`/`height`/`left`/
+   `top` en píxeles, evitando combinar `object-fit` con un `transform` en
+   el mismo elemento (el bug de Safari/WebKit que causaba la franja negra).
+   Mientras no cargó (opacity:0 vía `.auth-img-loading`) no hace falta
+   ningún tamaño de respaldo acá. */
+.book-frame-box img { position: absolute; top: 0; left: 0; user-select: none; -webkit-user-drag: none; transition: none; }
 .book-frame-zoom-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
 .book-frame-zoom-icon { font-size: 0.9rem; color: var(--ink-muted); width: 1.2rem; text-align: center; flex: 0 0 auto; }
 .book-frame-zoom-row input[type="range"] { flex: 1; }
@@ -1219,7 +1226,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.23';
+const APP_VERSION = '2.24';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -4311,7 +4318,10 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   const box = document.getElementById('book-frame-box');
   box.style.aspectRatio = `${rect.w} / ${rect.h}`;
   const img = document.getElementById('book-frame-img');
-  img.style.transform = '';
+  // v2.24: ya no se usa transform acá (ver applyBookFrameStyle) — se limpia
+  // el tamaño/posición explícitos de una apertura anterior, invisible de
+  // todos modos hasta que 'load' saque auth-img-loading.
+  img.style.width = img.style.height = img.style.left = img.style.top = '';
   // Sacar cualquier listener de una apertura anterior antes de agregar el
   // de esta — mismo `onBookFrameImgLoad`/`onBookFrameImgError` de siempre,
   // así que `addEventListener` los deduplicaría solo, pero ser explícitos
@@ -4386,13 +4396,47 @@ function onBookFrameImgError(e) {
   if (e.target.src !== MEDIA_UNAVAILABLE_SVG) e.target.src = MEDIA_UNAVAILABLE_SVG;
 }
 
-// Traslada el estado actual (bookFrameCurrent) al <img> del editor —
-// mismo `transform` que `applyBookFramingTransform()` aplica en la
-// grilla, porque el sistema de coordenadas (fracción de la celda) es a
-// propósito independiente de a qué tamaño en px se esté mostrando.
+// Tamaño "cover" base (en px del frame, a scale:1) para cubrir un frame
+// frameW×frameH con una foto de bookFrameNatural — misma cuenta que ya
+// hacía clampBookFramePan(), extraída acá porque ahora applyBookFrameStyle()
+// también la necesita (ver más abajo, v2.24).
+function bookFrameCoverBase(frameW, frameH) {
+  const frameAspect = frameW / frameH;
+  const photoAspect = bookFrameNatural.w / bookFrameNatural.h;
+  if (photoAspect > frameAspect) return { w: frameH * photoAspect, h: frameH };
+  return { w: frameW, h: frameW / photoAspect };
+}
+
+// Traslada el estado actual (bookFrameCurrent) al <img> del editor.
+// Bug real (v2.24): hasta acá esto se hacía con `transform: translate()
+// scale()` sobre un <img> con `object-fit:cover` — Safari/WebKit tiene un
+// bug conocido combinando ambas cosas en el mismo elemento: no siempre
+// recalcula bien la cobertura la primera vez que se pinta con un transform
+// ya puesto (algo que acá pasaba siempre, incluso en el estado por default,
+// porque `applyBookFrameStyle()` corría igual con scale:1/x:0/y:0), dejando
+// ver el fondo negro de `.book-frame-box` en un borde — la franja reportada
+// por el usuario, reproducible incluso en una foto recién subida, sin
+// ningún encuadre guardado de antes (se confirmó con el book.json real:
+// `framing` vacío para toda la cuenta). Mover apenas el zoom "arreglaba"
+// el síntoma porque fuerza un repintado con un tamaño distinto, no porque
+// hubiera algo mal en el valor guardado.
+// Fix: en vez de dejarle a `object-fit:cover` + `transform` la cuenta al
+// navegador, se calcula a mano el tamaño y la posición exactos (mismo
+// resultado matemático) y se aplican como `width`/`height`/`left`/`top`
+// en píxeles — sin `object-fit` ni `transform` de por medio, así no hay
+// combinación conflictiva que dispare el bug.
 function applyBookFrameStyle() {
   const img = document.getElementById('book-frame-img');
-  img.style.transform = `translate(${(bookFrameCurrent.x * 100).toFixed(3)}%, ${(bookFrameCurrent.y * 100).toFixed(3)}%) scale(${bookFrameCurrent.scale})`;
+  const box = document.getElementById('book-frame-box');
+  const frameW = box.clientWidth, frameH = box.clientHeight;
+  if (frameW && frameH && bookFrameNatural.w && bookFrameNatural.h) {
+    const base = bookFrameCoverBase(frameW, frameH);
+    const dispW = base.w * bookFrameCurrent.scale, dispH = base.h * bookFrameCurrent.scale;
+    img.style.width = `${dispW}px`;
+    img.style.height = `${dispH}px`;
+    img.style.left = `${(frameW - dispW) / 2 + bookFrameCurrent.x * frameW}px`;
+    img.style.top = `${(frameH - dispH) / 2 + bookFrameCurrent.y * frameH}px`;
+  }
   document.getElementById('book-frame-zoom').value = bookFrameCurrent.scale;
 }
 
@@ -4406,12 +4450,8 @@ function clampBookFramePan(scale, x, y) {
   const box = document.getElementById('book-frame-box');
   const frameW = box.clientWidth, frameH = box.clientHeight;
   if (!frameW || !frameH || !bookFrameNatural.w || !bookFrameNatural.h) return { x: 0, y: 0 };
-  const frameAspect = frameW / frameH;
-  const photoAspect = bookFrameNatural.w / bookFrameNatural.h;
-  let coverBaseW, coverBaseH;
-  if (photoAspect > frameAspect) { coverBaseH = frameH; coverBaseW = frameH * photoAspect; }
-  else { coverBaseW = frameW; coverBaseH = frameW / photoAspect; }
-  const dispW = coverBaseW * scale, dispH = coverBaseH * scale;
+  const base = bookFrameCoverBase(frameW, frameH);
+  const dispW = base.w * scale, dispH = base.h * scale;
   const maxXfrac = Math.max(0, (dispW - frameW) / 2) / frameW;
   const maxYfrac = Math.max(0, (dispH - frameH) / 2) / frameH;
   return { x: Math.max(-maxXfrac, Math.min(maxXfrac, x)), y: Math.max(-maxYfrac, Math.min(maxYfrac, y)) };
