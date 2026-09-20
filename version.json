@@ -1,4 +1,4 @@
 {
-  "version": "2.24",
-  "changelog": "Fotolibro: arreglada de raíz la franja negra al encuadrar una foto (bug de Safari, no de datos guardados)."
+  "version": "2.25",
+  "changelog": "Fotolibro: confirmar un encuadre ya no puede dejar toda la grilla en blanco + alarma que ofrece refrescar si pasa igual."
 }

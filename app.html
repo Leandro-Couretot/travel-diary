@@ -755,6 +755,10 @@ audio { width: 100%; height: 32px; }
 }
 .update-banner-close:hover { color: white; }
 
+/* Mismo layout que .update-banner, fondo rojo — alarma real, no una
+   novedad rutinaria (ver scheduleBookGridWatchdog() en el script). */
+.book-stuck-banner { background: var(--red); }
+
 /* iOS instructions modal */
 .ios-install-steps { padding: 1rem 1.5rem 1.5rem; }
 .ios-step { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1rem; font-size: 0.875rem; line-height: 1.5; }
@@ -793,6 +797,16 @@ audio { width: 100%; height: 32px; }
   </div>
   <button class="update-banner-btn" id="update-banner-btn">Actualizar</button>
   <button class="update-banner-close" id="update-banner-close">✕</button>
+</div>
+
+<!-- ─── FOTOLIBRO: ALARMA DE GRILLA COLGADA (v2.25) ─── -->
+<div id="book-stuck-banner" style="display:none;" class="update-banner book-stuck-banner">
+  <div class="update-banner-text">
+    <div class="update-banner-title">Algo falló cargando las fotos</div>
+    <div class="update-banner-sub">Puede ser la conexión — refrescá para reintentar.</div>
+  </div>
+  <button class="update-banner-btn" id="book-stuck-banner-btn">Refrescar</button>
+  <button class="update-banner-close" id="book-stuck-banner-close">✕</button>
 </div>
 
 <!-- iOS install instructions modal -->
@@ -1226,7 +1240,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.24';
+const APP_VERSION = '2.25';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -2667,7 +2681,11 @@ const EAGER_BOOK_PAGES = 3;         // páginas cuyas fotos piden ya mismo
 const EAGER_BOOK_DRAWER_COUNT = 8;  // fotos del drawer ("Sin ubicar") que piden ya mismo
 
 function scheduleBookImgLoad(imgEl, fileId, size, eagerIdx, eagerLimit) {
-  if (eagerIdx < eagerLimit) { setAuthImg(imgEl, fileId, size); return; }
+  // `bookLoadAttempted` marca qué <img> realmente disparó un pedido a Drive
+  // (a diferencia de uno lazy que todavía espera entrar en pantalla) — lo
+  // usa `scheduleBookGridWatchdog()` (v2.25) para no confundir "todavía no
+  // le tocó cargar" con "cargó y falló".
+  if (eagerIdx < eagerLimit) { imgEl.dataset.bookLoadAttempted = '1'; setAuthImg(imgEl, fileId, size); return; }
   imgEl.dataset.bookFileId = fileId;
   imgEl.dataset.bookSize = size;
   bookImgObserver.observe(imgEl);
@@ -2684,9 +2702,45 @@ function resetBookImgObserver() {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       obs.unobserve(entry.target);
+      entry.target.dataset.bookLoadAttempted = '1';
       setAuthImg(entry.target, entry.target.dataset.bookFileId, entry.target.dataset.bookSize);
     });
   }, { rootMargin: '300px 300px' });
+}
+
+// ─── Red de seguridad: grilla del fotolibro que queda en blanco (v2.25) ──
+// El usuario reportó que, justo después de confirmar un encuadre ("Listo"),
+// TODAS las fotos de la grilla (no solo la editada) quedaban en blanco
+// hasta cerrar y reabrir la app — ver el fix de fondo en confirmBookFrame()
+// (ya no dispara un re-render completo de la grilla). Esta es la red de
+// seguridad para cualquier OTRO camino que sí necesita un render completo
+// (mover una foto, agregar/eliminar página, cambiar layout/tamaño) y pueda
+// disparar la misma ráfaga de pedidos a Drive: si pasado un tiempo
+// razonable más de la mitad de las fotos que ya deberían haber cargado
+// siguen sin una imagen real (`naturalWidth:0` — nunca dispararon `load`
+// NI `error`, un pedido que quedó colgado en vez de fallar limpio), se
+// asume un problema sistémico de red/Drive y se ofrece refrescar en vez de
+// dejar al usuario con una grilla rota sin explicación.
+let bookGridWatchdogTimer = null;
+function scheduleBookGridWatchdog(delayMs = 12000) {
+  // más que los 8s del timer de seguridad por foto individual de setAuthImg()
+  clearTimeout(bookGridWatchdogTimer);
+  hideBookStuckBanner();
+  bookGridWatchdogTimer = setTimeout(checkBookGridStuck, delayMs);
+}
+function checkBookGridStuck() {
+  const imgs = Array.from(document.querySelectorAll('#book-reorder-area img[data-book-load-attempted="1"]'));
+  if (imgs.length < 3) return; // muestra muy chica, no vale la pena alarmar por 1-2 fotos puntuales
+  const stuck = imgs.filter(img => !(img.complete && img.naturalWidth > 0)).length;
+  if (stuck / imgs.length > 0.5) showBookStuckBanner();
+}
+function showBookStuckBanner() {
+  const banner = document.getElementById('book-stuck-banner');
+  if (banner) banner.style.display = 'flex';
+}
+function hideBookStuckBanner() {
+  const banner = document.getElementById('book-stuck-banner');
+  if (banner) banner.style.display = 'none';
 }
 let bookPageSize  = null;        // { id, w, h } — tamaño de hoja de ESTE álbum, seteado en renderBook() (ver BOOK_PAGE_SIZES)
 let bookFraming   = {};          // driveFileId -> { scale, x, y } — encuadre (zoom+pan) por foto, seteado en renderBook()
@@ -3590,6 +3644,7 @@ function renderBookReorderGrid() {
     initBookPageTouchReorder(container);
   }
   applyBookTextVisibility();
+  scheduleBookGridWatchdog();
 }
 
 // ─── Fotolibro: encuadre (zoom + pan) por foto ───────────────────
@@ -4475,8 +4530,27 @@ function confirmBookFrame() {
   } else {
     bookFraming[bookFrameFileId] = { ...bookFrameCurrent };
   }
+  const editedFileId = bookFrameFileId;
   closeBookFrameModal();
-  renderBookReorderGrid();
+  // Bug real (v2.25): acá antes se llamaba a renderBookReorderGrid(), un
+  // re-render COMPLETO de la grilla — pero confirmar un encuadre solo
+  // cambia el transform de UNA foto, nunca la estructura de páginas/drawer.
+  // Un re-render completo tira todos los <img> viejos (ya cargados) y arma
+  // <img> nuevos para CADA foto visible, disparando de nuevo su pedido a
+  // Drive — setAuthImg() nunca cachea la miniatura (a diferencia del
+  // fallback autenticado), así que esto es una ráfaga real de pedidos
+  // simultáneos, no algo que el navegador resuelva gratis con su caché
+  // HTTP. En una conexión débil (o el comportamiento más agresivo de
+  // Safari con el caché de recursos cross-site en una PWA) esa ráfaga
+  // podía dejar fotos sin cargar nunca — ni load ni error — mostrándose en
+  // blanco hasta cerrar y reabrir la app. Actualizar en el lugar el <img>
+  // de la única foto que cambió corta el problema de raíz para este
+  // camino puntual, sin tocar ningún otro <img> ya cargado.
+  document.querySelectorAll('#book-reorder-container .bp[data-file-id]').forEach(cell => {
+    if (cell.dataset.fileId !== editedFileId) return;
+    const img = cell.querySelector('img');
+    if (img) applyBookFramingTransform(img, editedFileId);
+  });
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el encuadre:', e));
 }
 
@@ -5759,6 +5833,8 @@ document.getElementById('update-banner-close').addEventListener('click', () => {
   sessionStorage.setItem('td_update_dismissed', banner.dataset.version || '');
   banner.style.display = 'none';
 });
+document.getElementById('book-stuck-banner-btn').addEventListener('click', () => location.reload());
+document.getElementById('book-stuck-banner-close').addEventListener('click', hideBookStuckBanner);
 
 checkForAppUpdate();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForAppUpdate(); });
