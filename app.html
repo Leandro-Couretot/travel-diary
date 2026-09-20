@@ -1223,7 +1223,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.20';
+const APP_VERSION = '2.21';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -4312,6 +4312,18 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
 function onBookFrameImgLoad(e) {
   bookFrameNatural = { w: e.target.naturalWidth, h: e.target.naturalHeight };
   e.target.classList.remove('auth-img-loading');
+  // Bug real (v2.21): un encuadre ya guardado (bookFraming[fileId], de un
+  // ajuste anterior) se aplicaba tal cual, sin volver a limitarlo contra
+  // las dimensiones reales de la foto — recién acá, al terminar de cargar,
+  // se conoce bookFrameNatural de verdad. Un framing guardado antes del
+  // fix de v2.19 (calculado sobre la miniatura rota de Drive, con una
+  // proporción distinta a la de la foto real) corre la imagen más de lo
+  // que el frame actual admite, dejando ver el fondo negro de la caja en
+  // un borde — exactamente la franja reportada. Re-clampear acá asegura
+  // que la foto real cubra siempre el frame entero, sea cual sea el
+  // origen del valor restaurado.
+  const clamped = clampBookFramePan(bookFrameCurrent.scale, bookFrameCurrent.x, bookFrameCurrent.y);
+  bookFrameCurrent = { ...bookFrameCurrent, x: clamped.x, y: clamped.y };
   applyBookFrameStyle();
 }
 

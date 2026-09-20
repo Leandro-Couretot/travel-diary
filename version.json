@@ -1,4 +1,4 @@
 {
-  "version": "2.20",
-  "changelog": "Bug real: al guardar el día, el aviso de \"Guardado en Drive\" se ocultaba antes de llegar a verse."
+  "version": "2.21",
+  "changelog": "Bug real: un encuadre de fotolibro ya guardado podía dejar la foto corrida, mostrando una franja negra."
 }
