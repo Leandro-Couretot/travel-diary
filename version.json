@@ -1,4 +1,4 @@
 {
-  "version": "2.28",
-  "changelog": "Fotolibro: fix real del margen/hueco gigante al encuadrar fotos en layouts de 2 y 3 (mismo tipo de bug que la franja negra del editor, ahora en la miniatura de la grilla)."
+  "version": "2.29",
+  "changelog": "Onboarding personalizado (bienvenida / crear tu primer álbum / novedades del mes), aviso de cookies con categorías (GDPR) y aceptación explícita de Términos/Privacidad antes de conectar Google."
 }

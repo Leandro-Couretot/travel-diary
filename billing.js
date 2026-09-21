@@ -10,6 +10,12 @@ let subState = { plan: 'free', status: 'none' };
 let currentUserEmail = null; // se llena en establishSession(), viene ya validado por el servidor
 let currentUserPicture = null; // v1.81: avatar del header — mismo origen/validación que currentUserEmail
 let currentUserName = null; // v1.81: solo para el alt/title del avatar, no se usa en ningún otro lado
+// Onboarding personalizado post-login (app.html → maybeShowPostLoginOnboarding()):
+// solo `true` en un signup genuino (isNewUser real de auth-session.js) —
+// una sesión restaurada nunca pasa por acá, así que su lectura por defecto
+// (false) ya es la correcta para ese camino sin que app.html tenga que
+// resetearla a mano.
+let lastSignupWasNew = false;
 
 // ─── App Check (reCAPTCHA Enterprise) ──────────────────────────────
 // Defensa contra bots/scripts que le peguen directo a /api/* sin pasar por
@@ -88,9 +94,15 @@ const META_PIXEL_PLAN_PRICES_ARS = { monthly: 14000, annual: Math.round(14000 * 
 // únicos con un momento server-side útil) — Meta cuenta las dos llegadas
 // como una sola si comparten `eventID`/`event_id` exactos. Para el resto de
 // los eventos (Pixel-only) se omite sin cambiar nada de comportamiento.
+// GDPR: además de que fbq() exista, hace falta consentimiento real de la
+// categoría "Marketing" (ver hasMarketingConsent() en app.html) — sin eso
+// el Píxel nunca llegó a cargarse de verdad (solo el stub del <head>, que
+// no toca la red por sí solo) y esta función tampoco debe empujar nada a
+// su cola interna, para no arriesgar que se mande retroactivo si el
+// usuario da consentimiento más tarde en la misma sesión.
 function trackMetaPixelEvent(eventName, params, eventId) {
   try {
-    if (typeof fbq !== 'function') return;
+    if (typeof fbq !== 'function' || !hasMarketingConsent()) return;
     fbq('track', eventName, params || {}, eventId ? { eventID: eventId } : undefined);
   } catch (e) {
     console.warn('No se pudo trackear el evento de Meta Pixel ' + eventName + ':', e);
@@ -103,7 +115,7 @@ function trackMetaPixelEvent(eventName, params, eventId) {
 // onboarding, "creaste tu álbum N") que no tienen un nombre estándar de Meta.
 function trackMetaPixelCustomEvent(eventName, params) {
   try {
-    if (typeof fbq !== 'function') return;
+    if (typeof fbq !== 'function' || !hasMarketingConsent()) return;
     fbq('trackCustom', eventName, params || {});
   } catch (e) {
     console.warn('No se pudo trackear el evento custom de Meta Pixel ' + eventName + ':', e);
@@ -169,10 +181,14 @@ async function establishSession(googleAccessToken) {
     // en localStorage), se manda junto con el login — auth-session.js lo
     // persiste solo si es un signup nuevo de verdad.
     const firstTouch = typeof getStoredUtmFirstTouch === 'function' ? getStoredUtmFirstTouch() : null;
+    // Términos/Privacidad (GDPR): handleDriveBtn() (app.html) nunca deja
+    // llegar hasta acá sin que hasAcceptedTerms() ya sea true — se manda
+    // igual, explícito, para que auth-session.js tenga un registro server-
+    // side de cuándo se aceptó (audit trail real, no solo localStorage).
     const res = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
-      body: JSON.stringify({ access_token: googleAccessToken, ...(firstTouch || {}) }),
+      body: JSON.stringify({ access_token: googleAccessToken, termsVersion: TERMS_VERSION, ...(firstTouch || {}) }),
     });
     if (!res.ok) return;
     applySessionResponse(await res.json());
@@ -197,7 +213,7 @@ async function establishSessionWithCode(code) {
     const res = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
-      body: JSON.stringify({ code, ...(firstTouch || {}) }),
+      body: JSON.stringify({ code, termsVersion: TERMS_VERSION, ...(firstTouch || {}) }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -216,6 +232,10 @@ function applySessionResponse(data) {
   currentUserEmail = data.email || null;
   currentUserPicture = data.picture || null;
   currentUserName = data.name || null;
+  // Leído por app.html (maybeShowPostLoginOnboarding()) en los 3 puntos
+  // donde una conexión nueva termina de resolver — mismo `isNewUser` real
+  // que ya usa el bloque de CompleteRegistration de acá abajo.
+  lastSignupWasNew = !!data.isNewUser;
   // Uno por sesión (cada vez que se resuelve, sea recién conectado o una
   // sesión restaurada al abrir la app), no por request — ver
   // ANALYTICS_PLAN.md, tabla AARRR.
@@ -317,7 +337,14 @@ const TRACK_ANON_EVENTS = ['onboarding_viewed', 'signup_started'];
 let _eventBuffer = [];
 let _trackFlushTimer = null;
 
+// GDPR: `usage_events` es analítica de producto (aunque sea 100% first-
+// party, sin compartir con nadie) — necesita el mismo consentimiento que
+// Google Analytics, salvo los 2 eventos del arranque del embudo
+// (TRACK_ANON_EVENTS) que ya son anónimos de por sí (sin `google_sub`,
+// ver track-event.js) y existen específicamente para medir gente que
+// todavía no llegó a decidir sobre las cookies.
 function trackEvent(eventName, eventProps = {}) {
+  if (!hasAnalyticsConsent() && !TRACK_ANON_EVENTS.includes(eventName)) return;
   _eventBuffer.push({ event_name: eventName, event_props: eventProps });
   if (!_trackFlushTimer) _trackFlushTimer = setTimeout(() => flushTrackEvents(), TRACK_FLUSH_MS);
 }

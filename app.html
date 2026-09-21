@@ -1,38 +1,69 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-0ZM7BKFP5G"></script>
+<!-- Google tag (gtag.js) — GDPR: solo el stub liviano de gtag() (sin red,
+     solo encola en dataLayer) — el <script src=".../gtag/js"> real y el
+     'config' recién se disparan si el usuario da consentimiento de
+     categoría "Analítica" (ver loadGoogleAnalytics() en el script inline
+     principal, sección "Consentimiento de cookies (GDPR)"). Sin eso, ni
+     un byte sale hacia Google. -->
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-
-  // send_page_view:false — esta es una SPA sin navegación real (ver
-  // convención #1, "nunca location.href/history.pushState"), así que el
-  // pageview automático de gtag no tiene sentido acá: siempre mostraría
-  // la misma URL (app.html). Las páginas "virtuales" por sección se
-  // mandan a mano, ver trackVirtualPageview() más abajo en el inline script.
-  gtag('config', 'G-0ZM7BKFP5G', { send_page_view: false });
 </script>
 <!-- Meta Pixel Code (Fase 3 de GROWTH_PLAN.md — mide el embudo de Meta Ads,
-     de un clic en un anuncio a un registro/suscripción). Snippet base
-     estándar de Meta, sin modificar — fbq() queda global, billing.js y el
-     script inline de más abajo lo llaman a través de trackMetaPixelEvent()
+     de un clic en un anuncio a un registro/suscripción). GDPR: mismo
+     criterio que gtag arriba — el snippet base de Meta arma el stub de
+     fbq() sin tocar la red, y guarda la carga real de fbevents.js en
+     `window._legadoLoadPixelScript` (closure sobre el snippet original,
+     sin reescribir su lógica) para que loadMetaPixel() la dispare recién
+     con consentimiento de categoría "Marketing". billing.js y el script
+     inline de más abajo llaman a fbq() a través de trackMetaPixelEvent()
      (billing.js), que nunca rompe nada si un adblocker lo bloquea. -->
 <script>
   !function(f,b,e,v,n,t,s)
   {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
   n.callMethod.apply(n,arguments):n.queue.push(arguments)};
   if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-  n.queue=[];t=b.createElement(e);t.async=!0;
-  t.src=v;s=b.getElementsByTagName(e)[0];
-  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  n.queue=[];
+  f._legadoLoadPixelScript=function(){
+    var t0=b.createElement(e);t0.async=!0;t0.src=v;
+    var s0=b.getElementsByTagName(e)[0];s0.parentNode.insertBefore(t0,s0);
+  };
+  }(window, document,'script',
   'https://connect.facebook.net/en_US/fbevents.js');
-  fbq('init', '1609371220699065');
-  fbq('track', 'PageView');
 </script>
 <!-- End Meta Pixel Code -->
+<!-- Consentimiento de cookies (GDPR) — solo las funciones de LECTURA del
+     consentimiento guardado (getStoredConsent/hasAnalyticsConsent/
+     hasMarketingConsent), que billing.js/debug.js necesitan poder llamar
+     desde el primer instante. Bug real evitado acá: billing.js vacía
+     window.__pendingErrorReports (errores de debug.js) en su propio nivel
+     superior, síncrono, apenas carga — si eso llegara a llamar a
+     trackEvent()->hasAnalyticsConsent() ANTES de que esta función
+     existiera en algún lado, sería un ReferenceError. Por eso este bloque
+     va ACÁ, antes que debug.js/billing.js (ver los <script src> más
+     abajo), y no junto al resto del módulo de consentimiento (que sí
+     puede esperar al script inline principal, porque loadGoogleAnalytics/
+     loadMetaPixel/el banner solo se llaman en respuesta a la carga
+     completa del DOM o a un click, nunca de forma síncrona al cargar un
+     script). -->
+<script>
+  const CONSENT_VERSION = 1;
+  const CONSENT_KEY = 'td_consent';
+  function getStoredConsent() {
+    try {
+      const raw = localStorage.getItem(CONSENT_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (data.version !== CONSENT_VERSION) return null; // versión vieja -> se vuelve a preguntar
+      return data;
+    } catch (e) { return null; }
+  }
+  function hasAnalyticsConsent() { const c = getStoredConsent(); return !!(c && c.analytics); }
+  function hasMarketingConsent() { const c = getStoredConsent(); return !!(c && c.marketing); }
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -763,6 +794,65 @@ audio { width: 100%; height: 32px; }
    novedad rutinaria (ver scheduleBookGridWatchdog() en el script). */
 .book-stuck-banner { background: var(--red); }
 
+/* Consentimiento de cookies (GDPR) — mismo lenguaje visual que
+   .update-banner (fondo oscuro fijo) pero pegado ABAJO, no arriba: no
+   compite con el header ni con un update-banner que pudiera mostrarse a
+   la vez, y es la posición esperada para este tipo de aviso. */
+.consent-banner {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 630;
+  padding: 0.9rem 1.1rem; padding-bottom: calc(0.9rem + env(safe-area-inset-bottom));
+  background: var(--ink); color: white;
+  display: flex; flex-direction: column; gap: 0.7rem;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.25);
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.consent-banner-text { font-size: 0.8rem; line-height: 1.5; color: rgba(255,255,255,0.85); }
+.consent-banner-text a { color: var(--accent-light); }
+.consent-banner-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.consent-banner-link {
+  background: none; border: none; color: rgba(255,255,255,0.7);
+  font-family: 'DM Sans', sans-serif; font-size: 0.78rem; text-decoration: underline;
+  cursor: pointer; padding: 0.4rem 0; margin-right: auto;
+}
+.consent-banner-link:hover { color: white; }
+.consent-banner-btn-ghost {
+  background: none; border: 1px solid rgba(255,255,255,0.3); color: white;
+  padding: 0.5rem 0.9rem; border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif; font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+}
+.consent-banner-btn-ghost:hover { border-color: rgba(255,255,255,0.6); }
+
+/* Preferencias de cookies (modal "Personalizar") */
+.consent-cat { padding: 0.7rem 0; border-bottom: 1px solid var(--ink-faint); display: flex; align-items: flex-start; gap: 0.75rem; }
+.consent-cat:last-of-type { border-bottom: none; }
+.consent-cat-toggle { cursor: pointer; }
+.consent-cat-toggle input[type="checkbox"] { flex-shrink: 0; margin-top: 0.2rem; width: 18px; height: 18px; accent-color: var(--accent); }
+.consent-cat-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.15rem; }
+.consent-cat-desc { font-size: 0.78rem; color: var(--ink-muted); line-height: 1.45; }
+
+/* "Powered by Google Drive" — texto simple + emoji ya usado en el resto
+   de esta app (☁️, ver modal-onboarding) en vez de replicar el logo de
+   Google, para no meterse con sus lineamientos de marca sin necesidad. */
+.powered-by-drive {
+  display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+  font-size: 0.78rem; color: var(--ink-muted); margin-top: 1.25rem; text-align: center;
+}
+.powered-by-drive strong { color: var(--ink); font-weight: 600; }
+
+/* Checkbox de Términos/Privacidad — mismo criterio de siempre (ver
+   convención "nunca implícito", GDPR): sin tildar, "Continuar con Google"
+   queda disabled (.btn:disabled, nueva — hasta ahora ningún botón de esta
+   app lo necesitaba). */
+.terms-check {
+  display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.9rem;
+  font-size: 0.78rem; color: var(--ink-muted); line-height: 1.4; cursor: pointer;
+}
+.terms-check input[type="checkbox"] { flex-shrink: 0; margin-top: 0.15rem; width: 16px; height: 16px; accent-color: var(--accent); }
+.terms-check a { color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* iOS instructions modal */
 .ios-install-steps { padding: 1rem 1.5rem 1.5rem; }
 .ios-step { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1rem; font-size: 0.875rem; line-height: 1.5; }
@@ -811,6 +901,36 @@ audio { width: 100%; height: 32px; }
   </div>
   <button class="update-banner-btn" id="book-stuck-banner-btn">Refrescar</button>
   <button class="update-banner-close" id="book-stuck-banner-close">✕</button>
+</div>
+
+<!-- ─── CONSENTIMIENTO DE COOKIES (GDPR) ─── -->
+<div id="consent-banner" style="display:none;" class="consent-banner">
+  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y la efectividad de nuestra publicidad. Podés elegir qué categorías aceptar — ver <a href="privacy.html" target="_blank">Política de Privacidad</a>.</div>
+  <div class="consent-banner-actions">
+    <button type="button" class="consent-banner-link" id="consent-banner-customize">Personalizar</button>
+    <button type="button" class="consent-banner-btn-ghost" id="consent-banner-reject">Rechazar</button>
+    <button type="button" class="update-banner-btn" id="consent-banner-accept">Aceptar todo</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-consent-prefs">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Preferencias de cookies</div><button class="modal-close" onclick="closeConsentPrefsModal()">×</button></div>
+    <div class="modal-body">
+      <div class="consent-cat">
+        <div><div class="consent-cat-title">Necesarias</div><div class="consent-cat-desc">Tu sesión y la conexión con tu Google Drive. Siempre activas — la app no funciona sin esto.</div></div>
+      </div>
+      <label class="consent-cat consent-cat-toggle">
+        <input type="checkbox" id="consent-check-analytics">
+        <div><div class="consent-cat-title">Analítica</div><div class="consent-cat-desc">Google Analytics y nuestras propias métricas de uso (sin identificarte por nombre ni email) para entender cómo se usa la app.</div></div>
+      </label>
+      <label class="consent-cat consent-cat-toggle">
+        <input type="checkbox" id="consent-check-marketing">
+        <div><div class="consent-cat-title">Marketing</div><div class="consent-cat-desc">Píxel de Meta (Facebook/Instagram), para medir si una suscripción se originó en uno de nuestros anuncios.</div></div>
+      </label>
+      <button type="button" class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="saveConsentPrefsFromModal()">Guardar preferencias</button>
+    </div>
+  </div>
 </div>
 
 <!-- iOS install instructions modal -->
@@ -995,7 +1115,25 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">📷</span><span>Guardá cada día con fotos, videos, notas y audio.</span></div>
       <div class="help-item"><span class="help-item-dot">☁️</span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
       <div class="help-item"><span class="help-item-dot">📖</span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
-      <button class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="startOnboardingLogin()">Continuar con Google</button>
+      <label class="terms-check">
+        <input type="checkbox" id="onboarding-terms-check">
+        <span>Acepto los <a href="terms.html" target="_blank">Términos de Servicio</a> y la <a href="privacy.html" target="_blank">Política de Privacidad</a>.</span>
+      </label>
+      <button class="btn btn-primary" style="width:100%;margin-top:0.75rem;" id="btn-onboarding-google" disabled onclick="startOnboardingLogin()">Continuar con Google</button>
+      <div class="powered-by-drive">☁️ <span>Potenciado por <strong>Google Drive</strong> — tus fotos, en tu cuenta.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal genérico reusado por los 3 popups post-login (bienvenida / crear
+     primer álbum / novedades) — ver showOnboardingInfoModal() en el script
+     inline, mismo criterio que customConfirm(). -->
+<div class="modal-overlay" id="modal-onboarding-info">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="onboarding-info-title"></div><button class="modal-close" onclick="closeOnboardingInfoModal()">×</button></div>
+    <div class="modal-body">
+      <div id="onboarding-info-items"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:1rem;" id="onboarding-info-cta"></button>
     </div>
   </div>
 </div>
@@ -1218,8 +1356,9 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-version">
       Versión <span id="app-version-label">1.77</span> ·
-      <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> · 
-      <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a>
+      <a href="privacy.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Privacidad</a> ·
+      <a href="terms.html" target="_blank" style="color:var(--ink-faint);font-size:0.72rem;">Términos</a> ·
+      <a href="#" onclick="openConsentPrefsModal(); return false;" style="color:var(--ink-faint);font-size:0.72rem;">Preferencias de cookies</a>
     </div>
   </div>
 </div>
@@ -1244,8 +1383,99 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.28';
+const APP_VERSION = '2.29';
 document.getElementById('app-version-label').textContent = APP_VERSION;
+
+// ═══════════════════════════════════════════════════════════
+// ─── Consentimiento de cookies/tracking (GDPR) ───────────
+// ═══════════════════════════════════════════════════════════
+// Google Analytics y el Píxel de Meta son medición/publicidad, no
+// imprescindibles para que la app funcione — no pueden mandar nada a
+// Google/Meta hasta que el usuario elija. `td_consent` (localStorage,
+// nunca se manda a ningún servidor nuestro) guarda la elección.
+// CONSENT_VERSION/CONSENT_KEY/getStoredConsent()/hasAnalyticsConsent()/
+// hasMarketingConsent() viven en un <script> propio en el <head> (antes
+// de debug.js/billing.js) — no acá — porque billing.js puede llamar a
+// trackEvent()->hasAnalyticsConsent() de forma SÍNCRONA en su propio
+// nivel superior, al vaciar la cola de errores pendientes de debug.js
+// (window.__pendingErrorReports), bastante antes de que este script
+// inline (el último en cargar) llegue a ejecutarse. Ver el comentario
+// grande en el <head> para el detalle completo del bug que esto evita.
+function saveConsent(analytics, marketing) {
+  try {
+    localStorage.setItem(CONSENT_KEY, JSON.stringify({ version: CONSENT_VERSION, analytics: !!analytics, marketing: !!marketing, ts: Date.now() }));
+  } catch (e) { /* Safari privado/cuota llena — el consentimiento no persiste, se vuelve a preguntar la próxima carga, nunca rompe nada */ }
+}
+
+let _gaLoaded = false, _metaPixelLoaded = false;
+// Recién acá se pide de verdad el script de gtag.js — el stub del <head>
+// (gtag()/dataLayer) no toca la red por sí solo.
+function loadGoogleAnalytics() {
+  if (_gaLoaded) return;
+  _gaLoaded = true;
+  const s = document.createElement('script');
+  s.async = true;
+  s.src = 'https://www.googletagmanager.com/gtag/js?id=G-0ZM7BKFP5G';
+  document.head.appendChild(s);
+  // send_page_view:false — ver el comentario de siempre en
+  // trackVirtualPageview() más abajo, esta es una SPA sin navegación real.
+  gtag('config', 'G-0ZM7BKFP5G', { send_page_view: false });
+}
+// Recién acá se inyecta fbevents.js de verdad — window._legadoLoadPixelScript
+// lo arma el snippet del <head> (closure sobre la URL del script, nunca la
+// llama sola).
+function loadMetaPixel() {
+  if (_metaPixelLoaded) return;
+  _metaPixelLoaded = true;
+  if (typeof window._legadoLoadPixelScript === 'function') window._legadoLoadPixelScript();
+  fbq('init', '1609371220699065');
+  fbq('track', 'PageView');
+}
+function applyConsent(analytics, marketing) {
+  if (analytics) loadGoogleAnalytics();
+  if (marketing) loadMetaPixel();
+}
+
+// Se llama una sola vez, apenas carga la página (ver el llamado al final
+// de este bloque) — si ya hay una elección guardada (de esta versión) la
+// aplica en silencio; si no, muestra el banner y espera. Revocar una
+// categoría ya cargada no puede "descargar" el script (las librerías de
+// terceros no tienen un mecanismo estándar para eso) pero sí corta los
+// eventos nuevos al toque, gracias al chequeo en cada call-site de arriba
+// — mismo criterio que ya documenta el comentario de hasAnalyticsConsent().
+function initConsentGate() {
+  const stored = getStoredConsent();
+  if (stored) { applyConsent(stored.analytics, stored.marketing); return; }
+  const banner = document.getElementById('consent-banner');
+  if (banner) banner.style.display = 'flex';
+}
+function resolveConsent(analytics, marketing) {
+  saveConsent(analytics, marketing);
+  applyConsent(analytics, marketing);
+  const banner = document.getElementById('consent-banner');
+  if (banner) banner.style.display = 'none';
+}
+function openConsentPrefsModal() {
+  const stored = getStoredConsent();
+  document.getElementById('consent-check-analytics').checked = !!(stored && stored.analytics);
+  document.getElementById('consent-check-marketing').checked = !!(stored && stored.marketing);
+  document.getElementById('modal-consent-prefs').classList.add('open');
+}
+function closeConsentPrefsModal() {
+  document.getElementById('modal-consent-prefs').classList.remove('open');
+}
+function saveConsentPrefsFromModal() {
+  resolveConsent(
+    document.getElementById('consent-check-analytics').checked,
+    document.getElementById('consent-check-marketing').checked
+  );
+  closeConsentPrefsModal();
+}
+document.getElementById('consent-banner-accept').addEventListener('click', () => resolveConsent(true, true));
+document.getElementById('consent-banner-reject').addEventListener('click', () => resolveConsent(false, false));
+document.getElementById('consent-banner-customize').addEventListener('click', openConsentPrefsModal);
+document.getElementById('modal-consent-prefs').addEventListener('click', e => { if (e.target === e.currentTarget) closeConsentPrefsModal(); });
+initConsentGate();
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
 // cambia (SPA, sin history.pushState, ver convención #1), así que le
@@ -1253,10 +1483,12 @@ document.getElementById('app-version-label').textContent = APP_VERSION;
 // que el usuario ve, para poder navegar el reporte "Páginas y pantallas"
 // de GA como si fueran páginas reales. Mismo criterio defensivo que
 // appCheckHeaders() (billing.js): nunca puede romper la app si gtag no
-// cargó (adblocker, red) — se traga cualquier error en silencio.
+// cargó (adblocker, red) — se traga cualquier error en silencio. GDPR:
+// además de que exista gtag(), hace falta consentimiento de Analítica —
+// ver el comentario grande de hasAnalyticsConsent() más arriba.
 function trackVirtualPageview(path, title) {
   try {
-    if (typeof gtag !== 'function') return;
+    if (typeof gtag !== 'function' || !hasAnalyticsConsent()) return;
     gtag('event', 'page_view', {
       page_title: title,
       page_location: location.origin + '/app.html#' + path,
@@ -1320,6 +1552,22 @@ function getStoredUtmFirstTouch() {
 }
 function clearStoredUtmFirstTouch() {
   try { localStorage.removeItem(UTM_FIRST_TOUCH_KEY); } catch (e) {}
+}
+
+// ─── Términos de Servicio / Política de Privacidad ───────
+// TERMS_VERSION: subir este número cuando cambie algo material en
+// terms.html/privacy.html — hasAcceptedTerms() vuelve a dar false para
+// todo el mundo y handleDriveBtn() (el único punto de entrada real al
+// login de Google, ver más abajo) los manda de nuevo al checkbox del
+// modal de onboarding antes de dejarlos seguir. Mismo mecanismo que
+// SCOPE_VERSION (drive.js) para forzar algo sin migrar nada a mano.
+const TERMS_VERSION = 1;
+const TERMS_ACCEPTED_KEY = 'td_terms_accepted_version';
+function hasAcceptedTerms() {
+  return localStorage.getItem(TERMS_ACCEPTED_KEY) === String(TERMS_VERSION);
+}
+function markTermsAccepted() {
+  try { localStorage.setItem(TERMS_ACCEPTED_KEY, String(TERMS_VERSION)); } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1447,14 +1695,108 @@ async function maybeEnforceAlbumLimit() {
     if (changed && currentView === 'home') await renderAlbums();
   } catch (e) { console.warn('No se pudo aplicar el límite de álbumes:', e); }
 }
+
+// ─── Onboarding personalizado post-login ─────────────────────────
+// 3 segmentos, decididos apenas se conocen las dos cosas que hacen falta:
+// isNewUser (server-side, isNewUser real de auth-session.js — false para
+// una sesión restaurada, que nunca es "nueva") y cuántos álbumes propios
+// activos tiene la cuenta (`albums`, la misma variable global que ya
+// alimenta la grilla de Home). Ninguna de las dos está garantizada antes
+// que la otra — establishSession()/refreshSubscriptionStatus() corren "en
+// paralelo, sin bloquear" el bootstrap de Drive (mismo criterio que ya usa
+// maybeEnforceAlbumLimit() más arriba) — así que se coordina con un flag
+// pendiente en vez de volver a pedirle álbumes a Drive.
+let postLoginOnboardingShown = false; // one-shot por carga de página
+let albumsInfoReady = false;          // true recién cuando `albums` refleja la cuenta actual
+let pendingOnboardingIsNewUser = null;
+function maybeShowPostLoginOnboarding(isNewUser) {
+  if (postLoginOnboardingShown) return;
+  if (!albumsInfoReady) { pendingOnboardingIsNewUser = isNewUser; return; }
+  postLoginOnboardingShown = true;
+  decidePostLoginOnboarding(isNewUser);
+}
+function decidePostLoginOnboarding(isNewUser) {
+  if (isNewUser) { showWelcomeModal(); return; }
+  if (!albums.length) { showFirstAlbumTipModal(); return; }
+  maybeShowWhatsNewModal();
+}
+
+// Changelog curado a mano, de cara al usuario — deliberadamente separado
+// del changelog técnico/interno de CLAUDE.md (pensado para mí, no para
+// quien usa la app): acá van 2-4 bullets simples por versión, en criollo,
+// sin nombres de función ni detalle de implementación. Agregar una
+// entrada nueva cuando haya algo que valga la pena avisar (no en cada
+// bump de versión) y subir CHANGELOG_LATEST_VERSION a esa versión.
+const CHANGELOG_LATEST_VERSION = '2.29';
+const USER_CHANGELOG = [
+  { version: '2.29', items: [
+    'Ahora podés encuadrar y hacer zoom en cada foto del fotolibro, para elegir bien qué parte se ve.',
+    'El fotolibro se exporta directo a PDF, listo para imprimir en cualquier imprenta.',
+    'Sumamos un aviso de cookies para que elijas qué querés compartir, y podés cambiarlo cuando quieras desde "Preferencias de cookies" en la ayuda (?).',
+  ]},
+];
+const CHANGELOG_SEEN_KEY = 'td_changelog_seen';
+function maybeShowWhatsNewModal() {
+  let seen = null;
+  try { seen = localStorage.getItem(CHANGELOG_SEEN_KEY); } catch (e) {}
+  if (seen === CHANGELOG_LATEST_VERSION) return; // ya lo vio, nada que mostrar
+  const entry = USER_CHANGELOG.find(e => e.version === CHANGELOG_LATEST_VERSION);
+  if (!entry) return; // el usuario no pasó ninguna versión con novedades reales todavía
+  showOnboardingInfoModal({
+    title: 'Novedades',
+    itemsHtml: entry.items.map(t => `<div class="help-item"><span class="help-item-dot">✨</span><span>${escHtml(t)}</span></div>`).join(''),
+    ctaLabel: 'Entendido',
+    onCta: () => { try { localStorage.setItem(CHANGELOG_SEEN_KEY, CHANGELOG_LATEST_VERSION); } catch (e) {} },
+  });
+}
+function showWelcomeModal() {
+  showOnboardingInfoModal({
+    title: '¡Bienvenido a Legado!',
+    itemsHtml: `
+      <div class="help-item"><span class="help-item-dot">📷</span><span>Creá un álbum por viaje, cumpleaños, embarazo — lo que quieras guardar — y cargá fotos, videos, notas y audio día por día.</span></div>
+      <div class="help-item"><span class="help-item-dot">🤝</span><span>Compartí el álbum con tu familia: como <strong>"Puede editar"</strong> (suma contenido) o <strong>"Puede ver"</strong> (solo mira).</span></div>
+      <div class="help-item"><span class="help-item-dot">📖</span><span>Armá un fotolibro con tus mejores fotos y exportalo en PDF, listo para imprimir.</span></div>
+      <div class="help-item"><span class="help-item-dot">☁️</span><span>Todo vive en tu propio Google Drive — vos sos dueño de tus recuerdos, siempre.</span></div>`,
+    ctaLabel: 'Crear mi primer álbum',
+    onCta: () => openNewAlbumModal(),
+  });
+}
+function showFirstAlbumTipModal() {
+  showOnboardingInfoModal({
+    title: 'Creá tu primer álbum',
+    itemsHtml: `
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Todavía no tenés ningún álbum — creá el primero para empezar a guardar tus recuerdos.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Después vas a poder compartirlo con quien quieras, con rol <strong>"Puede editar"</strong> (suma fotos) o <strong>"Puede ver"</strong> (solo mira).</span></div>`,
+    ctaLabel: 'Crear álbum',
+    onCta: () => openNewAlbumModal(),
+  });
+}
+// Único modal reusado por los 3 popups de arriba (bienvenida / primer
+// álbum / novedades) — misma idea que customConfirm(), arma el contenido
+// a mano en vez de tener 3 modales estáticos casi idénticos en el HTML.
+function showOnboardingInfoModal({ title, itemsHtml, ctaLabel, onCta }) {
+  const modal = document.getElementById('modal-onboarding-info');
+  document.getElementById('onboarding-info-title').textContent = title;
+  document.getElementById('onboarding-info-items').innerHTML = itemsHtml;
+  const btn = document.getElementById('onboarding-info-cta');
+  btn.textContent = ctaLabel;
+  btn.onclick = () => { closeOnboardingInfoModal(); if (onCta) onCta(); };
+  modal.classList.add('open');
+}
+function closeOnboardingInfoModal() {
+  document.getElementById('modal-onboarding-info').classList.remove('open');
+}
+
 async function establishSessionAndEnforceLimit(token) {
   await establishSession(token);
   if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); } // avatar (v1.81) + saludo (v1.84) apenas están disponibles
+  maybeShowPostLoginOnboarding(lastSignupWasNew);
   await maybeEnforceAlbumLimit();
 }
 async function refreshSubscriptionAndEnforceLimit() {
   await refreshSubscriptionStatus();
   if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
+  maybeShowPostLoginOnboarding(false); // una sesión restaurada nunca es un signup nuevo
   await maybeEnforceAlbumLimit();
 }
 
@@ -1661,6 +2003,7 @@ function buildCodeClient() {
       // se estableció arriba (establishSessionWithCode), no hace falta
       // repetirla.
       if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
+      maybeShowPostLoginOnboarding(lastSignupWasNew);
       await maybeEnforceAlbumLimit();
       await afterDriveConnected();
     },
@@ -1748,6 +2091,16 @@ async function initGoogleAuth() {
 }
 
 function handleDriveBtn() {
+  // Gate de Términos/Privacidad (GDPR): handleDriveBtn() es el único punto
+  // de entrada real al login de Google, sea cual sea el botón que lo
+  // dispare (el "Continuar con Google" del modal de onboarding, ya
+  // gateado por el checkbox propio; pero también "Conectar con Google
+  // Drive" de renderJoinPending() y el gate de openNewAlbumModal(), que
+  // nunca pasaron por ese checkbox) — así que el chequeo real vive acá,
+  // no en el checkbox en sí, para que ningún camino pueda saltearlo. Sin
+  // aceptar (o si TERMS_VERSION subió desde la última vez), se abre el
+  // modal de onboarding con el checkbox en vez de arrancar el login.
+  if (!hasAcceptedTerms()) { openOnboardingModal(); return; }
   if (window._codeClient) {
     buildCodeClient(); // state fresco en cada intento, ver initGoogleAuth()
     window._codeClient.requestCode();
@@ -1784,6 +2137,7 @@ function renderDisconnected() {
       <h2>Legado</h2>
       <p>Guardá tus recuerdos en fotos, videos, audios y notas. Todo en tu Google Drive.</p>
       <button class="btn btn-primary" onclick="openOnboardingModal()">Iniciar sesión / Registrarse</button>
+      <div class="powered-by-drive">☁️ <span>Potenciado por <strong>Google Drive</strong></span></div>
     </div>`;
 }
 
@@ -1792,6 +2146,16 @@ function renderDisconnected() {
 // pide conectar. handleDriveBtn() no cambió en nada, solo se lo invoca
 // desde un lugar distinto.
 function openOnboardingModal() {
+  const checkEl = document.getElementById('onboarding-terms-check');
+  const btnEl = document.getElementById('btn-onboarding-google');
+  // Si ya se aceptaron los términos en un intento anterior (localStorage,
+  // ver hasAcceptedTerms()) no hace falta tildar de nuevo — esto pasa
+  // sobre todo cuando handleDriveBtn() redirige acá desde otro botón que
+  // saltea el checkbox (renderJoinPending()/openNewAlbumModal()) en una
+  // cuenta que ya había aceptado antes.
+  const alreadyAccepted = hasAcceptedTerms();
+  checkEl.checked = alreadyAccepted;
+  btnEl.disabled = !alreadyAccepted;
   document.getElementById('modal-onboarding').classList.add('open');
   trackEvent('onboarding_viewed');
   trackMetaPixelCustomEvent('ClickLandingCTA');
@@ -1799,7 +2163,12 @@ function openOnboardingModal() {
 function closeOnboardingModal() {
   document.getElementById('modal-onboarding').classList.remove('open');
 }
+document.getElementById('onboarding-terms-check').addEventListener('change', e => {
+  document.getElementById('btn-onboarding-google').disabled = !e.target.checked;
+});
 function startOnboardingLogin() {
+  if (!document.getElementById('onboarding-terms-check').checked) return; // el botón ya debería estar disabled, defensivo nomás
+  markTermsAccepted();
   trackEvent('signup_started');
   trackMetaPixelCustomEvent('ClickContinueGoogle');
   closeOnboardingModal();
@@ -1854,6 +2223,15 @@ async function renderAlbums() {
   const archivedOwnAlbums = ownAlbums.filter(a => a.archived);
   albums = sortAlbumsByTripDateDesc(ownAlbums.filter(a => !a.archived));
   const sharedAlbums = sortAlbumsByTripDateDesc(sharedData.sharedAlbums || []);
+
+  // `albums` ya refleja la cuenta actual — si el onboarding post-login
+  // (ver maybeShowPostLoginOnboarding()) estaba esperando este dato para
+  // decidir qué popup mostrar, se resuelve recién ahora.
+  albumsInfoReady = true;
+  if (pendingOnboardingIsNewUser !== null) {
+    const v = pendingOnboardingIsNewUser; pendingOnboardingIsNewUser = null;
+    maybeShowPostLoginOnboarding(v);
+  }
 
   if (coverObserver) coverObserver.disconnect();
   coverObserver = new IntersectionObserver((entries, obs) => {
@@ -5775,6 +6153,7 @@ document.getElementById('modal-fab-sheet').addEventListener('click', e => { if (
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
 document.getElementById('modal-help').addEventListener('click', e => { if (e.target === e.currentTarget) closeHelp(); });
 document.getElementById('modal-onboarding').addEventListener('click', e => { if (e.target === e.currentTarget) closeOnboardingModal(); });
+document.getElementById('modal-onboarding-info').addEventListener('click', e => { if (e.target === e.currentTarget) closeOnboardingInfoModal(); });
 document.getElementById('bulk-drop-zone').addEventListener('click', () => document.getElementById('bulk-file-input').click());
 document.getElementById('bulk-drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
 document.getElementById('bulk-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));

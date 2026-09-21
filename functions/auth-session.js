@@ -135,13 +135,28 @@ exports.authSession = onRequest(
       const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
       const { data: existing } = await supabase
         .from('subscriptions')
-        .select('google_sub')
+        .select('google_sub, terms_version')
         .eq('google_sub', userInfo.sub)
         .maybeSingle();
       const isNewUser = !existing;
 
       const upsertRow = { google_sub: userInfo.sub, email: userInfo.email };
       if (refreshToken) upsertRow.drive_refresh_token = refreshToken;
+      // Términos/Privacidad (GDPR): handleDriveBtn() (app.html) nunca deja
+      // llegar hasta acá sin que el checkbox ya haya sido tildado — el
+      // cliente manda igual `termsVersion` con cada login, y acá se
+      // persiste `terms_accepted_at`/`terms_version` SOLO cuando es un
+      // registro nuevo o cuando la versión aceptada es más nueva que la ya
+      // guardada — así queda un timestamp real de audit trail (consentimiento
+      // dado a partir de tal fecha para tal versión), no la fecha del
+      // último login cualquiera, que no probaría nada. Un re-login sin
+      // cambio de versión nunca pisa el timestamp original.
+      const clientTermsVersion = parseInt(req.body && req.body.termsVersion, 10) || 0;
+      const storedTermsVersion = (existing && existing.terms_version) || 0;
+      if (clientTermsVersion > 0 && (isNewUser || clientTermsVersion > storedTermsVersion)) {
+        upsertRow.terms_accepted_at = new Date().toISOString();
+        upsertRow.terms_version = clientTermsVersion;
+      }
       // Atribución: solo se graba en el signup real — un re-login/sesión
       // restaurada nunca debería mandar esto (no hay primer touch pendiente
       // en ese localStorage, ver captureUtmFirstTouch()), pero el gate por

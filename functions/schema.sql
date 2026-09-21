@@ -71,6 +71,15 @@ alter table travel_diary.subscriptions add column if not exists fbc text;
 -- como, el día de mañana, de Google Ads — de ahí el nombre genérico
 -- utm_adsetname/utm_adsetid/utm_adname/utm_adid en vez de algo específico de
 -- una sola plataforma.
+-- Términos de Servicio / Política de Privacidad (GDPR) — timestamp real de
+-- consentimiento, no solo el flag de localStorage del cliente (ver
+-- TERMS_VERSION/hasAcceptedTerms() en app.html). auth-session.js solo
+-- escribe estos dos campos cuando es un signup nuevo o cuando la versión
+-- aceptada por el cliente es más nueva que la ya guardada — un re-login
+-- en la misma versión nunca pisa la fecha real de aceptación.
+alter table travel_diary.subscriptions add column if not exists terms_accepted_at timestamptz;
+alter table travel_diary.subscriptions add column if not exists terms_version integer;
+
 alter table travel_diary.subscriptions add column if not exists utm_source text;
 alter table travel_diary.subscriptions add column if not exists utm_medium text;
 alter table travel_diary.subscriptions add column if not exists utm_campaign text;
