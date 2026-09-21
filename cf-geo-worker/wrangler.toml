@@ -1,0 +1,7 @@
+name = "legado-geo"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Sin `routes` ni `zone_name` a propósito — deploya a `legado-geo.<tu-subdominio>.workers.dev`,
+# sin necesitar dominio propio ni tocar el DNS de legadofamiliar.com.ar (que ya está
+# reservado para Firebase Hosting, ver CLAUDE.md → "Links de campaña con slug").
