@@ -1,4 +1,4 @@
 {
-  "version": "2.26",
-  "changelog": "Fotolibro: el editor de encuadre siempre muestra el slider de zoom, sin importar la forma de la celda."
+  "version": "2.27",
+  "changelog": "Fotolibro: fix de fondo real para el slider de zoom que faltaba en algunos layouts (el fix anterior medía el modal cerrado)."
 }

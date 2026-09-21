@@ -1244,7 +1244,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.26';
+const APP_VERSION = '2.27';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -4417,6 +4417,18 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   bookFrameCurrent = existing ? { ...existing } : { scale: 1, x: 0, y: 0 };
   bookFrameNatural = { w: 0, h: 0 };
 
+  // Bug real (v2.27): fitBookFrameBox() medía offsetHeight/getComputedStyle
+  // de los hermanos (header, zoom row, botones) para saber cuánto espacio
+  // le quedaba disponible — pero el modal TODAVÍA no tenía la clase
+  // 'open' en ese momento (se agregaba recién al final de esta función),
+  // así que con `display:none` esos elementos (y todo lo de adentro)
+  // medían offsetHeight:0. El cálculo pensaba que había mucho más espacio
+  // del que en realidad había, y la caja seguía saliendo demasiado alta
+  // para celdas angostas — exactamente el mismo síntoma de v2.26 ("no veo
+  // el zoom"), sin resolverse de verdad. Fix: abrir el modal PRIMERO —
+  // así los hermanos ya están layouteados con su tamaño real cuando
+  // fitBookFrameBox() los mide.
+  document.getElementById('modal-book-frame').classList.add('open');
   fitBookFrameBox(rect.w / rect.h);
   const img = document.getElementById('book-frame-img');
   // v2.24: ya no se usa transform acá (ver applyBookFrameStyle) — se limpia
@@ -4459,7 +4471,6 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   });
 
   document.getElementById('book-frame-zoom').value = bookFrameCurrent.scale;
-  document.getElementById('modal-book-frame').classList.add('open');
 }
 
 function onBookFrameImgLoad(e) {
