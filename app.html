@@ -1244,7 +1244,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.27';
+const APP_VERSION = '2.28';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -3652,20 +3652,50 @@ function renderBookReorderGrid() {
 }
 
 // ─── Fotolibro: encuadre (zoom + pan) por foto ───────────────────
-// Traduce el `{scale,x,y}` guardado (ver drive.js → normalizeBookFraming)
-// a un `transform` CSS sobre el `<img>` — como el `<img>` ya tiene
-// `object-fit:cover` (ver CSS), un `translate(X%, Y%)` se mide relativo
-// al tamaño de SU PROPIA caja (que con `width/height:100%` es el tamaño
-// de la celda) y un `scale()` amplía alrededor del centro — exactamente
-// el mismo sistema (fracción de la celda) que reproduce a mano
-// `coverCropToCanvas()` para el PDF, así pantalla y PDF nunca pueden
-// mostrar algo distinto. Sin encuadre guardado (o el default,
-// scale:1/x:0/y:0) no se toca el `<img>` — mismo "cover" centrado de
-// siempre, cero riesgo de regresión para el resto del libro.
-function applyBookFramingTransform(imgEl, fileId) {
+// Bug real (v2.28): esta función usaba `transform: translate(X%, Y%)
+// scale(S)` sobre un <img> con `object-fit:cover` — un porcentaje de
+// `translate()` se mide relativo al tamaño de LA PROPIA caja del <img>
+// (con `width/height:100%`, el tamaño de la celda), asumiendo
+// implícitamente que el tamaño "cover" a scale:1 mide exactamente
+// frameW×frameH en los dos ejes. Eso nunca es cierto salvo que la foto y
+// la celda tengan la MISMA proporción — el editor (`bookFrameCoverBase()`,
+// arreglado en v2.24 con el mismo problema de fondo) calcula el tamaño
+// "cover" REAL, que en general es más grande en UN eje (el que "sobra")
+// para cubrir el otro exacto. El editor permite y guarda paneos (`x`/`y`)
+// válidos contra ESE tamaño real — pero acá, al reinterpretarlos como
+// fracción de la celda, un paneo válido en el editor podía correr la foto
+// lo suficiente para destapar el fondo de `.bp` (el margen gigante
+// reportado por el usuario) en el eje donde el modelo de esta función
+// difería del real. Reproducible en cualquier layout con una celda cuya
+// proporción no coincide con la de la foto (2 y 3 fotos, los casos
+// reportados, pero el bug de fondo aplica a cualquiera).
+// Fix: mismo criterio que ya usa el editor desde v2.24 — se calcula a
+// mano el tamaño/posición reales (como % de la celda, ya que acá no hay
+// píxeles reales que medir sin un ResizeObserver por celda) usando la
+// proporción real de la celda (`frameAspect`, de `computeCellRectMm()`,
+// la misma fuente que ya usa el editor y el export a PDF) y la proporción
+// real de la foto (`naturalWidth/naturalHeight`, conocida recién al
+// cargar) — nunca `transform` ni `object-fit` combinados.
+function applyBookFramingTransform(imgEl, fileId, frameAspect) {
   const f = bookFraming[fileId];
-  if (!f || (f.scale === 1 && !f.x && !f.y)) { imgEl.style.transform = ''; return; }
-  imgEl.style.transform = `translate(${(f.x * 100).toFixed(3)}%, ${(f.y * 100).toFixed(3)}%) scale(${f.scale})`;
+  if (!f || (f.scale === 1 && !f.x && !f.y)) {
+    imgEl.style.position = imgEl.style.width = imgEl.style.height = imgEl.style.left = imgEl.style.top = '';
+    return;
+  }
+  const apply = () => {
+    const photoAspect = imgEl.naturalWidth / imgEl.naturalHeight;
+    if (!photoAspect || !frameAspect) return;
+    let dispWpct, dispHpct;
+    if (photoAspect > frameAspect) { dispHpct = 100 * f.scale; dispWpct = (photoAspect / frameAspect) * 100 * f.scale; }
+    else { dispWpct = 100 * f.scale; dispHpct = (frameAspect / photoAspect) * 100 * f.scale; }
+    imgEl.style.position = 'absolute';
+    imgEl.style.width = `${dispWpct}%`;
+    imgEl.style.height = `${dispHpct}%`;
+    imgEl.style.left = `${(100 - dispWpct) / 2 + f.x * 100}%`;
+    imgEl.style.top = `${(100 - dispHpct) / 2 + f.y * 100}%`;
+  };
+  if (imgEl.complete && imgEl.naturalWidth) apply();
+  else imgEl.addEventListener('load', apply, { once: true });
 }
 
 // Botón "+" chico entre dos páginas — ver el comentario en
@@ -3691,6 +3721,11 @@ function buildBookReorderTile(page, idx) {
   if (albumCanEdit) tile.draggable = true;
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   wrap.appendChild(grid);
+  // Misma fuente (BOOK_LAYOUTS/computeCellRectMm) que ya usa el editor de
+  // encuadre y el export a PDF — necesaria acá para conocer la proporción
+  // REAL de cada celda (frameAspect) y así aplicar el encuadre guardado
+  // sin el bug de v2.28 (ver applyBookFramingTransform()).
+  const layoutDef = bookLayoutDef(page.layout);
   // Se recorre page.images por índice real (nunca compactando) — un
   // hueco (null) se dibuja como celda placeholder en su lugar exacto,
   // en vez de correr a las demás fotos (ver buildFixedCapacityPage()).
@@ -3704,7 +3739,8 @@ function buildBookReorderTile(page, idx) {
     }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
     const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES);
-    applyBookFramingTransform(imgEl, photo.driveFileId);
+    const cellRect = computeCellRectMm(bookPageSize.w, bookPageSize.h, layoutDef, slotIdx, 0);
+    applyBookFramingTransform(imgEl, photo.driveFileId, cellRect.w / cellRect.h);
     cell.appendChild(imgEl);
     // Mismo chip de fecha/caption que mostraba la vista inmersiva (sacada
     // en v2.02, ver CLAUDE.md) — se porta acá para que el toggle "Texto"
@@ -4356,6 +4392,8 @@ async function startBookExport() {
 // próxima vez que se abra esta foto, se vuelve a leer de `bookFraming`).
 const BOOK_FRAME_MAX_SCALE = 3; // mismo tope que el atributo `max` de #book-frame-zoom en el HTML
 let bookFrameFileId = null;
+let bookFramePageIdx = null;
+let bookFrameSlotIdx = null;
 let bookFrameCurrent = { scale: 1, x: 0, y: 0 };
 let bookFrameNatural = { w: 0, h: 0 };
 let bookFrameBoxRatio = 1; // ancho/alto de la celda actual — se re-usa en fitBookFrameBox() al rotar/resize
@@ -4413,6 +4451,8 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   const rect = computeCellRectMm(bookPageSize.w, bookPageSize.h, def, slotIdx, 0);
 
   bookFrameFileId = fileId;
+  bookFramePageIdx = pageIdx;
+  bookFrameSlotIdx = slotIdx;
   const existing = bookFraming[fileId];
   bookFrameCurrent = existing ? { ...existing } : { scale: 1, x: 0, y: 0 };
   bookFrameNatural = { w: 0, h: 0 };
@@ -4588,6 +4628,13 @@ function confirmBookFrame() {
     bookFraming[bookFrameFileId] = { ...bookFrameCurrent };
   }
   const editedFileId = bookFrameFileId;
+  // v2.28: applyBookFramingTransform() necesita la proporción real de la
+  // celda (frameAspect) — se resuelve ANTES de closeBookFrameModal(),
+  // que limpia bookFramePageIdx/bookFrameSlotIdx.
+  const editedPage = bookPages[bookFramePageIdx];
+  const editedFrameAspect = editedPage
+    ? (() => { const r = computeCellRectMm(bookPageSize.w, bookPageSize.h, bookLayoutDef(editedPage.layout), bookFrameSlotIdx, 0); return r.w / r.h; })()
+    : 1;
   closeBookFrameModal();
   // Bug real (v2.25): acá antes se llamaba a renderBookReorderGrid(), un
   // re-render COMPLETO de la grilla — pero confirmar un encuadre solo
@@ -4606,7 +4653,7 @@ function confirmBookFrame() {
   document.querySelectorAll('#book-reorder-container .bp[data-file-id]').forEach(cell => {
     if (cell.dataset.fileId !== editedFileId) return;
     const img = cell.querySelector('img');
-    if (img) applyBookFramingTransform(img, editedFileId);
+    if (img) applyBookFramingTransform(img, editedFileId, editedFrameAspect);
   });
   saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el encuadre:', e));
 }

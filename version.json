@@ -1,4 +1,4 @@
 {
-  "version": "2.27",
-  "changelog": "Fotolibro: fix de fondo real para el slider de zoom que faltaba en algunos layouts (el fix anterior medía el modal cerrado)."
+  "version": "2.28",
+  "changelog": "Fotolibro: fix real del margen/hueco gigante al encuadrar fotos en layouts de 2 y 3 (mismo tipo de bug que la franja negra del editor, ahora en la miniatura de la grilla)."
 }
