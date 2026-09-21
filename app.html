@@ -449,9 +449,13 @@ audio { width: 100%; height: 32px; }
 .book-drawer-cell { width: 64px; height: 64px; flex: 0 0 auto; border-radius: 8px; }
 
 /* Editor de encuadre (zoom + pan) por foto — .book-frame-box tiene la
-   MISMA proporción que la celda real (seteada por JS al abrir, ver
-   openBookFrameModal()), así arrastrar/pellizcar ahí adentro produce
-   exactamente lo que se va a ver en la página y en el PDF. */
+   MISMA proporción que la celda real, con un tamaño en px (width/height,
+   nunca aspect-ratio) que calcula `fitBookFrameBox()` al abrir (v2.26) —
+   "contiene" la caja dentro del espacio real disponible del modal (ancho
+   Y alto), para que celdas angostas y altas (ej. una página entera con
+   una sola foto) nunca den una caja tan grande que empuje el slider de
+   zoom y los botones fuera de la vista. `width`/`max-width` acá abajo son
+   solo el valor por default antes de que el JS corra la primera vez. */
 .book-frame-stage { display: flex; justify-content: center; margin-bottom: 1rem; }
 .book-frame-box { position: relative; width: 100%; max-width: 320px; overflow: hidden; border-radius: 8px; background: #000; touch-action: none; cursor: grab; }
 .book-frame-box.dragging { cursor: grabbing; }
@@ -1240,7 +1244,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.25';
+const APP_VERSION = '2.26';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // Pageviews virtuales a Google Analytics (v2.00) — la URL real nunca
@@ -4354,6 +4358,49 @@ const BOOK_FRAME_MAX_SCALE = 3; // mismo tope que el atributo `max` de #book-fra
 let bookFrameFileId = null;
 let bookFrameCurrent = { scale: 1, x: 0, y: 0 };
 let bookFrameNatural = { w: 0, h: 0 };
+let bookFrameBoxRatio = 1; // ancho/alto de la celda actual — se re-usa en fitBookFrameBox() al rotar/resize
+
+// Bug real (v2.26): la caja del editor sacaba su alto puro de la
+// proporción de la celda sobre un ancho fijo (hasta 320px) — para una
+// celda angosta y alta (ej. una página entera con una sola foto, en un
+// tamaño de hoja vertical) eso podía dar una caja más alta que el espacio
+// real del modal (`.modal` tiene `max-height:70vh`), empujando el slider
+// de zoom y los botones "Restablecer"/"Listo" fuera de la vista sin
+// ningún indicio de que hacía falta scrollear — el usuario lo vivía como
+// "este layout no tiene zoom" (el control seguía existiendo, solo estaba
+// tapado por el resto de la pantalla). Fix: calcular el tamaño de la caja
+// para que quepa en el espacio disponible (ancho Y alto a la vez, como un
+// `object-fit:contain`) — nunca empuja al resto del modal fuera de la
+// pantalla, sea cual sea la proporción de la celda.
+function fitBookFrameBox(ratio) {
+  bookFrameBoxRatio = ratio;
+  const box = document.getElementById('book-frame-box');
+  const stage = document.getElementById('book-frame-stage');
+  const modalEl = document.querySelector('.modal-book-frame');
+  if (!box || !stage || !modalEl) return;
+  const header = modalEl.querySelector('.modal-header');
+  const body = modalEl.querySelector('.modal-body');
+  const zoomRow = modalEl.querySelector('.book-frame-zoom-row');
+  const actions = modalEl.querySelector('.book-frame-actions');
+  const bodyStyle = getComputedStyle(body);
+  const stageStyle = getComputedStyle(stage);
+  const zoomRowStyle = getComputedStyle(zoomRow);
+  const reservedH = (header ? header.offsetHeight : 0)
+    + parseFloat(bodyStyle.paddingTop || 0) + parseFloat(bodyStyle.paddingBottom || 0)
+    + parseFloat(stageStyle.marginBottom || 0)
+    + (zoomRow ? zoomRow.offsetHeight : 0) + parseFloat(zoomRowStyle.marginBottom || 0)
+    + (actions ? actions.offsetHeight : 0);
+  const availH = Math.max(140, window.innerHeight * 0.7 - reservedH);
+  const availW = Math.max(140, Math.min(stage.clientWidth || 320, 320));
+  let w, h;
+  if (availW / ratio <= availH) { w = availW; h = availW / ratio; }
+  else { h = availH; w = availH * ratio; }
+  box.style.width = `${w}px`;
+  box.style.height = `${h}px`;
+}
+window.addEventListener('resize', () => {
+  if (document.getElementById('modal-book-frame').classList.contains('open')) fitBookFrameBox(bookFrameBoxRatio);
+});
 
 function openBookFrameModal(fileId, pageIdx, slotIdx) {
   const page = bookPages[pageIdx];
@@ -4370,8 +4417,7 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   bookFrameCurrent = existing ? { ...existing } : { scale: 1, x: 0, y: 0 };
   bookFrameNatural = { w: 0, h: 0 };
 
-  const box = document.getElementById('book-frame-box');
-  box.style.aspectRatio = `${rect.w} / ${rect.h}`;
+  fitBookFrameBox(rect.w / rect.h);
   const img = document.getElementById('book-frame-img');
   // v2.24: ya no se usa transform acá (ver applyBookFrameStyle) — se limpia
   // el tamaño/posición explícitos de una apertura anterior, invisible de

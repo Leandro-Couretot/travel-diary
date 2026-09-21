@@ -1,4 +1,4 @@
 {
-  "version": "2.25",
-  "changelog": "Fotolibro: confirmar un encuadre ya no puede dejar toda la grilla en blanco + alarma que ofrece refrescar si pasa igual."
+  "version": "2.26",
+  "changelog": "Fotolibro: el editor de encuadre siempre muestra el slider de zoom, sin importar la forma de la celda."
 }
