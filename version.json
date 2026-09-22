@@ -1,4 +1,4 @@
 {
-  "version": "2.33",
-  "changelog": "Ajustamos el texto de las categorías del aviso de cookies y, fuera de la UE, la de Difusión arranca pre-tildada para hacerlo más rápido."
+  "version": "2.34",
+  "changelog": "Fuera de la Unión Europea (Argentina incluida) ya no aparece el aviso de cookies al abrir la app — queda disponible en el menú de ayuda (?), en \"Preferencias de cookies\"."
 }

@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.33';
+const APP_VERSION = '2.34';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1539,7 +1539,36 @@ function initConsentGate() {
   const stored = getStoredConsent();
   if (stored) { applyConsent(stored.analytics, stored.marketing); return; }
   maybeApplyImplicitMarketingConsent(); // por si el geo del <head> ya resolvió para cuando llegamos acá
-  if (window.__legadoGeoPromise) window.__legadoGeoPromise.then(maybeApplyImplicitMarketingConsent);
+  if (window.__legadoGeoPromise) {
+    window.__legadoGeoPromise.then(() => {
+      maybeApplyImplicitMarketingConsent();
+      maybeShowConsentBanner();
+    });
+  } else {
+    maybeShowConsentBanner();
+  }
+}
+// El banner NUNCA se muestra para visitas fuera de la UE/EEE/UK — a pedido
+// explícito del usuario, en Argentina (y el resto del mundo no-UE) el aviso
+// queda escondido a propósito detrás de "Preferencias de cookies" (menú de
+// ayuda ?) en vez de aparecer solo al entrar. No es una obligación legal
+// para Argentina (Ley 25.326 exige consentimiento informado, no un banner
+// puntual al cargar — eso es una particularidad de la Directiva ePrivacy de
+// la UE, que Argentina no tiene) — es una decisión de producto/UX, no de
+// compliance. Para la UE/EEE/UK sigue apareciendo siempre, sin excepción —
+// ahí el opt-in explícito antes de cargar nada sí es obligatorio.
+//
+// Se espera a que el geo resuelva (o falle, fail-closed) ANTES de decidir
+// si mostrarlo, en vez de mostrarlo de una y ocultarlo después si el geo
+// confirma no-UE más tarde — evita el parpadeo de "aparece y desaparece".
+// El costo real es mínimo: el Worker de Cloudflare casi siempre ya resolvió
+// mucho antes de que este script (el último en cargar, al final del
+// <body>) llegue a correr; en el peor caso (geo lento o caído) el banner
+// tarda hasta 1.2s más en aparecer para quien sí lo necesita (UE), pero
+// nunca deja de aparecer ahí.
+function maybeShowConsentBanner() {
+  if (getStoredConsent()) return; // se eligió algo mientras se esperaba el geo — nunca se pisa
+  if (isLikelyNonEuVisitor()) return; // AR/no-UE: nunca se muestra, la única entrada es "Preferencias de cookies"
   const banner = document.getElementById('consent-banner');
   if (banner) banner.style.display = 'flex';
 }
