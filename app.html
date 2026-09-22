@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.35';
+const APP_VERSION = '2.36';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -5614,7 +5614,12 @@ function chunkArray(arr, size) { const chunks = []; for (let i = 0; i < arr.leng
 
 // ─── Bulk diary ───────────────────────────────────────────
 let bulkDiaryGrouped = null; let bulkDiaryUndatedDates = {};
+// v2.36: el menú "···" (Día/Mes/Galería) y el "Opciones" del Libro
+// comparten este mismo modal — se guarda desde qué tab se abrió para saber
+// a dónde volver al terminar (ver confirmBulkDiary()).
+let bulkDiaryOriginTab = 'day';
 function openBulkDiary() {
+  bulkDiaryOriginTab = currentTab;
   bulkDiaryGrouped = null; bulkDiaryUndatedDates = {};
   document.getElementById('bulk-diary-step-drop').style.display = '';
   document.getElementById('bulk-diary-step-review').style.display = 'none';
@@ -5668,9 +5673,23 @@ async function confirmBulkDiary() {
     // mismo criterio que confirmBulkUpload() en Home, para poder escribirle
     // una nota ahí mismo. Fuerza la tab Día por si la carga se disparó
     // desde Mes/Galería (el menú "···" que abre este modal es compartido).
+    // v2.36: si se disparó desde el Libro (botón "Agregar fotos" del menú
+    // "Opciones"), en cambio vuelve al Libro — renderBook() reconcilia solo
+    // y las fotos nuevas aparecen en "Sin ubicar", que es lo que tiene
+    // sentido ahí (el Libro no tiene notas de día que escribir).
     const lastDate = Object.keys(allGroups).sort().pop();
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
-      setTimeout(() => { closeBulkDiary(); switchTab('day'); loadDay(lastDate); allDates = []; }, 1500);
+      setTimeout(() => {
+        closeBulkDiary();
+        // allDates se resetea siempre antes de volver — si la carga trajo
+        // una fecha nueva (sin carpeta de día previa), renderBook()/loadDay()
+        // necesitan volver a listar las carpetas de Drive para verla; con
+        // la lista vieja en memoria, esa fecha quedaría invisible hasta la
+        // próxima navegación (bug real, encontrado antes de shippear).
+        allDates = [];
+        if (bulkDiaryOriginTab === 'book') { switchTab('book'); }
+        else { switchTab('day'); loadDay(lastDate); }
+      }, 1500);
     });
   } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
   btn.disabled = false;
@@ -5992,7 +6011,10 @@ function toggleBookOptionsMenu() {
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookExportModal,50)">
       <span class="diary-menu-item-icon">⬇</span> Exportar
     </button>
-    ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
+    ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBulkDiary,50)">
+      <span class="diary-menu-item-icon">⬆</span> Agregar fotos
+    </button>
+    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
       <span class="diary-menu-item-icon">▭</span> Tamaño de hoja
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookAddPageModal,50)">

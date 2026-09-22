@@ -1,4 +1,4 @@
 {
-  "version": "2.35",
-  "changelog": "Dos arreglos en Preferencias de cookies: fuera de la UE ahora se pre-tildan las dos categorías (no solo Difusión), y el modal deja de abrirse tapado detrás del de Ayuda."
+  "version": "2.36",
+  "changelog": "Ahora se pueden agregar fotos (una o varias) directo desde la tab Fotolibro — se guardan solas en su fecha y avisa si hay duplicados, igual que la carga masiva de siempre."
 }
