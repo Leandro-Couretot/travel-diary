@@ -62,7 +62,72 @@
     } catch (e) { return null; }
   }
   function hasAnalyticsConsent() { const c = getStoredConsent(); return !!(c && c.analytics); }
-  function hasMarketingConsent() { const c = getStoredConsent(); return !!(c && c.marketing); }
+
+  // Consentimiento implícito de Marketing fuera de la UE/EEE/UK — Argentina no
+  // exige opt-in explícito para el Píxel de Meta (a diferencia de GDPR), y con
+  // el modelo estricto de siempre cualquier visita que ignora o cancela el
+  // banner queda invisible para Meta Ads Manager, perdiendo atribución real de
+  // campañas pagas en el único mercado donde hoy se pauta. Decisión confirmada
+  // con el usuario: para el resto del mundo (no UE/EEE/UK) el Píxel carga solo,
+  // sin esperar ningún click — el banner igual se muestra siempre, ofreciendo
+  // "Rechazar" explícito, que sigue ganándole a este default apenas se elige
+  // algo (ver hasMarketingConsent() más abajo). Alcance deliberadamente acotado
+  // a Marketing/Meta — Analytics (Google) se queda 100% opt-in en cualquier
+  // país, no fue parte de este pedido.
+  //
+  // El país sale de un Worker propio de Cloudflare (`cf-geo-worker/`, en este
+  // mismo repo) que solo devuelve `request.cf.country` — la señal de
+  // geolocalización que Cloudflare ya resuelve en su borde de red para
+  // cualquier pedido, sin consultar ninguna base de datos ni cobrar nada. Sin
+  // ningún dato personal de por medio (un código de país no identifica a
+  // nadie), y sin tocar la lógica ya existente de atribución por UTM
+  // (`captureUtmFirstTouch()`), que nunca dependió de consentimiento porque no
+  // carga ningún script de terceros.
+  const GEO_WORKER_URL = 'https://legado-geo.pluxow-ideasverdesymas.workers.dev/';
+  const GEO_FETCH_TIMEOUT_MS = 1200;
+  // 27 UE + Islandia/Liechtenstein/Noruega (EEE, no-UE) + Reino Unido (UK GDPR
+  // espeja las mismas reglas post-Brexit) — mismo criterio "mejor de más que
+  // de menos" que ya rige el resto del gate de consentimiento.
+  const EU_EEA_UK_COUNTRIES = new Set([
+    'AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT',
+    'LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE',
+    'IS','LI','NO',
+    'GB',
+  ]);
+  let _geoCountry = null;
+  let _geoResolved = false;
+  // Se dispara una sola vez, apenas carga la página — bridge con
+  // window.__legadoGeoPromise para que el script inline principal (carga
+  // mucho después, al final del <body>) pueda esperar el resultado sea cual
+  // sea el timing, mismo patrón que ya usa debug.js/billing.js con
+  // window.__pendingErrorReports para el mismo tipo de problema de orden.
+  window.__legadoGeoPromise = (function () {
+    let controller = null;
+    let timeoutId = null;
+    try {
+      controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), GEO_FETCH_TIMEOUT_MS);
+    } catch (e) { /* AbortController no soportado (muy poco probable) — sigue sin timeout, el catch de abajo igual cubre cualquier fetch que tire */ }
+    return fetch(GEO_WORKER_URL, { cache: 'no-store', signal: controller ? controller.signal : undefined })
+      .then(res => (res && res.ok) ? res.json() : null)
+      .then(data => { _geoCountry = (data && data.country) || null; })
+      .catch(() => { _geoCountry = null; }) // timeout, sin red, Worker caído — nunca rompe nada, solo se queda sin país (fail-closed, ver isLikelyNonEuVisitor)
+      .finally(() => {
+        _geoResolved = true;
+        if (timeoutId) clearTimeout(timeoutId);
+      });
+  })();
+  // Fail-closed real: sin resolver todavía, o resuelto sin país (timeout/error/
+  // Worker caído), nunca se asume "no es de la UE" — el default estricto de
+  // siempre sigue rigiendo hasta tener una señal de país concreta.
+  function isLikelyNonEuVisitor() {
+    return _geoResolved && !!_geoCountry && !EU_EEA_UK_COUNTRIES.has(_geoCountry);
+  }
+  function hasMarketingConsent() {
+    const c = getStoredConsent();
+    if (c) return !!c.marketing; // una elección explícita (aceptar o rechazar) siempre le gana a cualquier default implícito
+    return isLikelyNonEuVisitor();
+  }
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1383,7 +1448,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.29';
+const APP_VERSION = '2.30';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1446,8 +1511,21 @@ function applyConsent(analytics, marketing) {
 function initConsentGate() {
   const stored = getStoredConsent();
   if (stored) { applyConsent(stored.analytics, stored.marketing); return; }
+  maybeApplyImplicitMarketingConsent(); // por si el geo del <head> ya resolvió para cuando llegamos acá
+  if (window.__legadoGeoPromise) window.__legadoGeoPromise.then(maybeApplyImplicitMarketingConsent);
   const banner = document.getElementById('consent-banner');
   if (banner) banner.style.display = 'flex';
+}
+// Carga el Píxel de Meta sin esperar ningún click del banner, únicamente para
+// visitas fuera de la UE/EEE/UK y solo mientras no haya ninguna elección
+// explícita guardada — ver el comentario grande de EU_EEA_UK_COUNTRIES en el
+// <head> para el porqué. Se llama tanto sincrónicamente (geo ya resuelto) como
+// desde el .then() de window.__legadoGeoPromise (geo resuelve tarde) — _metaPixelLoaded
+// la hace idempotente sea cual sea el camino que la dispare primero.
+function maybeApplyImplicitMarketingConsent() {
+  if (getStoredConsent()) return; // el usuario ya eligió algo mientras tanto (incluido "Rechazar") — nunca se pisa
+  if (_metaPixelLoaded) return;
+  if (isLikelyNonEuVisitor()) loadMetaPixel();
 }
 function resolveConsent(analytics, marketing) {
   saveConsent(analytics, marketing);

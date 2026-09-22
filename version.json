@@ -1,4 +1,4 @@
 {
-  "version": "2.29",
-  "changelog": "Onboarding personalizado (bienvenida / crear tu primer álbum / novedades del mes), aviso de cookies con categorías (GDPR) y aceptación explícita de Términos/Privacidad antes de conectar Google."
+  "version": "2.30",
+  "changelog": "En Argentina y el resto del mundo (fuera de la UE), la publicidad de Meta ya no pierde atribución si alguien ignora o rechaza el aviso de cookies."
 }
