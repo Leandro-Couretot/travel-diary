@@ -1,4 +1,4 @@
 {
-  "version": "2.34",
-  "changelog": "Fuera de la Unión Europea (Argentina incluida) ya no aparece el aviso de cookies al abrir la app — queda disponible en el menú de ayuda (?), en \"Preferencias de cookies\"."
+  "version": "2.35",
+  "changelog": "Dos arreglos en Preferencias de cookies: fuera de la UE ahora se pre-tildan las dos categorías (no solo Difusión), y el modal deja de abrirse tapado detrás del de Ayuda."
 }

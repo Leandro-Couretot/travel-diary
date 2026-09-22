@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.34';
+const APP_VERSION = '2.35';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1590,16 +1590,16 @@ function resolveConsent(analytics, marketing) {
   if (banner) banner.style.display = 'none';
 }
 function openConsentPrefsModal() {
+  closeHelp(); // sin esto, el modal de Ayuda (mismo z-index, más adelante en el DOM) tapaba a este cuando se abría desde el link "Preferencias de cookies" de ahí adentro
   const stored = getStoredConsent();
-  document.getElementById('consent-check-analytics').checked = !!(stored && stored.analytics);
-  // Difusión arranca tildada fuera de la UE/EEE/UK cuando todavía no hay ninguna
-  // elección guardada — mismo criterio geo-diferenciado que ya rige el auto-load
-  // implícito del Píxel (v2.30): en la UE un checkbox pre-tildado no es
-  // consentimiento válido (caso Planet49, CJEU 2019), así que ahí se queda
-  // destildado como siempre. Medición y uso NO entra en este default en ningún
-  // país — mismo alcance acotado a Marketing/Difusión de siempre, Analítica
-  // sigue 100% opt-in real en cualquier lado. Una elección ya guardada (la que
+  // Las dos categorías opcionales arrancan tildadas fuera de la UE/EEE/UK
+  // cuando todavía no hay ninguna elección guardada — mismo criterio
+  // geo-diferenciado que ya rige el auto-load implícito del Píxel (v2.30),
+  // extendido acá también a Medición y uso: en la UE un checkbox pre-tildado
+  // no es consentimiento válido (caso Planet49, CJEU 2019), así que ahí las
+  // dos se quedan destildadas como siempre. Una elección ya guardada (la que
   // sea) siempre gana sobre este default, igual que en el resto del módulo.
+  document.getElementById('consent-check-analytics').checked = stored ? !!stored.analytics : isLikelyNonEuVisitor();
   document.getElementById('consent-check-marketing').checked = stored ? !!stored.marketing : isLikelyNonEuVisitor();
   document.getElementById('modal-consent-prefs').classList.add('open');
 }
