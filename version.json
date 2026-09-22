@@ -1,4 +1,4 @@
 {
-  "version": "2.30",
-  "changelog": "En Argentina y el resto del mundo (fuera de la UE), la publicidad de Meta ya no pierde atribución si alguien ignora o rechaza el aviso de cookies."
+  "version": "2.31",
+  "changelog": "Las campañas de publicidad pueden fijar el país con ?utm_country=AR en el link, para no depender de la geolocalización automática en el aviso de cookies."
 }

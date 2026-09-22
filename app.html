@@ -96,27 +96,54 @@
   ]);
   let _geoCountry = null;
   let _geoResolved = false;
+  // Override de país por URL (`?utm_country=AR`) — pensado para las campañas
+  // pagas propias: ahí SÍ se sabe con certeza a qué país apunta cada campaña
+  // (lo elige el usuario al armarla en Meta/Google Ads), así que no tiene
+  // sentido dejarlo librado a que Cloudflare acierte el país del visitante.
+  // Toma prioridad total sobre el Worker de Cloudflare — ni siquiera se llega
+  // a pedir, ahorra la ida y vuelta — que queda como lo que siempre fue: el
+  // fallback automático para tráfico orgánico/directo, que nunca trae este
+  // parámetro. Mismo criterio de "un solo lugar lee la URL" que ya usa
+  // `captureUtmFirstTouch()` para el resto de los UTMs, aunque este vive acá
+  // (no ahí) porque tiene que resolverse ANTES de que el banner de
+  // consentimiento decida qué mostrar, mucho antes de que ese otro código
+  // corra.
+  function readUtmCountryOverride() {
+    try {
+      const raw = new URLSearchParams(location.search).get('utm_country');
+      if (!raw) return null;
+      const code = raw.trim().toUpperCase();
+      return /^[A-Z]{2}$/.test(code) ? code : null; // un valor con formato raro se ignora, nunca rompe nada
+    } catch (e) { return null; }
+  }
+  const _utmCountryOverride = readUtmCountryOverride();
   // Se dispara una sola vez, apenas carga la página — bridge con
   // window.__legadoGeoPromise para que el script inline principal (carga
   // mucho después, al final del <body>) pueda esperar el resultado sea cual
   // sea el timing, mismo patrón que ya usa debug.js/billing.js con
   // window.__pendingErrorReports para el mismo tipo de problema de orden.
-  window.__legadoGeoPromise = (function () {
-    let controller = null;
-    let timeoutId = null;
-    try {
-      controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), GEO_FETCH_TIMEOUT_MS);
-    } catch (e) { /* AbortController no soportado (muy poco probable) — sigue sin timeout, el catch de abajo igual cubre cualquier fetch que tire */ }
-    return fetch(GEO_WORKER_URL, { cache: 'no-store', signal: controller ? controller.signal : undefined })
-      .then(res => (res && res.ok) ? res.json() : null)
-      .then(data => { _geoCountry = (data && data.country) || null; })
-      .catch(() => { _geoCountry = null; }) // timeout, sin red, Worker caído — nunca rompe nada, solo se queda sin país (fail-closed, ver isLikelyNonEuVisitor)
-      .finally(() => {
+  window.__legadoGeoPromise = _utmCountryOverride
+    ? (function () {
+        _geoCountry = _utmCountryOverride;
         _geoResolved = true;
-        if (timeoutId) clearTimeout(timeoutId);
-      });
-  })();
+        return Promise.resolve();
+      })()
+    : (function () {
+        let controller = null;
+        let timeoutId = null;
+        try {
+          controller = new AbortController();
+          timeoutId = setTimeout(() => controller.abort(), GEO_FETCH_TIMEOUT_MS);
+        } catch (e) { /* AbortController no soportado (muy poco probable) — sigue sin timeout, el catch de abajo igual cubre cualquier fetch que tire */ }
+        return fetch(GEO_WORKER_URL, { cache: 'no-store', signal: controller ? controller.signal : undefined })
+          .then(res => (res && res.ok) ? res.json() : null)
+          .then(data => { _geoCountry = (data && data.country) || null; })
+          .catch(() => { _geoCountry = null; }) // timeout, sin red, Worker caído — nunca rompe nada, solo se queda sin país (fail-closed, ver isLikelyNonEuVisitor)
+          .finally(() => {
+            _geoResolved = true;
+            if (timeoutId) clearTimeout(timeoutId);
+          });
+      })();
   // Fail-closed real: sin resolver todavía, o resuelto sin país (timeout/error/
   // Worker caído), nunca se asume "no es de la UE" — el default estricto de
   // siempre sigue rigiendo hasta tener una señal de país concreta.
@@ -1448,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.30';
+const APP_VERSION = '2.31';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
