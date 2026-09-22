@@ -1,4 +1,4 @@
 {
-  "version": "2.31",
-  "changelog": "Las campañas de publicidad pueden fijar el país con ?utm_country=AR en el link, para no depender de la geolocalización automática en el aviso de cookies."
+  "version": "2.32",
+  "changelog": "Renombramos las categorías del aviso de cookies (Analítica → Medición y uso, Marketing → Difusión) y corregimos un texto que decía que nuestras métricas eran anónimas — te va a volver a aparecer el aviso una vez."
 }

@@ -50,7 +50,7 @@
      completa del DOM o a un click, nunca de forma síncrona al cargar un
      script). -->
 <script>
-  const CONSENT_VERSION = 1;
+  const CONSENT_VERSION = 2; // v2.32: categorías renombradas (Analítica->Medición y uso, Marketing->Difusión) + texto corregido — sube para que quien ya había aceptado vuelva a ver el banner con la explicación nueva
   const CONSENT_KEY = 'td_consent';
   function getStoredConsent() {
     try {
@@ -997,7 +997,7 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── CONSENTIMIENTO DE COOKIES (GDPR) ─── -->
 <div id="consent-banner" style="display:none;" class="consent-banner">
-  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y la efectividad de nuestra publicidad. Podés elegir qué categorías aceptar — ver <a href="privacy.html" target="_blank">Política de Privacidad</a>.</div>
+  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y entender qué anuncios funcionan. Podés elegir qué categorías aceptar — ver <a href="privacy.html" target="_blank">Política de Privacidad</a>.</div>
   <div class="consent-banner-actions">
     <button type="button" class="consent-banner-link" id="consent-banner-customize">Personalizar</button>
     <button type="button" class="consent-banner-btn-ghost" id="consent-banner-reject">Rechazar</button>
@@ -1014,11 +1014,11 @@ audio { width: 100%; height: 32px; }
       </div>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-analytics">
-        <div><div class="consent-cat-title">Analítica</div><div class="consent-cat-desc">Google Analytics y nuestras propias métricas de uso (sin identificarte por nombre ni email) para entender cómo se usa la app.</div></div>
+        <div><div class="consent-cat-title">Medición y uso</div><div class="consent-cat-desc">Google Analytics y nuestras propias métricas nos ayudan a entender qué funciones se usan más y a corregir errores. Nunca accedemos al contenido de tus fotos.</div></div>
       </label>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-marketing">
-        <div><div class="consent-cat-title">Marketing</div><div class="consent-cat-desc">Píxel de Meta (Facebook/Instagram), para medir si una suscripción se originó en uno de nuestros anuncios.</div></div>
+        <div><div class="consent-cat-title">Difusión</div><div class="consent-cat-desc">Píxel de Meta (Facebook/Instagram), para saber si llegaste a Legado por uno de nuestros anuncios y entender qué campañas funcionan.</div></div>
       </label>
       <button type="button" class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="saveConsentPrefsFromModal()">Guardar preferencias</button>
     </div>
@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.31';
+const APP_VERSION = '2.32';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
