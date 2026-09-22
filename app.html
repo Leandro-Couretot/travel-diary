@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.36';
+const APP_VERSION = '2.37';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -5261,7 +5261,39 @@ function bookScrollTarget(root) {
 
 // Interpreta sobre qué se soltó una foto: otra foto puntual (`cell`),
 // el fondo de una página (`page`, por su índice) o el drawer (`drawer`).
-function resolveBookDropTarget(el) {
+// Bug real reportado por el usuario (v2.37): soltar sobre la foto de ABAJO
+// de una página no siempre pintaba el aro dorado de "vas a soltar acá" —
+// a veces sí, a veces no, con el mismo gesto — aunque el intercambio en sí
+// siempre terminaba funcionando bien. Causa: la celda de abajo está pegada
+// al borde de la tarjeta, a centímetros de la etiqueta "Página N" (con sus
+// botones ⊞/✕) que vive justo debajo — un toque que se pasa por unos pocos
+// píxeles (fácil al mover el dedo hacia abajo en una tarjeta de 150px) cae
+// fuera de la foto, en el borde de la tarjeta o en esa etiqueta, y
+// `elementFromPoint` no encuentra ninguna `.bp` ahí — de ahí el "a veces sí,
+// a veces no": depende de la puntería exacta de ese toque puntual. Como el
+// punto donde se suelta sigue siendo válido, el intercambio en sí no fallaba
+// nunca — solo el aro de vista previa, que se calcula con la misma función.
+//
+// Fix: cuando el punto cae dentro de la TARJETA pero no exactamente sobre
+// ninguna foto, se busca la foto más cercana a ese punto (nearestBookCellInTile)
+// y se resuelve como si hubiera caído justo ahí — mismo criterio tanto para
+// pintar el aro (touchmove/dragover) como para el intercambio real
+// (touchend/drop), porque ambos pasan por esta misma función.
+function nearestBookCellInTile(tileEl, clientX, clientY) {
+  const cells = Array.from(tileEl.querySelectorAll('.bp'));
+  if (!cells.length) return null;
+  let best = null, bestDist = Infinity;
+  for (const cell of cells) {
+    const r = cell.getBoundingClientRect();
+    const cx = Math.min(Math.max(clientX, r.left), r.right);
+    const cy = Math.min(Math.max(clientY, r.top), r.bottom);
+    const dist = (clientX - cx) ** 2 + (clientY - cy) ** 2; // 0 si el punto ya cae adentro de esa celda
+    if (dist < bestDist) { bestDist = dist; best = cell; }
+  }
+  return best;
+}
+
+function resolveBookDropTarget(el, clientX, clientY) {
   if (!el) return null;
   const cell = el.closest('.bp');
   if (cell) {
@@ -5274,7 +5306,18 @@ function resolveBookDropTarget(el) {
   }
   if (el.closest('.book-drawer')) return { type: 'drawer' };
   const pageEl = el.closest('.book-reorder-tile');
-  if (pageEl && pageEl.dataset.pageIdx !== undefined) return { type: 'page', pageIdx: parseInt(pageEl.dataset.pageIdx, 10) };
+  if (pageEl && pageEl.dataset.pageIdx !== undefined) {
+    if (typeof clientX === 'number' && typeof clientY === 'number') {
+      const nearest = nearestBookCellInTile(pageEl, clientX, clientY);
+      if (nearest) {
+        if (nearest.classList.contains('bp-empty')) {
+          return { type: 'slot', pageIdx: parseInt(nearest.dataset.pageIdx, 10), slotIdx: parseInt(nearest.dataset.slotIdx, 10) };
+        }
+        return { type: 'cell', fileId: nearest.dataset.fileId };
+      }
+    }
+    return { type: 'page', pageIdx: parseInt(pageEl.dataset.pageIdx, 10) };
+  }
   return null;
 }
 
@@ -5287,7 +5330,7 @@ function initBookDragReorder(root) {
   root.addEventListener('dragover', e => {
     e.preventDefault(); e.dataTransfer.dropEffect = 'move';
     root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
-    const target = resolveBookDropTarget(e.target);
+    const target = resolveBookDropTarget(e.target, e.clientX, e.clientY);
     if (target && target.type === 'cell' && target.fileId !== bookDragSrcId) {
       const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
       if (cellEl) cellEl.classList.add('drag-over');
@@ -5299,7 +5342,7 @@ function initBookDragReorder(root) {
   });
   root.addEventListener('drop', e => {
     e.preventDefault();
-    const target = resolveBookDropTarget(e.target);
+    const target = resolveBookDropTarget(e.target, e.clientX, e.clientY);
     if (bookDragSrcId && target) moveBookPhoto(bookDragSrcId, target);
     bookDragSrcId = null;
   });
@@ -5322,7 +5365,7 @@ function initBookTouchReorder(root) {
       touchClone.style.left = (e.touches[0].clientX - touchOffX) + 'px'; touchClone.style.top = (e.touches[0].clientY - touchOffY) + 'px';
       touchClone.style.display = 'none'; const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY); touchClone.style.display = '';
       root.querySelectorAll('.bp').forEach(c => c.classList.remove('drag-over'));
-      const target = resolveBookDropTarget(el);
+      const target = resolveBookDropTarget(el, e.touches[0].clientX, e.touches[0].clientY);
       if (target && target.type === 'cell' && target.fileId !== touchSrcId) {
         const cellEl = Array.from(root.querySelectorAll('.bp')).find(c => c.dataset.fileId === target.fileId);
         if (cellEl) cellEl.classList.add('drag-over');
@@ -5338,7 +5381,7 @@ function initBookTouchReorder(root) {
       root.querySelectorAll('.bp').forEach(c => { c.style.opacity = ''; c.classList.remove('drag-over'); });
       clearBookEdgeScroll();
       const el = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-      const target = resolveBookDropTarget(el);
+      const target = resolveBookDropTarget(el, e.changedTouches[0].clientX, e.changedTouches[0].clientY);
       if (touchSrcId && target) moveBookPhoto(touchSrcId, target);
       touchSrcId = null;
     });

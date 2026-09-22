@@ -1,4 +1,4 @@
 {
-  "version": "2.36",
-  "changelog": "Ahora se pueden agregar fotos (una o varias) directo desde la tab Fotolibro — se guardan solas en su fecha y avisa si hay duplicados, igual que la carga masiva de siempre."
+  "version": "2.37",
+  "changelog": "Fotolibro: fix del aro dorado que a veces no se pintaba al soltar una foto sobre la de abajo de una página — el intercambio ya funcionaba bien, era solo la vista previa."
 }
