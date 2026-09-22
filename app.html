@@ -50,7 +50,7 @@
      completa del DOM o a un click, nunca de forma síncrona al cargar un
      script). -->
 <script>
-  const CONSENT_VERSION = 2; // v2.32: categorías renombradas (Analítica->Medición y uso, Marketing->Difusión) + texto corregido — sube para que quien ya había aceptado vuelva a ver el banner con la explicación nueva
+  const CONSENT_VERSION = 3; // v2.33: copy final de Medición y uso/Difusión + Difusión pre-tildada fuera de la UE — sube de nuevo para que nadie quede con el texto intermedio de v2.32
   const CONSENT_KEY = 'td_consent';
   function getStoredConsent() {
     try {
@@ -1014,13 +1014,13 @@ audio { width: 100%; height: 32px; }
       </div>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-analytics">
-        <div><div class="consent-cat-title">Medición y uso</div><div class="consent-cat-desc">Google Analytics y nuestras propias métricas nos ayudan a entender qué funciones se usan más y a corregir errores. Nunca accedemos al contenido de tus fotos.</div></div>
+        <div><div class="consent-cat-title">Medición y uso</div><div class="consent-cat-desc">Nos ayuda a arreglar más rápido lo que falla y a saber qué funciones se usan más (y cuáles menos).</div></div>
       </label>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-marketing">
-        <div><div class="consent-cat-title">Difusión</div><div class="consent-cat-desc">Píxel de Meta (Facebook/Instagram), para saber si llegaste a Legado por uno de nuestros anuncios y entender qué campañas funcionan.</div></div>
+        <div><div class="consent-cat-title">Difusión</div><div class="consent-cat-desc">Aceptarlas nos ayuda a llegar a más familias para que conozcan Legado, midiendo qué campañas funcionan. Tus fotos nunca salen de tu Google Drive ni se comparten con terceros.</div></div>
       </label>
-      <button type="button" class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="saveConsentPrefsFromModal()">Guardar preferencias</button>
+      <button type="button" class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="saveConsentPrefsFromModal()">Continuar y guardar</button>
     </div>
   </div>
 </div>
@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.32';
+const APP_VERSION = '2.33';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1563,7 +1563,15 @@ function resolveConsent(analytics, marketing) {
 function openConsentPrefsModal() {
   const stored = getStoredConsent();
   document.getElementById('consent-check-analytics').checked = !!(stored && stored.analytics);
-  document.getElementById('consent-check-marketing').checked = !!(stored && stored.marketing);
+  // Difusión arranca tildada fuera de la UE/EEE/UK cuando todavía no hay ninguna
+  // elección guardada — mismo criterio geo-diferenciado que ya rige el auto-load
+  // implícito del Píxel (v2.30): en la UE un checkbox pre-tildado no es
+  // consentimiento válido (caso Planet49, CJEU 2019), así que ahí se queda
+  // destildado como siempre. Medición y uso NO entra en este default en ningún
+  // país — mismo alcance acotado a Marketing/Difusión de siempre, Analítica
+  // sigue 100% opt-in real en cualquier lado. Una elección ya guardada (la que
+  // sea) siempre gana sobre este default, igual que en el resto del módulo.
+  document.getElementById('consent-check-marketing').checked = stored ? !!stored.marketing : isLikelyNonEuVisitor();
   document.getElementById('modal-consent-prefs').classList.add('open');
 }
 function closeConsentPrefsModal() {

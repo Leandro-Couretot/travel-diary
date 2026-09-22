@@ -1,4 +1,4 @@
 {
-  "version": "2.32",
-  "changelog": "Renombramos las categorías del aviso de cookies (Analítica → Medición y uso, Marketing → Difusión) y corregimos un texto que decía que nuestras métricas eran anónimas — te va a volver a aparecer el aviso una vez."
+  "version": "2.33",
+  "changelog": "Ajustamos el texto de las categorías del aviso de cookies y, fuera de la UE, la de Difusión arranca pre-tildada para hacerlo más rápido."
 }
