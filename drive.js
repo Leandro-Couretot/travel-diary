@@ -111,6 +111,22 @@ function _isQuotaExceeded(errorInfo) {
 // ─── CORE REQUEST ────────────────────────────────────────
 const DRIVE_MAX_RETRIES = 3;
 
+// Paso 3 de la auditoría de API de Drive (ver CLAUDE.md): hasta ahora no
+// había ninguna visibilidad de cuántos requests reales le pega cada cuenta
+// a la API — este contador suma cada respuesta real que llega de Drive
+// (incluidos reintentos por 429/5xx, que también gastan cuota) y se
+// reporta agregado vía el pipeline de analytics ya existente
+// (getAndResetDriveApiRequestCount(), consumido por flushTrackEvents() en
+// billing.js). Deliberadamente NO cuenta la URL directa de miniatura
+// (drive.google.com/thumbnail), que no pasa por driveReq() y no pega la
+// API — solo lo que de verdad consume cuota.
+let _driveApiRequestCount = 0;
+function getAndResetDriveApiRequestCount() {
+  const count = _driveApiRequestCount;
+  _driveApiRequestCount = 0;
+  return count;
+}
+
 async function driveReq(method, url, body) {
   const headers = { 'Authorization': `Bearer ${driveToken}` };
   const opts = { method, headers };
@@ -143,6 +159,9 @@ async function driveReq(method, url, body) {
     } finally {
       clearTimeout(timer);
     }
+    // Respuesta real de Drive — cuenta contra la cuota sea cual sea el
+    // status (un 429/5xx que dispara reintento también gastó un request).
+    _driveApiRequestCount++;
     if (res.status === 401) {
       driveToken = null; rootFolderId = null;
       localStorage.removeItem('drive_token');
@@ -197,9 +216,15 @@ async function getOrCreateFolderMigrating(newName, oldName, parentId) {
   return folder.id;
 }
 
+// pageSize=1000 (el máximo por request de la API) — sin esto, el default de
+// Google (100) corta en silencio la lista para cualquier carpeta con más
+// resultados (ej. un álbum con más de 100 días con contenido perdía los de
+// más en Mes/Galería/Fotolibro, sin ningún error visible). Con el máximo de
+// un solo request alcanza para cualquier volumen realista de esta app — no
+// hace falta loopear pageToken.
 async function listFolders(parentId) {
   const q = `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
-  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name`);
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name&pageSize=1000`);
   const data = await res.json();
   return data.files || [];
 }
@@ -209,7 +234,7 @@ async function listFolders(parentId) {
 // (ver ERROR_HANDLING_PLAN.md Caso 3).
 async function listFilesInFolder(folderId) {
   const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
-  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)`);
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=1000`);
   const data = await res.json();
   return data.files || [];
 }
@@ -1027,6 +1052,30 @@ async function fetchAuthImgUrl(fileId) {
   }
 }
 
+// Nivel intermedio del fallback de miniatura (Paso 2 de la auditoría de API
+// de Drive, ver CLAUDE.md): antes de bajar el ARCHIVO ORIGINAL COMPLETO
+// (fetchAuthImgUrl) solo para mostrar una miniatura chica, se intenta un
+// metadata liviano (`fields=thumbnailLink`) que devuelve una URL de
+// miniatura ya resuelta por Drive — normalmente trae su propio token en la
+// query, así que no depende de la cookie de sesión del navegador, que es
+// justo lo que hace fallar la URL directa en PWA/iOS. Se cachea igual que
+// el resto de las URLs de imagen, para no repetir el metadata request.
+async function fetchThumbnailLinkUrl(fileId) {
+  const cacheKey = `thumblink_${fileId}`;
+  if (_imgCache[cacheKey]) return _imgCache[cacheKey];
+  try {
+    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`);
+    if (!res.ok) return '';
+    const data = await res.json();
+    if (!data.thumbnailLink) return '';
+    _imgCache[cacheKey] = data.thumbnailLink;
+    return data.thumbnailLink;
+  } catch (e) {
+    console.warn('Error pidiendo thumbnailLink:', e);
+    return '';
+  }
+}
+
 // Placeholder visual para cuando un archivo referenciado en day.json ya no
 // existe en Drive (borrado a mano por el usuario, fuera de la app — ver
 // ERROR_HANDLING_PLAN.md Caso 2). Mejor que dejar el ícono roto nativo del
@@ -1039,9 +1088,27 @@ const MEDIA_UNAVAILABLE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '</svg>'
 );
 
-// Helper para img elements: intenta thumbnail, si falla usa API auth, y si
-// tampoco eso funciona (el archivo ya no existe en Drive) muestra un
-// placeholder en vez del ícono roto del navegador.
+// Último recurso de la cascada de miniatura (ver setAuthImg): descarga el
+// archivo completo, o si ni eso funciona (borrado/sin acceso) muestra el
+// placeholder de "no disponible" en vez del ícono roto del navegador.
+async function applyFullFileFallback(imgEl, fileId) {
+  const authUrl = await fetchAuthImgUrl(fileId);
+  if (authUrl) {
+    imgEl.src = authUrl;
+  } else {
+    imgEl.src = MEDIA_UNAVAILABLE_SVG;
+    imgEl.title = 'Este archivo ya no está disponible en Drive';
+    imgEl.classList.add('media-unavailable');
+  }
+}
+
+// Helper para img elements: cascada de 3 niveles, del más barato al más
+// caro. (1) URL directa de miniatura (gratis, no pega la API de Drive) —
+// falla seguido en PWA/iOS por falta de cookie de sesión. (2) `thumbnailLink`
+// vía metadata liviano (fetchThumbnailLinkUrl) — un solo request chico,
+// nunca descarga el archivo entero. (3) Solo si eso también falla, el
+// archivo completo (fetchAuthImgUrl) como último recurso — o el placeholder
+// si tampoco eso funciona (ver ERROR_HANDLING_PLAN.md Caso 2).
 function setAuthImg(imgEl, fileId, size = 'w800') {
   if (!fileId || !imgEl) return;
   // Evita el ícono nativo de "imagen rota/cargando" del navegador durante el
@@ -1065,15 +1132,19 @@ function setAuthImg(imgEl, fileId, size = 'w800') {
   const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
   imgEl.src = thumbUrl;
   imgEl.onerror = async () => {
-    imgEl.onerror = null; // evitar loop
-    const authUrl = await fetchAuthImgUrl(fileId);
-    if (authUrl) {
-      imgEl.src = authUrl;
-    } else {
-      imgEl.src = MEDIA_UNAVAILABLE_SVG;
-      imgEl.title = 'Este archivo ya no está disponible en Drive';
-      imgEl.classList.add('media-unavailable');
+    imgEl.onerror = null; // evitar loop en este primer nivel
+    const thumbLink = await fetchThumbnailLinkUrl(fileId);
+    if (!thumbLink) {
+      await applyFullFileFallback(imgEl, fileId);
+      return;
     }
+    // Segundo nivel: la miniatura resuelta por Drive. Si esto también
+    // falla, recién ahí se cae al archivo completo (último recurso).
+    imgEl.onerror = async () => {
+      imgEl.onerror = null;
+      await applyFullFileFallback(imgEl, fileId);
+    };
+    imgEl.src = thumbLink;
   };
 }
 

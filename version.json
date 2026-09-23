@@ -1,4 +1,4 @@
 {
-  "version": "2.37",
-  "changelog": "Fotolibro: fix del aro dorado que a veces no se pintaba al soltar una foto sobre la de abajo de una página — el intercambio ya funcionaba bien, era solo la vista previa."
+  "version": "2.38",
+  "changelog": "Auditoría interna de la API de Drive: menos requests de sobra al cargar miniaturas, sin cortes silenciosos en álbumes grandes, y ahora queda registro de cuánto se usa la API."
 }

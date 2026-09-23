@@ -360,6 +360,16 @@ if (window.__pendingErrorReports && window.__pendingErrorReports.length) {
 
 async function flushTrackEvents(useBeacon = false) {
   if (_trackFlushTimer) { clearTimeout(_trackFlushTimer); _trackFlushTimer = null; }
+  // Paso 3 de la auditoría de API de Drive (ver CLAUDE.md): se suma al mismo
+  // buffer/gate de consentimiento que cualquier otro evento de trackEvent()
+  // — drive.js carga antes que este archivo, pero se chequea con typeof por
+  // las dudas (mismo criterio defensivo que el resto de estos puentes entre
+  // scripts). Solo se resetea el contador cuando de verdad se reporta, para
+  // no perder cuenta si todavía no hay consentimiento de analítica.
+  if (typeof getAndResetDriveApiRequestCount === 'function') {
+    const driveApiCount = getAndResetDriveApiRequestCount();
+    if (driveApiCount > 0) trackEvent('drive_api_usage', { count: driveApiCount });
+  }
   if (!_eventBuffer.length) return;
   // Sin sesión todavía, solo los eventos del embudo pre-login tienen sentido
   // mandarse — cualquier otro evento en el buffer se descarta en vez de
