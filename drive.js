@@ -120,11 +120,18 @@ const DRIVE_MAX_RETRIES = 3;
 // billing.js). Deliberadamente NO cuenta la URL directa de miniatura
 // (drive.google.com/thumbnail), que no pasa por driveReq() y no pega la
 // API — solo lo que de verdad consume cuota.
+// `_driveApi429Count` se lleva aparte (no alcanza con el total): un volumen
+// alto de requests puede ser perfectamente sano, pero un 429 es la señal
+// real de "se está tocando el límite de cuota" — sin distinguirlo, el total
+// solo, y no se podía saber si alguna vez se llegó a pegar contra el techo.
 let _driveApiRequestCount = 0;
+let _driveApi429Count = 0;
 function getAndResetDriveApiRequestCount() {
   const count = _driveApiRequestCount;
+  const rateLimited = _driveApi429Count;
   _driveApiRequestCount = 0;
-  return count;
+  _driveApi429Count = 0;
+  return { count, rateLimited };
 }
 
 async function driveReq(method, url, body) {
@@ -162,6 +169,9 @@ async function driveReq(method, url, body) {
     // Respuesta real de Drive — cuenta contra la cuota sea cual sea el
     // status (un 429/5xx que dispara reintento también gastó un request).
     _driveApiRequestCount++;
+    // La señal real de "se está pegando contra el límite de cuota" — se
+    // cuenta aparte del total, no alcanza con inferirla del volumen general.
+    if (res.status === 429) _driveApi429Count++;
     if (res.status === 401) {
       driveToken = null; rootFolderId = null;
       localStorage.removeItem('drive_token');

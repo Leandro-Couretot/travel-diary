@@ -367,8 +367,11 @@ async function flushTrackEvents(useBeacon = false) {
   // scripts). Solo se resetea el contador cuando de verdad se reporta, para
   // no perder cuenta si todavía no hay consentimiento de analítica.
   if (typeof getAndResetDriveApiRequestCount === 'function') {
-    const driveApiCount = getAndResetDriveApiRequestCount();
-    if (driveApiCount > 0) trackEvent('drive_api_usage', { count: driveApiCount });
+    const { count: driveApiCount, rateLimited: driveApi429Count } = getAndResetDriveApiRequestCount();
+    // rate_limited_429 separado del total: un volumen alto puede ser sano,
+    // un 429 es la señal real de que se está pegando contra el límite de
+    // cuota — sin distinguirlo, el conteo agregado solo no lo dejaba ver.
+    if (driveApiCount > 0) trackEvent('drive_api_usage', { count: driveApiCount, rate_limited_429: driveApi429Count });
   }
   if (!_eventBuffer.length) return;
   // Sin sesión todavía, solo los eventos del embudo pre-login tienen sentido

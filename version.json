@@ -1,4 +1,4 @@
 {
-  "version": "2.38",
-  "changelog": "Auditoría interna de la API de Drive: menos requests de sobra al cargar miniaturas, sin cortes silenciosos en álbumes grandes, y ahora queda registro de cuánto se usa la API."
+  "version": "2.39",
+  "changelog": "El registro de uso de la API de Drive ahora distingue cuándo se llega a tocar el límite de cuota (429), no solo el volumen total."
 }
