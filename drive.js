@@ -435,6 +435,18 @@ const MEDIA_FILE_DESCRIPTION = 'Este archivo es una foto/video/audio de tu diari
 function mediaFileName(kind, originalName) {
   return `${APP_NAME_PREFIX} - ${MEDIA_KIND_LABELS[kind] || kind} - ${originalName}`;
 }
+// Inversa de mediaFileName() — hace falta al reconstruir un día sin
+// day.json (ver loadDayFromDrive, Case 3): ahí se usa el nombre REAL del
+// archivo en Drive (ya con el prefijo puesto), pero el campo `name` que
+// day.json normalmente guarda es siempre el nombre original, sin prefijo.
+// Sin este strip, un día reconstruido queda con nombres que no matchean
+// el formato de siempre, y getExistingNamesForDate() deja de poder
+// detectar duplicados para ese día — ver CLAUDE.md, fotos duplicadas.
+const MEDIA_NAME_PREFIX_RE = /^(?:\[Legado\]|\[Travel Diary\]) - (?:foto|video|audio) - (.+)$/;
+function stripMediaNamePrefix(driveName) {
+  const m = MEDIA_NAME_PREFIX_RE.exec(driveName);
+  return m ? m[1] : driveName;
+}
 
 const USAGE_JSON_OLD_NAME = `${APP_NAME_PREFIX_OLD} - Uso.json`; // usage.json nunca tuvo un nombre plano de antes de v1.36
 
@@ -712,7 +724,11 @@ async function canEditFolder(folderId) {
 // "Aviso de posibles duplicados en carga masiva").
 async function getExistingNamesForDate(albumFolderId, dateStr) {
   const day = await loadDayFromDrive(albumFolderId, dateStr);
-  return new Set((day?.media || []).map(m => m.name));
+  // stripMediaNamePrefix() normaliza cualquier nombre que haya quedado
+  // contaminado con el prefijo (día reconstruido antes de este fix, ver
+  // arriba) — así el chequeo de duplicados sigue funcionando para esos
+  // días también, sin depender de reescribir el day.json ya guardado.
+  return new Set((day?.media || []).map(m => stripMediaNamePrefix(m.name)));
 }
 
 // ─── FOTOLIBRO: páginas explícitas + drawer ──────────────
@@ -921,7 +937,7 @@ async function loadDayFromDrive(albumFolderId, dateStr) {
           const type = f.mimeType.startsWith('image/') ? 'image'
             : f.mimeType.startsWith('video/') ? 'video'
             : f.mimeType.startsWith('audio/') ? 'audio' : null;
-          return type ? { type, name: f.name, driveFileId: f.id, caption: '' } : null;
+          return type ? { type, name: stripMediaNamePrefix(f.name), driveFileId: f.id, caption: '' } : null;
         })
         .filter(Boolean);
       if (!media.length) return null; // carpeta vacía de verdad: no hay día que mostrar

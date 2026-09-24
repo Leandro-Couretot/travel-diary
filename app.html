@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.39';
+const APP_VERSION = '2.40';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3742,23 +3742,34 @@ async function processFiles(files) {
 
 async function saveFilesToCorrectDays(grouped, audioFiles) {
   setStatus('', 'Guardando en días correspondientes...');
+  // A diferencia de la carga masiva (markBulkDuplicates()/getExistingNamesForDate()
+  // en drive.js), esta ruta ("fotos de otro día") no chequeaba nada — volver a
+  // compartir/seleccionar una foto ya guardada la subía de nuevo sin ningún
+  // aviso, quedando duplicada con dos driveFileId distintos (ver CLAUDE.md,
+  // fotos duplicadas). Mismo criterio acá: se omite en silencio (no hay UI
+  // de revisión por archivo en este flujo) y se avisa el total al final.
+  let skippedCount = 0;
   for (const date of Object.keys(grouped.dated).sort()) {
     const files = grouped.dated[date];
     let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
     const dayFolderId = await getOrCreateFolder(date, albumFolderId);
+    const existingNames = new Set(day.media.map(m => stripMediaNamePrefix(m.name)));
     for (const file of files) {
+      if (existingNames.has(file.name)) { skippedCount++; continue; }
       const isImg = file.type.startsWith('image/');
       let blob = file;
       if (isImg) { const data = await compressImage(file); blob = base64ToBlob(data); }
       const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION);
       day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
+      existingNames.add(file.name);
     }
     await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media });
     invalidateDayCache(albumFolderId, date);
   }
   const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
   if (toCurrentDay.length) addFilesToCurrentDay(toCurrentDay);
-  setStatus('saved', 'Guardado en días correspondientes ✓');
+  const skippedMsg = skippedCount ? ` (${skippedCount} ya estaba${skippedCount > 1 ? 'n' : ''} guardada${skippedCount > 1 ? 's' : ''}, se omitieron)` : '';
+  setStatus('saved', `Guardado en días correspondientes ✓${skippedMsg}`);
   setTimeout(() => { if (!dirty) setStatus('', 'Sin cambios'); }, 2500);
 }
 

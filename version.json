@@ -1,4 +1,4 @@
 {
-  "version": "2.39",
-  "changelog": "El registro de uso de la API de Drive ahora distingue cuándo se llega a tocar el límite de cuota (429), no solo el volumen total."
+  "version": "2.40",
+  "changelog": "Fix real: fotos que volvían a compartirse/seleccionarse ya no se duplican al guardarse en otro día."
 }
