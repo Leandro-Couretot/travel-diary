@@ -1,4 +1,4 @@
 {
-  "version": "2.40",
-  "changelog": "Fix real: fotos que volvían a compartirse/seleccionarse ya no se duplican al guardarse en otro día."
+  "version": "2.41",
+  "changelog": "Fix real: fotos en blanco en Día/Galería y la foto chica del lightbox — regresión de la auditoría de Drive de ayer."
 }

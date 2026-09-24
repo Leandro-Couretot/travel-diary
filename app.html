@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.40';
+const APP_VERSION = '2.41';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1817,6 +1817,8 @@ let bulkGrouped = null;
 let bulkUndatedDates = {};
 let coverObserver = null;
 const EAGER_COVER_COUNT = 6; // portadas que se piden ya mismo; el resto espera a entrar en pantalla
+let galleryImgObserver = null;
+const EAGER_GALLERY_COUNT = 24; // fotos de Galería que se piden ya mismo; el resto espera a entrar en pantalla — ver renderListTab()
 const FREE_ALBUM_LIMIT = 4; // álbumes editables gratis (propios activos + compartidos-editor) — ver CLAUDE.md → "Suscripciones"
 
 // ─── Downgrade automático (Paso 4 del límite de álbumes) ──────────
@@ -1954,6 +1956,24 @@ function scheduleCoverLoad(imgEl, fileId, size, idx) {
   imgEl.dataset.coverFileId = fileId;
   imgEl.dataset.coverSize = size;
   coverObserver.observe(imgEl);
+}
+
+// Mismo criterio que scheduleCoverLoad(), aplicado a la grilla plana de
+// Galería (v2.41): a diferencia de cualquier otra vista de la app, acá se
+// pintan TODAS las fotos del álbum de una — en un álbum grande (cientos de
+// fotos) eso significaba pedir la miniatura de todas a la vez, sin ningún
+// límite. Bug real encontrado en producción (v2.38, ver CLAUDE.md): esa
+// ráfaga, sumada al nuevo nivel intermedio del fallback de miniatura
+// (fetchThumbnailLinkUrl — un request más por foto cuando la URL directa
+// falla, algo frecuente en PWA/iOS), saturaba la cola de conexiones del
+// navegador y dejaba fotos en blanco durante mucho tiempo. Igual que
+// scheduleCoverLoad(): las primeras EAGER_GALLERY_COUNT piden su miniatura
+// ya mismo, el resto recién al entrar en pantalla.
+function scheduleGalleryImgLoad(imgEl, fileId, size, idx) {
+  if (idx < EAGER_GALLERY_COUNT) { setAuthImg(imgEl, fileId, size); return; }
+  imgEl.dataset.galleryFileId = fileId;
+  imgEl.dataset.gallerySize = size;
+  galleryImgObserver.observe(imgEl);
 }
 
 function escHtml(s) {
@@ -3837,6 +3857,16 @@ async function renderListTab() {
   wrap.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'list-photo-grid';
+  // Se recrea en cada render (mismo cuidado que coverObserver/bookImgObserver)
+  // para no seguir observando nodos que este mismo render ya reemplazó.
+  if (galleryImgObserver) galleryImgObserver.disconnect();
+  galleryImgObserver = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize);
+    });
+  }, { rootMargin: '300px 0px' });
   allPhotos.forEach((p, i) => {
     const item = document.createElement('div');
     item.className = 'list-photo-item' + (p.date === currentDate ? ' active' : '');
@@ -3854,7 +3884,7 @@ async function renderListTab() {
       if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
       switchTab('day'); loadDay(p.date);
     });
-    setAuthImg(item.querySelector('.list-photo-img'), p.driveFileId, 'w200');
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i);
     grid.appendChild(item);
   });
   wrap.appendChild(grid);

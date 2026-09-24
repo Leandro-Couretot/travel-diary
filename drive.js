@@ -1128,13 +1128,26 @@ async function applyFullFileFallback(imgEl, fileId) {
   }
 }
 
-// Helper para img elements: cascada de 3 niveles, del más barato al más
-// caro. (1) URL directa de miniatura (gratis, no pega la API de Drive) —
-// falla seguido en PWA/iOS por falta de cookie de sesión. (2) `thumbnailLink`
-// vía metadata liviano (fetchThumbnailLinkUrl) — un solo request chico,
-// nunca descarga el archivo entero. (3) Solo si eso también falla, el
-// archivo completo (fetchAuthImgUrl) como último recurso — o el placeholder
-// si tampoco eso funciona (ver ERROR_HANDLING_PLAN.md Caso 2).
+// Helper para img elements: cascada de hasta 3 niveles, del más barato al
+// más caro. (1) URL directa de miniatura (gratis, no pega la API de Drive)
+// — falla seguido en PWA/iOS por falta de cookie de sesión. (2)
+// `thumbnailLink` vía metadata liviano (fetchThumbnailLinkUrl) — un solo
+// request chico, nunca descarga el archivo entero, PERO Drive lo devuelve
+// en una resolución chica fija (no hay forma confiable de pedirle un
+// tamaño mayor) — solo tiene sentido para pedidos de grilla (`size` chico).
+// (3) Solo si eso también falla — o si el pedido ya era grande, ver abajo
+// — el archivo completo (fetchAuthImgUrl) como último recurso, o el
+// placeholder si tampoco eso funciona (ver ERROR_HANDLING_PLAN.md Caso 2).
+//
+// Bug real (v2.38, corregido acá): el nivel 2 se aplicaba sin importar el
+// tamaño pedido — un pedido grande (Día 'w1200', lightbox/slideshow
+// 'w2000') que caía a este nivel terminaba mostrando la miniatura chica de
+// Drive en un contenedor pensado para una foto grande ("foto chica
+// flotando" en el lightbox). Un pedido de `size` >= 1000px salta directo
+// del nivel 1 al 3 — mismo comportamiento que tenía la app antes de v2.38
+// para estos casos, sin perder el ahorro de bytes del nivel 2 donde sí
+// aplica (grillas, calendario, fotolibro, todas en w200).
+const THUMBNAIL_LINK_MAX_WIDTH = 1000;
 function setAuthImg(imgEl, fileId, size = 'w800') {
   if (!fileId || !imgEl) return;
   // Evita el ícono nativo de "imagen rota/cargando" del navegador durante el
@@ -1157,8 +1170,14 @@ function setAuthImg(imgEl, fileId, size = 'w800') {
   const stuckTimer = setTimeout(reveal, 8000);
   const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
   imgEl.src = thumbUrl;
+  const requestedWidth = parseInt(String(size).replace(/^w/, ''), 10) || 0;
+  const skipThumbnailLinkLevel = requestedWidth >= THUMBNAIL_LINK_MAX_WIDTH;
   imgEl.onerror = async () => {
     imgEl.onerror = null; // evitar loop en este primer nivel
+    if (skipThumbnailLinkLevel) {
+      await applyFullFileFallback(imgEl, fileId);
+      return;
+    }
     const thumbLink = await fetchThumbnailLinkUrl(fileId);
     if (!thumbLink) {
       await applyFullFileFallback(imgEl, fileId);
