@@ -1475,7 +1475,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.41';
+const APP_VERSION = '2.42';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2446,7 +2446,7 @@ async function renderAlbums() {
         <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
         <div class="album-meta"><div class="album-days-count" id="summary-${album.id}">—</div></div>
       </div>`;
-    if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w600', idx);
+    if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w1200', idx);
     card.addEventListener('click', e => {
       if (e.target.closest('.album-menu-btn')) return;
       openAlbumDiary(album);
@@ -2489,7 +2489,7 @@ async function renderAlbums() {
           <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
           <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
         </div>`;
-      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w600', albums.length + idx);
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', albums.length + idx);
       card.addEventListener('click', e => {
         if (e.target.closest('.album-play-btn') || e.target.closest('.album-leave-btn')) return;
         openSharedAlbumDiary(album);
@@ -2537,7 +2537,7 @@ async function renderAlbums() {
           </div>
           <button class="btn-delete-album btn-delete-archived">Eliminar álbum</button>
         </div>`;
-      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w600', albums.length + i);
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w1200', albums.length + i);
       card.querySelector('.btn-unarchive').addEventListener('click', async (e) => {
         const btn = e.target;
         const originalLabel = btn.textContent;

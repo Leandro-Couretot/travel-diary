@@ -1,4 +1,4 @@
 {
-  "version": "2.41",
-  "changelog": "Fix real: fotos en blanco en Día/Galería y la foto chica del lightbox — regresión de la auditoría de Drive de ayer."
+  "version": "2.42",
+  "changelog": "Fix real: las tapas de álbum de Home se veían de baja calidad — pedían una miniatura demasiado chica para pantallas retina."
 }
