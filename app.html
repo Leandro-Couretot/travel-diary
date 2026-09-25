@@ -1503,7 +1503,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.46';
+const APP_VERSION = '2.47';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4100,7 +4100,32 @@ async function renderBook() {
     }
     const cleanedDrawer = saved.drawer.filter(id => currentSet.has(id));
     if (cleanedDrawer.length !== saved.drawer.length) changed = true;
-    const placedSet = new Set([...cleanedPages.flatMap(p => p.images.filter(Boolean)), ...cleanedDrawer]);
+
+    // Dedupe: un driveFileId puede haber quedado repetido en book.json
+    // desde antes de que day.json tuviera su propio dedupe al leer
+    // (dedupeMediaByDriveFileId, drive.js, v1.71) — si el día tenía esa
+    // foto listada dos veces en su momento, la reconciliación de acá la
+    // agregó al libro como si fueran dos fotos distintas. Se colapsa a
+    // una sola ocurrencia (la primera encontrada, recorriendo páginas en
+    // orden y después el drawer) — las siguientes quedan como hueco en su
+    // página, o se sacan del drawer. Nunca borra nada de Drive, solo
+    // limpia la referencia repetida acá.
+    const seenIds = new Set();
+    for (const page of cleanedPages) {
+      page.images = page.images.map(id => {
+        if (!id) return id;
+        if (seenIds.has(id)) { changed = true; return null; }
+        seenIds.add(id);
+        return id;
+      });
+    }
+    const dedupedDrawer = cleanedDrawer.filter(id => {
+      if (seenIds.has(id)) { changed = true; return false; }
+      seenIds.add(id);
+      return true;
+    });
+
+    const placedSet = new Set([...cleanedPages.flatMap(p => p.images.filter(Boolean)), ...dedupedDrawer]);
     const added = currentIds.filter(id => !placedSet.has(id)); // fotos nuevas -> al drawer, nunca a una página sola
     if (added.length) changed = true;
 
@@ -4116,7 +4141,7 @@ async function renderBook() {
     // Páginas ya NO desaparecen solas por quedar sin fotos — el hueco
     // queda ahí hasta que el usuario la borra a mano ("Eliminar página").
     bookPages = cleanedPages;
-    bookDrawer = [...cleanedDrawer, ...added];
+    bookDrawer = [...dedupedDrawer, ...added];
     if (albumCanEdit && changed) {
       saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
     }

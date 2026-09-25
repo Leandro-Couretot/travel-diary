@@ -1,4 +1,4 @@
 {
-  "version": "2.46",
-  "changelog": "Se arregló el audio del slideshow (los videos estaban silenciados de fábrica) y se agregó que la pantalla no se bloquee sola mientras se está reproduciendo, para que no se corte al proyectar a una TV."
+  "version": "2.47",
+  "changelog": "Fotolibro: se corrige un bug que dejaba fotos duplicadas en el libro (una foto listada dos veces en un día viejo quedaba también duplicada ahí) — se limpia solo la próxima vez que se abre el fotolibro."
 }
