@@ -740,6 +740,20 @@ audio { width: 100%; height: 32px; }
 .bulk-dupe-btn.active { border-color: var(--accent); color: var(--ink); background: var(--accent-light); font-weight: 500; }
 .bulk-upload-hint { margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
+/* Aviso de resolución al exportar el fotolibro (v2.43) — lista una por una
+   las fotos que van a quedar por debajo del piso de DPI, con miniatura +
+   página + la resolución real que necesitarían vs. la que tienen, en vez
+   de un "N fotos" genérico. */
+.export-lowres-list { max-height: 220px; overflow-y: auto; margin-bottom: 1rem; border: 1px solid var(--ink-faint); border-radius: var(--radius); }
+.export-lowres-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--ink-faint); }
+.export-lowres-item:last-child { border-bottom: none; }
+.export-lowres-thumb { width: 42px; height: 42px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--accent-light); }
+.export-lowres-info { flex: 1; min-width: 0; }
+.export-lowres-page { font-size: 0.78rem; color: var(--ink); font-weight: 500; }
+.export-lowres-detail { font-size: 0.72rem; color: var(--ink-muted); line-height: 1.4; }
+.export-actions { display: flex; gap: 0.6rem; }
+.export-actions .btn { flex: 1; min-width: 0; }
+
 /* Page loading */
 .page-loading { display: flex; align-items: center; justify-content: center; min-height: 60vh; gap: 0.75rem; color: var(--ink-muted); font-size: 0.875rem; }
 .back-link { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--ink-muted); text-decoration: none; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 2rem; transition: color 0.15s; cursor: pointer; }
@@ -1279,9 +1293,13 @@ audio { width: 100%; height: 32px; }
       <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;">Tamaño de hoja: <strong id="export-page-size-label"></strong></div>
       <div class="form-field"><label class="form-label">Sangrado (mm)</label><input class="form-input" id="export-bleed" type="number" min="0" step="0.5" value="3"></div>
       <div style="font-size:0.78rem;color:var(--ink-faint);margin-bottom:1rem;line-height:1.5;">El sangrado es el margen extra que se recorta al encuadernar — evita que quede un borde blanco si la imprenta corta unos milímetros de más. 3mm es lo habitual.</div>
-      <div id="export-warning" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;line-height:1.5;"></div>
+      <div id="export-warning" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:0.6rem;line-height:1.5;"></div>
+      <div id="export-lowres-list" class="export-lowres-list" style="display:none;"></div>
       <div id="export-progress" style="display:none;font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;"></div>
-      <button class="btn btn-primary" id="export-confirm-btn" onclick="startBookExport()">Exportar</button>
+      <div class="export-actions">
+        <button class="btn btn-secondary" id="export-review-btn" style="display:none;" onclick="closeBookExportModal()">Revisar</button>
+        <button class="btn btn-primary" id="export-confirm-btn" onclick="startBookExport()">Exportar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1475,7 +1493,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.42';
+const APP_VERSION = '2.43';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4747,10 +4765,21 @@ async function checkBookExportResolution(pageWmm, pageHmm) {
     if (!dims) return null;
     const def = bookLayoutDef(layoutClass);
     const rect = computeCellRectMm(pageWmm, pageHmm, def, cellIdx, EXPORT_GAP_MM);
-    const dpi = effectiveDpiForCell(dims, rect, bookFraming[photo.driveFileId]);
-    return dpi < EXPORT_MIN_DPI ? { photo, pageIdx, dpi: Math.round(dpi) } : null;
+    const framing = bookFraming[photo.driveFileId];
+    const scale = (framing && framing.scale) || 1;
+    const dpi = effectiveDpiForCell(dims, rect, framing);
+    if (dpi >= EXPORT_MIN_DPI) return null;
+    // Píxeles reales que la celda tiene disponibles (tras el zoom del
+    // encuadre, si lo hay) vs. los que necesitaría al piso de calidad —
+    // esto es lo que se muestra en el aviso, foto por foto, en vez de un
+    // "no alcanza" genérico.
+    return {
+      photo, pageIdx, dpi: Math.round(dpi),
+      actualPx: { w: Math.round(dims.width / scale), h: Math.round(dims.height / scale) },
+      requiredPx: { w: Math.round(rect.w / 25.4 * EXPORT_MIN_DPI), h: Math.round(rect.h / 25.4 * EXPORT_MIN_DPI) },
+    };
   });
-  return results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+  return results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value).sort((a, b) => a.dpi - b.dpi);
 }
 
 // jsPDF se carga solo la primera vez que hace falta (nadie que no use
@@ -4857,11 +4886,14 @@ async function generateBookPdf(bleedMm, onProgress) {
 
 // Flujo del modal de export: primer toque en "Exportar" corre el
 // chequeo de resolución (checkBookExportResolution) — si encuentra
-// fotos por debajo del piso, avisa y cambia el botón a "Exportar de
-// todos modos" en vez de generar directamente (mismo criterio de "avisa
+// fotos por debajo del piso, avisa CON la lista de cuáles son (miniatura +
+// página + resolución real vs. la que haría falta, ver
+// renderExportLowResList()) y ofrece dos caminos explícitos: "Revisar"
+// (cierra el modal sin exportar, para ir a reencuadrar/reemplazar esas
+// fotos puntuales) o "Exportar de todos modos" (mismo criterio de "avisa
 // pero no bloquea, deja elegir" que ya usa el aviso de duplicados de la
-// carga masiva). Un segundo toque (o el primero, si no hubo nada que
-// avisar) genera el PDF de una.
+// carga masiva). Un segundo toque en "Exportar de todos modos" (o el
+// primero, si no hubo nada que avisar) genera el PDF de una.
 let _exportLowResConfirmed = false;
 
 function openBookExportModal() {
@@ -4874,6 +4906,9 @@ function openBookExportModal() {
   document.getElementById('export-bleed').value = 3;
   document.getElementById('export-warning').style.display = 'none';
   document.getElementById('export-progress').style.display = 'none';
+  const listEl = document.getElementById('export-lowres-list');
+  listEl.style.display = 'none'; listEl.innerHTML = '';
+  document.getElementById('export-review-btn').style.display = 'none';
   const btn = document.getElementById('export-confirm-btn');
   btn.textContent = 'Exportar'; btn.disabled = false;
   document.getElementById('modal-book-export').classList.add('open');
@@ -4883,9 +4918,33 @@ function closeBookExportModal() {
   document.getElementById('modal-book-export').classList.remove('open');
 }
 
+// Arma la lista de fotos que van a quedar por debajo del piso de DPI —
+// una fila por foto, con miniatura + en qué página está + la resolución
+// real que necesitaría a este tamaño vs. la que tiene ahora (ya
+// descontado el zoom del encuadre, si tiene uno). `lowRes` viene ordenada
+// peor-primero por checkBookExportResolution().
+function renderExportLowResList(lowRes) {
+  const listEl = document.getElementById('export-lowres-list');
+  listEl.innerHTML = lowRes.map((item, i) => `
+    <div class="export-lowres-item">
+      <img class="export-lowres-thumb" id="export-lowres-thumb-${i}" alt="">
+      <div class="export-lowres-info">
+        <div class="export-lowres-page">Página ${item.pageIdx + 1} — ${item.dpi} DPI</div>
+        <div class="export-lowres-detail">Tiene ~${item.actualPx.w}×${item.actualPx.h}px, necesitaría al menos ~${item.requiredPx.w}×${item.requiredPx.h}px para verse nítida (${EXPORT_MIN_DPI} DPI) a este tamaño.</div>
+      </div>
+    </div>`).join('');
+  listEl.style.display = '';
+  lowRes.forEach((item, i) => {
+    const img = document.getElementById(`export-lowres-thumb-${i}`);
+    if (img) setAuthImg(img, item.photo.driveFileId, 'w200');
+  });
+}
+
 async function startBookExport() {
   const btn = document.getElementById('export-confirm-btn');
+  const reviewBtn = document.getElementById('export-review-btn');
   const warnEl = document.getElementById('export-warning');
+  const listEl = document.getElementById('export-lowres-list');
   const progressEl = document.getElementById('export-progress');
   const bleedMm = parseFloat(document.getElementById('export-bleed').value);
   if (!(bleedMm >= 0)) {
@@ -4896,6 +4955,8 @@ async function startBookExport() {
   if (!_exportLowResConfirmed) {
     btn.disabled = true;
     warnEl.style.display = 'none';
+    listEl.style.display = 'none'; listEl.innerHTML = '';
+    reviewBtn.style.display = 'none';
     progressEl.style.display = ''; progressEl.textContent = 'Comprobando la calidad de las fotos...';
     const pageWmm = bookPageSize.w * 10 + bleedMm * 2;
     const pageHmm = bookPageSize.h * 10 + bleedMm * 2;
@@ -4906,7 +4967,9 @@ async function startBookExport() {
     if (lowRes.length) {
       const n = lowRes.length;
       warnEl.style.display = '';
-      warnEl.textContent = `${n} foto${n > 1 ? 's' : ''} se ${n > 1 ? 'van' : 'va'} a ver borrosa${n > 1 ? 's' : ''} impresa${n > 1 ? 's' : ''} a este tamaño (menos de ${EXPORT_MIN_DPI} DPI). Podés exportar igual si no te importa.`;
+      warnEl.textContent = `${n} foto${n > 1 ? 's' : ''} se ${n > 1 ? 'van' : 'va'} a ver borrosa${n > 1 ? 's' : ''} impresa${n > 1 ? 's' : ''} a este tamaño (menos de ${EXPORT_MIN_DPI} DPI):`;
+      renderExportLowResList(lowRes);
+      reviewBtn.style.display = '';
       _exportLowResConfirmed = true;
       btn.textContent = 'Exportar de todos modos';
       return;
@@ -4914,7 +4977,7 @@ async function startBookExport() {
   }
 
   btn.disabled = true;
-  warnEl.style.display = 'none';
+  reviewBtn.style.display = 'none';
   progressEl.style.display = ''; progressEl.textContent = 'Generando PDF...';
   try {
     const doc = await generateBookPdf(bleedMm, (page, total) => { progressEl.textContent = `Generando PDF... página ${page}/${total}`; });

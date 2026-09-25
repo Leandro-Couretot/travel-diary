@@ -1,4 +1,4 @@
 {
-  "version": "2.42",
-  "changelog": "Fix real: las tapas de álbum de Home se veían de baja calidad — pedían una miniatura demasiado chica para pantallas retina."
+  "version": "2.43",
+  "changelog": "Fotolibro: el aviso de exportar a PDF ahora dice cuáles fotos puntuales se van a ver borrosas (con miniatura y resolución que haría falta), no solo un contador."
 }
