@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Legado — Las fotos de tu familia, por fin ordenadas</title>
+<meta name="description" content="Guardá los recuerdos de tu familia en fotos, videos, audios y notas, organizados por día. Todo en tu propio Google Drive.">
+<meta property="og:title" content="Legado — Las fotos de tu familia, por fin ordenadas">
+<meta property="og:description" content="Guardá los recuerdos de tu familia en fotos, videos, audios y notas, organizados por día. Todo en tu propio Google Drive.">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  .lg-wrap { max-width: 480px; margin: 0 auto; padding: 0 0 3rem; }
+  .lg-header { padding: 1.5rem 1.75rem 0; }
+  .lg-hero { padding: 1.1rem 1.75rem 0; }
+  .lg-hero h1 { font-size: 2rem; line-height: 1.18; letter-spacing: -0.01em; }
+  .lg-hero p { margin-top: 0.9rem; font-size: 1rem; color: var(--ink-muted); line-height: 1.5; font-weight: 400; }
+  .lg-cta {
+    display: block; width: 100%; box-sizing: border-box; background: var(--ink); color: var(--bg);
+    font-family: 'DM Sans', sans-serif; font-size: 1.03rem; font-weight: 500; letter-spacing: 0.01em;
+    padding: 1.05rem; border: none; border-radius: var(--radius-lg); text-align: center;
+    text-decoration: none; cursor: pointer; transition: background 0.15s;
+  }
+  .lg-cta:hover { background: var(--accent); }
+  .lg-trust { margin-top: 0.75rem; font-size: 0.78rem; color: var(--ink-muted); text-align: center; }
+  .lg-bridge { margin-top: 2.2rem; text-align: center; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+  .lg-phone {
+    margin: 1rem auto 0; width: 280px; box-sizing: border-box; border: 10px solid var(--ink); border-radius: 48px;
+    overflow: hidden; box-shadow: var(--shadow-lg); background: var(--bg);
+  }
+  .lg-statusbar { height: 32px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; background: var(--accent-light); }
+  .lg-statusbar-time { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .lg-albums-head { padding: 16px 18px 0; }
+  .lg-albums-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-muted); }
+  .lg-albums-count { margin-top: 9px; font-family: 'DM Serif Display', serif; font-weight: 400; font-size: 19px; color: var(--ink); line-height: 1.2; }
+  .lg-albums-count b { color: var(--accent); font-weight: 400; }
+  .lg-albums-sub { margin-top: 5px; font-size: 11.5px; color: var(--ink-muted); }
+  .lg-grid { margin-top: 14px; padding: 0 18px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .lg-card { background: var(--surface); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-sm); }
+  .lg-card-cover { width: 100%; height: 118px; display: flex; align-items: center; justify-content: center; }
+  .lg-card-body { padding: 9px 9px 10px; }
+  .lg-card-title { font-family: 'DM Serif Display', serif; font-weight: 400; font-size: 12.5px; color: var(--ink); line-height: 1.25; }
+  .lg-card-date { margin-top: 3px; font-size: 10px; color: var(--ink-muted); }
+  .lg-card-meta { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--accent-light); font-size: 9.5px; color: var(--ink-muted); }
+  .lg-card-new {
+    background: var(--accent-light); border: 1.5px dashed var(--accent); border-radius: 16px; display: flex;
+    flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 186px;
+  }
+  .lg-card-new-icon { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--accent); display: flex; align-items: center; justify-content: center; }
+  .lg-card-new-label { font-family: 'DM Serif Display', serif; font-weight: 400; font-size: 12px; color: var(--ink); }
+  .lg-social { margin-top: 2rem; display: flex; align-items: center; justify-content: center; gap: 0.6rem; }
+  .lg-social-avatars { display: flex; }
+  .lg-social-avatar { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bg); margin-left: -8px; }
+  .lg-social-avatar:first-child { margin-left: 0; }
+  .lg-social-text { font-size: 0.8rem; color: var(--ink-muted); }
+  .lg-benefits { margin-top: 2.75rem; padding: 0 1.75rem; display: flex; flex-direction: column; gap: 1.5rem; }
+  .lg-benefit { display: flex; gap: 0.9rem; align-items: flex-start; }
+  .lg-benefit-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--accent-light); display: flex; align-items: center; justify-content: center; }
+  .lg-benefit-title { font-family: 'DM Serif Display', serif; font-weight: 400; font-size: 0.97rem; color: var(--ink); }
+  .lg-benefit-copy { margin-top: 0.2rem; font-size: 0.84rem; color: var(--ink-muted); line-height: 1.45; }
+  .lg-close { margin-top: 2.5rem; padding: 0 1.75rem; }
+  .lg-close-trust { margin-top: 0.75rem; font-size: 0.75rem; color: var(--ink-muted); text-align: center; }
+  .lg-footer { margin-top: 2.5rem; padding: 0 1.75rem; text-align: center; font-size: 0.72rem; color: var(--ink-faint); }
+  .lg-footer a { color: var(--ink-muted); }
+</style>
+</head>
+<body>
+
+<div class="lg-wrap">
+
+  <div class="lg-header">
+    <div class="app-logo serif">Legado</div>
+  </div>
+
+  <div class="lg-hero">
+    <h1 class="serif">Las fotos de tu familia, por fin ordenadas.</h1>
+    <p>Guardá los recuerdos en fotos, videos, audios y notas, organizados por día.</p>
+    <a href="app.html" data-cta class="lg-cta" style="margin-top: 1.6rem;">Empezar mi álbum gratis</a>
+    <div class="lg-trust">Todo en tu propio Google Drive.</div>
+  </div>
+
+  <div class="lg-bridge">Así se ve adentro</div>
+
+  <div class="lg-phone" aria-hidden="true">
+    <div class="lg-statusbar">
+      <div class="lg-statusbar-time">9:41</div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="none">
+          <rect x="0" y="7" width="3" height="4" rx="0.6" fill="var(--ink)"/>
+          <rect x="4.5" y="5" width="3" height="6" rx="0.6" fill="var(--ink)"/>
+          <rect x="9" y="3" width="3" height="8" rx="0.6" fill="var(--ink)"/>
+          <rect x="13.5" y="0" width="3" height="11" rx="0.6" fill="var(--ink)"/>
+        </svg>
+        <svg width="15" height="11" viewBox="0 0 15 11" fill="none">
+          <path d="M1 4.2a10 10 0 0 1 13 0" stroke="var(--ink)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          <path d="M3.6 6.9a6.2 6.2 0 0 1 7.8 0" stroke="var(--ink)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          <circle cx="7.5" cy="9.5" r="1.1" fill="var(--ink)"/>
+        </svg>
+        <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+          <rect x="0.75" y="0.75" width="20" height="10.5" rx="2.5" stroke="var(--ink)" stroke-width="1" opacity="0.45"/>
+          <rect x="2.25" y="2.25" width="14" height="7.5" rx="1.3" fill="var(--ink)"/>
+          <rect x="21.5" y="4" width="1.6" height="4" rx="0.8" fill="var(--ink)" opacity="0.45"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="lg-albums-head">
+      <div class="lg-albums-label">Tus álbumes</div>
+      <div class="lg-albums-count"><b>127</b> fotos y <b>8</b> videos</div>
+      <div class="lg-albums-sub">en 3 álbumes</div>
+    </div>
+
+    <div class="lg-grid">
+      <div class="lg-card">
+        <div class="lg-card-cover" style="background: linear-gradient(135deg, #F6E2C2, #E9C08D);">
+          <svg width="24" height="28" viewBox="0 0 36 42" fill="none">
+            <ellipse cx="18" cy="15" rx="11" ry="13" fill="#C1863F" opacity="0.85"/>
+            <path d="M18 28l-2 3.5h4l-2 3.5" stroke="#7A4E1E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M18 28v9" stroke="#7A4E1E" stroke-width="1.3"/>
+          </svg>
+        </div>
+        <div class="lg-card-body">
+          <div class="lg-card-title">Baby shower</div>
+          <div class="lg-card-date">20 jul 2026</div>
+          <div class="lg-card-meta">52 fotos y 2 videos</div>
+        </div>
+      </div>
+
+      <div class="lg-card">
+        <div class="lg-card-cover" style="background: linear-gradient(135deg, #F4DDB6, #E7B584);">
+          <svg width="27" height="27" viewBox="0 0 42 42" fill="none">
+            <rect x="6" y="24" width="30" height="13" rx="3" fill="#8A5A24" opacity="0.85"/>
+            <circle cx="12" cy="24" r="4" fill="#F8EFDE" opacity="0.9"/>
+            <circle cx="21" cy="24" r="4" fill="#F8EFDE" opacity="0.9"/>
+            <circle cx="30" cy="24" r="4" fill="#F8EFDE" opacity="0.9"/>
+            <rect x="19.5" y="10" width="3" height="13" rx="1.2" fill="#7A4E1E"/>
+            <path d="M21 4c1.6 1.7 2 3 1.2 4.3-.5.8-1.9.8-2.4 0-.8-1.3-.4-2.6 1.2-4.3z" fill="#C98A5A"/>
+          </svg>
+        </div>
+        <div class="lg-card-body">
+          <div class="lg-card-title">Primer año</div>
+          <div class="lg-card-date">13 ago 2026 — 13 ago 2027</div>
+          <div class="lg-card-meta">61 fotos y 5 videos</div>
+        </div>
+      </div>
+
+      <div class="lg-card">
+        <div class="lg-card-cover" style="background: linear-gradient(135deg, #F0DCC6, #DFAF80);">
+          <svg width="26" height="24" viewBox="0 0 40 38" fill="none">
+            <path d="M17 30s-10.5-6.4-14.2-13.3C1 12 3.7 6 9.4 6c3.4 0 5.6 2 7 4.1C17.8 8 20 6 23.4 6c5.7 0 8.4 6 6.2 10.7C25.9 23.6 17 30 17 30z" fill="#9A5A2E" opacity="0.85"/>
+            <path d="M30 33s-5.4-3.3-7.3-6.9c-1.1-2.3.6-4.9 3.3-4.9 1.8 0 2.9 1.1 3.6 2.2.7-1.1 1.8-2.2 3.6-2.2 2.7 0 4.4 2.6 3.3 4.9C35.4 29.7 30 33 30 33z" fill="#C98A5A" opacity="0.9"/>
+          </svg>
+        </div>
+        <div class="lg-card-body">
+          <div class="lg-card-title">Día de la madre</div>
+          <div class="lg-card-date">18 oct 2026</div>
+          <div class="lg-card-meta">14 fotos y 1 video</div>
+        </div>
+      </div>
+
+      <div class="lg-card-new">
+        <div class="lg-card-new-icon">
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+            <path d="M10 3v14M3 10h14" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="lg-card-new-label">Nuevo álbum</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lg-social">
+    <div class="lg-social-avatars" aria-hidden="true">
+      <div class="lg-social-avatar" style="background: #E9C08D;"></div>
+      <div class="lg-social-avatar" style="background: #C1863F;"></div>
+      <div class="lg-social-avatar" style="background: #8A5A24;"></div>
+    </div>
+    <div class="lg-social-text">+300 fotos ya ordenadas</div>
+  </div>
+
+  <div class="lg-benefits">
+
+    <div class="lg-benefit">
+      <div class="lg-benefit-icon">
+        <svg width="17" height="17" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="2.5" y="6" width="9" height="6.5" rx="1.5" stroke="var(--accent)" stroke-width="1.3"/>
+          <path d="M4.5 6V4.2a2.5 2.5 0 0 1 5 0V6" stroke="var(--accent)" stroke-width="1.3" fill="none"/>
+        </svg>
+      </div>
+      <div>
+        <div class="lg-benefit-title">Tus recuerdos, siempre tuyos.</div>
+        <div class="lg-benefit-copy">Las fotos se almacenan en tu propia cuenta de Google Drive.</div>
+      </div>
+    </div>
+
+    <div class="lg-benefit">
+      <div class="lg-benefit-icon">
+        <svg width="17" height="17" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <circle cx="5" cy="4.6" r="2" stroke="var(--accent)" stroke-width="1.3"/>
+          <path d="M1.3 12c0-2.5 1.7-4 3.7-4s3.7 1.5 3.7 4" stroke="var(--accent)" stroke-width="1.3" fill="none"/>
+          <circle cx="10.2" cy="5.6" r="1.6" stroke="var(--accent)" stroke-width="1.1"/>
+          <path d="M7.4 12c0-2 1.4-3.3 2.8-3.3 1.2 0 2.1.6 2.6 1.7" stroke="var(--accent)" stroke-width="1.1" fill="none"/>
+        </svg>
+      </div>
+      <div>
+        <div class="lg-benefit-title">Compartí con tu familia</div>
+        <div class="lg-benefit-copy">Invitá a familiares y amigos a colaborar en el álbum.</div>
+      </div>
+    </div>
+
+    <div class="lg-benefit">
+      <div class="lg-benefit-icon">
+        <svg width="17" height="17" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M7 3.4C6 2.4 4.2 2.1 1.8 2.4v8.3c2.4-.3 4.2 0 5.2.9" stroke="var(--accent)" stroke-width="1.2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="M7 3.4c1-1 2.8-1.3 5.2-1v8.3c-2.4-.3-4.2 0-5.2.9" stroke="var(--accent)" stroke-width="1.2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="M7 3.4v9.2" stroke="var(--accent)" stroke-width="1.1"/>
+        </svg>
+      </div>
+      <div>
+        <div class="lg-benefit-title">Armá tu fotolibro para imprimir</div>
+        <div class="lg-benefit-copy">Elegí el tamaño de hoja y exportalo en PDF en unos clics.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="lg-close">
+    <a href="app.html" data-cta class="lg-cta">Empezar mi álbum gratis</a>
+    <div class="lg-close-trust">Hecho para familias</div>
+  </div>
+
+  <div class="lg-footer">
+    <a href="privacy.html">Privacidad</a> · <a href="terms.html">Términos</a>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    var qs = window.location.search;
+    if (!qs) return;
+    document.querySelectorAll('a[data-cta]').forEach(function (a) {
+      a.href = a.getAttribute('href') + qs;
+    });
+  })();
+</script>
+
+</body>
+</html>
