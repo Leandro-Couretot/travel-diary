@@ -1,4 +1,4 @@
 {
-  "version": "2.44",
-  "changelog": "Los links de invitación a álbum compartido quedan atribuidos como su propio canal + se arregló un bug real que perdía el link de invitación al abrirlo."
+  "version": "2.45",
+  "changelog": "Los íconos de emoji/símbolos de la app (carga masiva, reproducir, etc.) pasan a SVG propios, con el mismo estilo que la landing."
 }

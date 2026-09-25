@@ -358,6 +358,12 @@ img { transition: opacity 0.25s ease; }
 }
 @keyframes sheetUp { from { transform: translateY(16px); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } }
 .bottom-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--ink-faint); margin: 0 auto 12px; }
+/* Ícono SVG genérico (v2.45, ver ICON_PATHS/icon() en el script) — se
+   comporta como el emoji al que reemplaza: sigue el tamaño de fuente
+   (1em) y hereda el color del texto (currentColor) del botón que lo
+   contiene, así que .selection-btn.danger/.diary-menu-item.danger lo
+   pintan de rojo solo con su color de texto, sin ninguna variante. */
+.icon { display: inline-block; vertical-align: -0.16em; flex-shrink: 0; }
 .bottom-sheet-row {
   display: flex; align-items: center; gap: 0.9rem; width: 100%;
   padding: 0.75rem 1.35rem; background: none; border: none; cursor: pointer;
@@ -972,8 +978,8 @@ audio { width: 100%; height: 32px; }
 <div class="selection-bar" id="selection-bar">
   <div class="selection-count" id="selection-count">0 seleccionadas</div>
   <div class="selection-actions">
-    <button class="selection-btn" onclick="shareSelected()">↗ Compartir</button>
-    <button class="selection-btn danger" id="selection-btn-delete" onclick="deleteSelected()">✕ Eliminar</button>
+    <button class="selection-btn" onclick="shareSelected()"><span data-icon="share"></span> Compartir</button>
+    <button class="selection-btn danger" id="selection-btn-delete" onclick="deleteSelected()"><span data-icon="trash"></span> Eliminar</button>
     <button class="selection-btn" onclick="exitSelectionMode()">Cancelar</button>
   </div>
 </div>
@@ -1125,7 +1131,7 @@ audio { width: 100%; height: 32px; }
   <button class="lightbox-btn lightbox-next" id="lightbox-next">→</button>
   <div class="lightbox-caption" id="lightbox-caption"></div>
   <div class="lightbox-counter" id="lightbox-counter"></div>
-  <button id="lightbox-share" style="position:absolute;bottom:2.5rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:white;padding:0.5rem 1rem;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:0.82rem;cursor:pointer;">↗ Compartir</button>
+  <button id="lightbox-share" style="position:absolute;bottom:2.5rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:white;padding:0.5rem 1rem;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:0.82rem;cursor:pointer;"><span data-icon="share"></span> Compartir</button>
 </div>
 
 <div class="album-overlay" id="album-overlay">
@@ -1161,7 +1167,7 @@ audio { width: 100%; height: 32px; }
   </div>
   <div class="slideshow-ui">
     <div class="slideshow-top">
-      <button class="slideshow-btn" id="slideshow-pause" title="Pausar">⏸</button>
+      <button class="slideshow-btn" id="slideshow-pause" title="Pausar"><span data-icon="pause"></span></button>
       <button class="slideshow-btn" id="slideshow-close" title="Cerrar">✕</button>
     </div>
     <div class="slideshow-bottom">
@@ -1218,15 +1224,15 @@ audio { width: 100%; height: 32px; }
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Así funciona Legado</div><button class="modal-close" onclick="closeOnboardingModal()">×</button></div>
     <div class="modal-body">
-      <div class="help-item"><span class="help-item-dot">📷</span><span>Guardá cada día con fotos, videos, notas y audio.</span></div>
-      <div class="help-item"><span class="help-item-dot">☁️</span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
-      <div class="help-item"><span class="help-item-dot">📖</span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
+      <div class="help-item"><span class="help-item-dot" data-icon="photo"></span><span>Guardá cada día con fotos, videos, notas y audio.</span></div>
+      <div class="help-item"><span class="help-item-dot" data-icon="cloud"></span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
+      <div class="help-item"><span class="help-item-dot" data-icon="book"></span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
       <label class="terms-check">
         <input type="checkbox" id="onboarding-terms-check">
         <span>Acepto los <a href="terms.html" target="_blank">Términos de Servicio</a> y la <a href="privacy.html" target="_blank">Política de Privacidad</a>.</span>
       </label>
       <button class="btn btn-primary" style="width:100%;margin-top:0.75rem;" id="btn-onboarding-google" disabled onclick="startOnboardingLogin()">Continuar con Google</button>
-      <div class="powered-by-drive">☁️ <span>Potenciado por <strong>Google Drive</strong> — tus fotos, en tu cuenta.</span></div>
+      <div class="powered-by-drive"><span data-icon="cloud"></span> <span>Potenciado por <strong>Google Drive</strong> — tus fotos, en tu cuenta.</span></div>
     </div>
   </div>
 </div>
@@ -1345,6 +1351,10 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<!-- Íconos escritos a mano acá (markup estático, no puede llamar a
+     icon() en JS) — mismos paths que ICON_PATHS.photo/ICON_PATHS['album-new']
+     (ver v2.45). Si esas entradas cambian el día del brandbook, actualizar
+     también estos dos <svg>. -->
 <div class="sheet-overlay" id="modal-fab-sheet">
   <div class="bottom-sheet">
     <div class="bottom-sheet-handle"></div>
@@ -1394,7 +1404,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-header"><div class="modal-title">Carga masiva</div><button class="modal-close" onclick="closeBulkUpload()">×</button></div>
     <div class="modal-body">
       <div id="bulk-step-drop">
-        <div class="bulk-drop-zone" id="bulk-drop-zone"><div class="bulk-drop-icon">📁</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
+        <div class="bulk-drop-zone" id="bulk-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
         <input type="file" id="bulk-file-input" accept="image/*,video/*" multiple style="display:none;">
       </div>
       <div id="bulk-step-review" style="display:none;">
@@ -1413,7 +1423,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-header"><div class="modal-title">Carga masiva</div><button class="modal-close" onclick="closeBulkDiary()">×</button></div>
     <div class="modal-body">
       <div id="bulk-diary-step-drop">
-        <div class="bulk-drop-zone" id="bulk-diary-drop-zone"><div class="bulk-drop-icon">📁</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
+        <div class="bulk-drop-zone" id="bulk-diary-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
         <input type="file" id="bulk-diary-file-input" accept="image/*,video/*" multiple style="display:none;">
       </div>
       <div id="bulk-diary-step-review" style="display:none;">
@@ -1429,28 +1439,28 @@ audio { width: 100%; height: 32px; }
 <div class="modal-overlay" id="modal-help">
   <div class="modal help-modal">
     <div class="modal-header"><div class="modal-title">¿Cómo usar la app?</div><button class="modal-close" onclick="closeHelp()">×</button></div>
-    <div class="help-section"><div class="help-section-title">🗂 Tus álbumes</div>
+    <div class="help-section"><div class="help-section-title"><span data-icon="albums"></span> Tus álbumes</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Cada álbum agrupa los recuerdos que quieras. Tocá <strong>Nuevo álbum</strong> para crear uno.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá la tarjeta de un álbum para entrar al diario.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>↗</strong> para compartir el álbum. Tocá <strong>▶</strong> para el slideshow.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Desde el menú de un álbum podés compartirlo o reproducir el slideshow.</span></div>
     </div>
-    <div class="help-section"><div class="help-section-title">⬆ Carga masiva</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá <strong>⬆</strong> para subir muchas fotos a la vez. La app las agrupa por día automáticamente.</span></div>
+    <div class="help-section"><div class="help-section-title"><span data-icon="upload"></span> Carga masiva</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el ícono de carga masiva para subir muchas fotos a la vez. La app las agrupa por día automáticamente.</span></div>
     </div>
-    <div class="help-section"><div class="help-section-title">📅 El diario</div>
+    <div class="help-section"><div class="help-section-title"><span data-icon="calendar"></span> El diario</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Navegá entre días con las flechas o tocando la fecha.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tabs: <strong>Día</strong> para editar, <strong>Mes</strong> para el calendario, <strong>Galería</strong> para buscar una foto puntual, <strong>Libro</strong> para el fotolibro.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Arrastrá el ícono ⠿ para reordenar.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Arrastrá la manija para reordenar.</span></div>
       <div class="help-tip">Acordate de tocar <strong>Guardar día</strong> antes de cambiar de día.</div>
     </div>
-    <div class="help-section"><div class="help-section-title">🎙 Grabar audio</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá ⏹ para detener y guardar.</span></div>
+    <div class="help-section"><div class="help-section-title"><span data-icon="mic"></span> Grabar audio</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá el mismo botón para detener y guardar.</span></div>
       <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
     </div>
-    <div class="help-section"><div class="help-section-title">📖 Fotolibro</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja — arrastrá el ⠿ de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
+    <div class="help-section"><div class="help-section-title"><span data-icon="book"></span> Fotolibro</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja — arrastrá la manija de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>El menú <strong>···</strong> del header suma <strong>Tamaño de hoja</strong>, <strong>Agregar página</strong> y <strong>Recrear libro</strong> (rearma todo al azar) — y un toggle para mostrar/ocultar la fecha y el texto de cada foto.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>El ícono <strong>⛶</strong> de cada foto abre un editor para encuadrarla — movela y acercala (pellizcar o la rueda del mouse) para elegir qué parte se ve, se aplica igual en pantalla y en el PDF.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>El ícono de encuadre de cada foto abre un editor para encuadrarla — movela y acercala (pellizcar o la rueda del mouse) para elegir qué parte se ve, se aplica igual en pantalla y en el PDF.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño (encuadrar con mucho zoom también puede bajarla).</span></div>
       <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
@@ -1493,8 +1503,82 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.44';
+const APP_VERSION = '2.45';
 document.getElementById('app-version-label').textContent = APP_VERSION;
+
+// ═══════════════════════════════════════════════════════════
+// ─── Sistema de íconos SVG (v2.45) ───────────────────────
+// ═══════════════════════════════════════════════════════════
+// Hasta esta entrega, la mayoría de los íconos de la app eran emojis
+// (🎙️📖⚠️📁📷☁️🧪✨) o símbolos tipográficos (▶✎↗⋯⬆⛶⠿＋) — se ven
+// distinto según el sistema operativo (cada uno dibuja el emoji a su
+// manera) y no se pueden recolorear/tamañar por CSS, a diferencia de un
+// SVG. La landing (`landing.html`) ya usa SVG dibujado a mano desde el
+// principio, y el FAB de Home (v1.86) fue el primer lugar de la app en
+// sí que siguió ese mismo criterio — acá se generaliza a toda la app.
+//
+// `ICON_PATHS` es la única fuente de verdad — cada entrada es el
+// contenido interno de un `<svg viewBox="0 0 24 24">` (mismo grid y
+// mismo `stroke:currentColor` que ya usaban los 2 íconos del FAB, para
+// no introducir un tercer estilo). `icon(nombre, opts)` arma el
+// `<svg>` final a partir de eso. Pensado explícitamente para el
+// brandbook que va a armar la diseñadora: cuando llegue un estilo de
+// trazo nuevo (grosor, redondeo, o directamente otros paths), el
+// cambio es reescribir las entradas de `ICON_PATHS` UNA sola vez —
+// ningún llamador (`icon('play')`, etc., hoy usado en ~25 lugares)
+// necesita tocarse. El color y el tamaño tampoco viven en el ícono en
+// sí: `currentColor` hereda el color de texto del botón que lo
+// contiene (así un ícono "danger" se pinta solo en rojo sin variante
+// propia) y el tamaño por default es `1em` (sigue el font-size del
+// texto de al lado, igual que hacía el emoji que reemplaza).
+const ICON_PATHS = {
+  play:    '<path d="M6 4l14 8-14 8V4z"/>',
+  edit:    '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+  share:   '<circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.1 10.6l7.7-4.3M8.1 13.4l7.7 4.3"/>',
+  more:    '<circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
+  upload:  '<path d="M12 15.5V4M7 9l5-5 5 5"/><path d="M4 15.5v3.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5"/>',
+  trash:   '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/>',
+  close:   '<path d="M5 5l14 14M19 5L5 19"/>',
+  plus:    '<path d="M12 5v14M5 12h14"/>',
+  drive:   '<path d="M4 4.5h6l2 3h8v12H4v-15z"/>',
+  frame:   '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
+  drag:    '<circle cx="9" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.1" fill="currentColor" stroke="none"/>',
+  mic:     '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>',
+  'album-new': '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
+  warning: '<path d="M12 3L2 20h20L12 3z"/><path d="M12 9.5v4"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none"/>',
+  book:    '<path d="M4 5.2A2.2 2.2 0 0 1 6.2 3H12v17.5H6.2A2.2 2.2 0 0 0 4 22.5v-17.3z"/><path d="M20 5.2A2.2 2.2 0 0 0 17.8 3H12v17.5h5.8a2.2 2.2 0 0 1 2.2 2v-17.3z"/>',
+  photo:   '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-4 4-3-3-4 4"/>',
+  cloud:   '<path d="M7 18a4 4 0 0 1-.7-7.94 5 5 0 0 1 9.53-2A4.5 4.5 0 0 1 17.5 18H7z"/>',
+  video:   '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/>',
+  sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/>',
+  albums:  '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  pause:   '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M4 8v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 13h4"/>',
+  clip:    '<path d="M8 12l6.5-6.5a3 3 0 0 1 4.24 4.24L10.6 17.9a4.5 4.5 0 0 1-6.36-6.36L13 2.8"/>',
+  stop:    '<rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/>',
+  select:  '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l2.5 2.5L16 9"/>',
+  download:'<path d="M12 4v11.5M7 11l5 5 5-5"/><path d="M4 20h16"/>',
+  size:    '<rect x="3" y="7" width="18" height="12" rx="1.5"/><path d="M8 3v4M16 3v4"/>',
+  shuffle: '<path d="M4 6h3.5l9 12H20M4 18h3.5l3-4"/><path d="M16.5 6H20M17.5 4l2.5 2-2.5 2M17.5 18H20M17.5 16l2.5 2-2.5 2"/>',
+};
+
+function icon(name, opts = {}) {
+  const p = ICON_PATHS[name];
+  if (!p) return '';
+  const size = opts.size || '1em';
+  const sw = opts.strokeWidth != null ? opts.strokeWidth : 1.7;
+  const cls = opts.class ? ` ${opts.class}` : '';
+  return `<svg class="icon${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+// El botón redondo del FAB es markup estático (no puede llamar a icon()
+// desde HTML) — se rellena acá, una sola vez, apenas existe icon().
+document.getElementById('fab-btn').innerHTML = icon('plus', { size: 22, strokeWidth: 2 });
+// Mismo problema para cualquier otro ícono que viva en HTML estático del
+// <body> (modales de onboarding/ayuda, drop-zones) en vez de armarse por
+// JS — se resuelven todos acá, leyendo `data-icon="nombre"` (ver
+// ICON_PATHS) en vez de tener el emoji/símbolo escrito a mano en el HTML.
+document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
 
 // ═══════════════════════════════════════════════════════════
 // ─── Consentimiento de cookies/tracking (GDPR) ───────────
@@ -1906,7 +1990,7 @@ function maybeShowWhatsNewModal() {
   if (!entry) return; // el usuario no pasó ninguna versión con novedades reales todavía
   showOnboardingInfoModal({
     title: 'Novedades',
-    itemsHtml: entry.items.map(t => `<div class="help-item"><span class="help-item-dot">✨</span><span>${escHtml(t)}</span></div>`).join(''),
+    itemsHtml: entry.items.map(t => `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>${escHtml(t)}</span></div>`).join(''),
     ctaLabel: 'Entendido',
     onCta: () => { try { localStorage.setItem(CHANGELOG_SEEN_KEY, CHANGELOG_LATEST_VERSION); } catch (e) {} },
   });
@@ -1915,10 +1999,10 @@ function showWelcomeModal() {
   showOnboardingInfoModal({
     title: '¡Bienvenido a Legado!',
     itemsHtml: `
-      <div class="help-item"><span class="help-item-dot">📷</span><span>Creá un álbum por viaje, cumpleaños, embarazo — lo que quieras guardar — y cargá fotos, videos, notas y audio día por día.</span></div>
-      <div class="help-item"><span class="help-item-dot">🤝</span><span>Compartí el álbum con tu familia: como <strong>"Puede editar"</strong> (suma contenido) o <strong>"Puede ver"</strong> (solo mira).</span></div>
-      <div class="help-item"><span class="help-item-dot">📖</span><span>Armá un fotolibro con tus mejores fotos y exportalo en PDF, listo para imprimir.</span></div>
-      <div class="help-item"><span class="help-item-dot">☁️</span><span>Todo vive en tu propio Google Drive — vos sos dueño de tus recuerdos, siempre.</span></div>`,
+      <div class="help-item"><span class="help-item-dot">${icon('photo')}</span><span>Creá un álbum por viaje, cumpleaños, embarazo — lo que quieras guardar — y cargá fotos, videos, notas y audio día por día.</span></div>
+      <div class="help-item"><span class="help-item-dot">${icon('share')}</span><span>Compartí el álbum con tu familia: como <strong>"Puede editar"</strong> (suma contenido) o <strong>"Puede ver"</strong> (solo mira).</span></div>
+      <div class="help-item"><span class="help-item-dot">${icon('book')}</span><span>Armá un fotolibro con tus mejores fotos y exportalo en PDF, listo para imprimir.</span></div>
+      <div class="help-item"><span class="help-item-dot">${icon('cloud')}</span><span>Todo vive en tu propio Google Drive — vos sos dueño de tus recuerdos, siempre.</span></div>`,
     ctaLabel: 'Crear mi primer álbum',
     onCta: () => openNewAlbumModal(),
   });
@@ -2317,7 +2401,7 @@ function renderDisconnected() {
       <h2>Legado</h2>
       <p>Guardá tus recuerdos en fotos, videos, audios y notas. Todo en tu Google Drive.</p>
       <button class="btn btn-primary" onclick="openOnboardingModal()">Iniciar sesión / Registrarse</button>
-      <div class="powered-by-drive">☁️ <span>Potenciado por <strong>Google Drive</strong></span></div>
+      <div class="powered-by-drive">${icon('cloud')} <span>Potenciado por <strong>Google Drive</strong></span></div>
     </div>`;
 }
 
@@ -2434,12 +2518,12 @@ async function renderAlbums() {
   if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
     main.innerHTML = `
       <div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><p>Creá tu primer álbum para empezar.</p></div>
-      <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
+      <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">${icon('plus')}</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
     return;
   }
 
   const reconstructedNotice = wasReconstructed
-    ? `<div class="reconstructed-notice">⚠️ No encontramos el índice de tus álbumes, así que lo reconstruimos a partir de tus carpetas en Drive — tus fotos siguen todas ahí. Se perdieron las fechas manuales de "Desde/Hasta" (podés volver a cargarlas con ✎).</div>`
+    ? `<div class="reconstructed-notice">${icon('warning')} No encontramos el índice de tus álbumes, así que lo reconstruimos a partir de tus carpetas en Drive — tus fotos siguen todas ahí. Se perdieron las fechas manuales de "Desde/Hasta" (podés volver a cargarlas editando el álbum).</div>`
     : '';
   main.innerHTML = `<div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><div class="home-totals" id="home-totals"></div></div>${reconstructedNotice}<div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
 
@@ -2470,7 +2554,7 @@ async function renderAlbums() {
       openAlbumDiary(album);
     });
     const menuBtn = document.createElement('button');
-    menuBtn.className = 'album-menu-btn'; menuBtn.title = 'Más opciones'; menuBtn.textContent = '⋯';
+    menuBtn.className = 'album-menu-btn'; menuBtn.title = 'Más opciones'; menuBtn.innerHTML = icon('more');
     menuBtn.addEventListener('click', e => toggleAlbumMenu(e, album, wrapper));
     wrapper.appendChild(card); wrapper.appendChild(menuBtn); ownGrid.appendChild(wrapper);
     dayInfoPromises.push(loadAlbumDaysInfo(album));
@@ -2480,7 +2564,7 @@ async function renderAlbums() {
   const newCard = document.createElement('button');
   newCard.className = 'album-card-new';
   newCard.style.animationDelay = `${albums.length * 0.07}s`;
-  newCard.innerHTML = `<div class="album-card-new-icon">＋</div><div class="album-card-new-label">Nuevo álbum</div>`;
+  newCard.innerHTML = `<div class="album-card-new-icon">${icon('plus')}</div><div class="album-card-new-label">Nuevo álbum</div>`;
   newCard.onclick = openNewAlbumModal;
   ownGrid.appendChild(newCard);
 
@@ -2500,7 +2584,7 @@ async function renderAlbums() {
         ? `<img class="album-cover" id="cover-sh-${escHtml(album.folderDriveId)}" alt="${escHtml(album.name)}" loading="lazy">`
         : `<div class="album-cover-empty">L</div>`;
       card.innerHTML = `
-        <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">▶</button></div>
+        <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">${icon('play')}</button></div>
         <div class="album-info">
           <div class="album-shared-badge">Compartido</div>
           <div class="album-name">${escHtml(album.name)}</div>
@@ -2514,7 +2598,7 @@ async function renderAlbums() {
       });
       card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true }); });
       const leaveBtn = document.createElement('button');
-      leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.textContent = '✕';
+      leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.innerHTML = icon('close');
       leaveBtn.addEventListener('click', async e => {
         e.stopPropagation();
         const ok = await customConfirm(
@@ -2651,13 +2735,13 @@ function toggleAlbumMenu(event, album, wrapper) {
   menu.className = 'album-menu-dropdown';
   menu.dataset.albumId = album.id;
   menu.innerHTML = `
-    <button class="diary-menu-item" data-action="play"><span class="diary-menu-item-icon">▶</span> Reproducir</button>
-    <button class="diary-menu-item" data-action="edit"><span class="diary-menu-item-icon">✎</span> Editar álbum</button>
-    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">⬆</span> Carga masiva</button>
-    <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">↗</span> Compartir álbum</button>
-    <button class="diary-menu-item" data-action="drive"><span class="diary-menu-item-icon">📁</span> Ver en Drive</button>
-    <button class="diary-menu-item" data-action="archive"><span class="diary-menu-item-icon">🗄</span> Archivar álbum</button>
-    <button class="diary-menu-item danger" data-action="delete"><span class="diary-menu-item-icon">✕</span> Eliminar álbum</button>`;
+    <button class="diary-menu-item" data-action="play"><span class="diary-menu-item-icon">${icon('play')}</span> Reproducir</button>
+    <button class="diary-menu-item" data-action="edit"><span class="diary-menu-item-icon">${icon('edit')}</span> Editar álbum</button>
+    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Carga masiva</button>
+    <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">${icon('share')}</span> Compartir álbum</button>
+    <button class="diary-menu-item" data-action="drive"><span class="diary-menu-item-icon">${icon('drive')}</span> Ver en Drive</button>
+    <button class="diary-menu-item" data-action="archive"><span class="diary-menu-item-icon">${icon('archive')}</span> Archivar álbum</button>
+    <button class="diary-menu-item danger" data-action="delete"><span class="diary-menu-item-icon">${icon('trash')}</span> Eliminar álbum</button>`;
   menu.addEventListener('click', e => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
@@ -2930,7 +3014,7 @@ function openBulkUpload() {
   document.getElementById('bulk-step-drop').style.display = '';
   document.getElementById('bulk-step-review').style.display = 'none';
   document.getElementById('bulk-progress').textContent = '';
-  document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">📁</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
+  document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-upload').classList.add('open');
 }
 
@@ -2971,13 +3055,13 @@ function renderBulkDatedList(datedList, grouped) {
     row.innerHTML = `<div class="bulk-day-date">${formatDate(date)}</div><div class="bulk-day-count">${parts.join(', ')}</div>`;
     const dupes = files.filter(f => f._dup);
     if (dupes.length) {
-      const warnText = dupes.length === 1
-        ? '⚠ Se registra el siguiente archivo con el mismo nombre:'
-        : '⚠ Se registran los siguientes archivos con el mismo nombre:';
+      const warnText = (dupes.length === 1
+        ? 'Se registra el siguiente archivo con el mismo nombre:'
+        : 'Se registran los siguientes archivos con el mismo nombre:');
       const allOmitted = dupes.every(f => f._excluded);
       const dupBox = document.createElement('div'); dupBox.className = 'bulk-day-dupes';
       dupBox.innerHTML = `
-        <div class="bulk-dupe-warning">${warnText}</div>
+        <div class="bulk-dupe-warning">${icon('warning')} ${warnText}</div>
         <ul class="bulk-dupe-list">${dupes.map(f => `<li class="${f._excluded ? 'bulk-dupe-item-excluded' : ''}">${escHtml(f.name)}</li>`).join('')}</ul>
         <div class="bulk-dupe-actions">
           <button type="button" class="bulk-dupe-btn${allOmitted ? ' active' : ''}" data-date="${date}" data-action="omit">Omitir estas</button>
@@ -3027,7 +3111,7 @@ function renderBulkReview() {
   undatedList.innerHTML = '';
   if (bulkGrouped.undated.length) {
     const header = document.createElement('div'); header.className = 'bulk-undated-label';
-    header.textContent = `⚠ ${bulkGrouped.undated.length} archivo${bulkGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
+    header.innerHTML = `${icon('warning')} ${bulkGrouped.undated.length} archivo${bulkGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
     undatedList.appendChild(header);
     bulkGrouped.undated.forEach(file => {
       const row = document.createElement('div'); row.className = 'bulk-undated-file';
@@ -3095,7 +3179,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
     const reasonMsg = quotaExceeded
       ? 'Tu Google Drive se quedó sin espacio — liberá lugar o ampliá tu almacenamiento en Google.'
       : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
-    progressEl.innerHTML = `⚠ ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
+    progressEl.innerHTML = `${icon('warning')} ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
     bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess };
   } else {
@@ -3489,13 +3573,13 @@ function renderDiaryPage() {
     </div>
     <div class="upload-section" style="${albumCanEdit ? '' : 'display:none;'}">
       <div class="drop-zone" id="drop-zone">
-        <div class="drop-icon">📎</div>
+        <div class="drop-icon">${icon('clip')}</div>
         <div class="drop-text"><strong>Subí fotos, videos o audios</strong></div>
         <div class="drop-sub">jpg, png, heic · mp4, mov · mp3, m4a · arrastrá o tocá acá</div>
       </div>
       <input type="file" id="file-input" accept="image/*,audio/*,video/*" multiple>
       <div class="recorder-row" id="recorder-row">
-        <button class="btn-record" id="btn-record">🎙️</button>
+        <button class="btn-record" id="btn-record">${icon('mic')}</button>
         <div class="recorder-info">
           <div class="recorder-label" id="recorder-label">Grabar audio</div>
           <div class="recorder-sub" id="recorder-sub">Tocá para empezar a grabar</div>
@@ -3644,8 +3728,8 @@ function renderMedia() {
     card.className = 'media-card'; card.style.animationDelay = `${idx * 0.04}s`;
     card.dataset.idx = idx; card.draggable = albumCanEdit;
     const isCover = albumMeta && albumMeta.coverFileId && item.driveFileId === albumMeta.coverFileId;
-    const dragHandle = albumCanEdit ? `<div class="drag-handle">⠿⠿⠿</div>` : '';
-    const deleteBtn = albumCanEdit ? `<button class="media-delete" data-idx="${idx}" title="Eliminar">✕</button>` : '';
+    const dragHandle = albumCanEdit ? `<div class="drag-handle">${icon('drag')}</div>` : '';
+    const deleteBtn = albumCanEdit ? `<button class="media-delete" data-idx="${idx}" title="Eliminar">${icon('trash')}</button>` : '';
     const captionAttrs = albumCanEdit ? '' : 'readonly';
 
     if (item.type === 'image') {
@@ -3658,7 +3742,7 @@ function renderMedia() {
           <textarea class="media-caption" placeholder="Comentario sobre esta foto..." data-idx="${idx}" rows="2" ${captionAttrs}>${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions">
             ${deleteBtn}
-            <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
+            <button class="media-share" data-idx="${idx}" title="Compartir">${icon('share')}</button>
             ${coverBtn}
           </div>
         </div>`;
@@ -3675,12 +3759,12 @@ function renderMedia() {
       card.innerHTML = `
         ${dragHandle}
         <div class="selection-check">✓</div>
-        <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">🎬</div><div class="audio-filename">${escHtml(item.name)}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
+        <div class="audio-thumb" id="vt-${idx}"><div class="audio-icon">${icon('video')}</div><div class="audio-filename">${escHtml(item.name)}</div><div style="font-size:0.75rem;color:var(--ink-muted);">Cargando video...</div></div>
         <div class="media-footer">
           <textarea class="media-caption" placeholder="Comentario sobre este video..." data-idx="${idx}" rows="2" ${captionAttrs}>${escHtml(item.caption || '')}</textarea>
           <div class="media-footer-actions">
             ${deleteBtn}
-            <button class="media-share" data-idx="${idx}" title="Compartir">↗</button>
+            <button class="media-share" data-idx="${idx}" title="Compartir">${icon('share')}</button>
           </div>
         </div>`;
       const src = item.data || '';
@@ -3702,7 +3786,7 @@ function renderMedia() {
         ${dragHandle}
         <div class="selection-check">✓</div>
         <div class="audio-thumb">
-          <div class="audio-icon">🎙️</div>
+          <div class="audio-icon">${icon('mic')}</div>
           <div class="audio-filename">${escHtml(item.name)}</div>
           ${audioSrc ? `<audio controls src="${audioSrc}"></audio>` : `<div id="al-${idx}" style="font-size:0.75rem;color:var(--ink-muted);padding:0.5rem 0;">Cargando audio...</div>`}
         </div>
@@ -3968,7 +4052,7 @@ async function renderBook() {
   const wrap = document.getElementById('book-wrap');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto 0.5rem;"></div>Preparando libro...</div>';
   if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
-  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📖</div>Todavía no hay días guardados</div>'; return; }
+  if (!allDates.length) { wrap.innerHTML = `<div class="list-empty book-page-empty"><div class="book-empty-icon">${icon('book')}</div>Todavía no hay días guardados</div>`; return; }
 
   const perDay = await Promise.all(allDates.map(async date => {
     const day = await loadDayFromDrive(albumFolderId, date) || { media: [] };
@@ -3977,7 +4061,7 @@ async function renderBook() {
       .map(m => ({ driveFileId: m.driveFileId, date, caption: m.caption || '' }));
   }));
   const allPhotos = perDay.flat();
-  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty book-page-empty"><div class="book-empty-icon">📷</div>Todavía no hay fotos en este álbum</div>'; return; }
+  if (!allPhotos.length) { wrap.innerHTML = `<div class="list-empty book-page-empty"><div class="book-empty-icon">${icon('photo')}</div>Todavía no hay fotos en este álbum</div>`; return; }
   bookPhotoByFileId = new Map(allPhotos.map(p => [p.driveFileId, p]));
 
   // El libro es independiente de la fecha: book.json guarda páginas
@@ -4329,7 +4413,7 @@ function buildBookReorderTile(page, idx) {
     chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
     cell.appendChild(chip);
     if (albumCanEdit) {
-      const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿'; cell.appendChild(handle);
+      const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.innerHTML = icon('drag'); cell.appendChild(handle);
       // Encuadre por foto (zoom + paneo) — pedido de la esposa del usuario
       // (diseñadora). Vive DENTRO de `.bp`, que es `draggable` (a
       // diferencia de ⊞/✕, que desde v2.23 viven en la leyenda de abajo,
@@ -4339,7 +4423,7 @@ function buildBookReorderTile(page, idx) {
       // editor.
       const frameBtn = document.createElement('button');
       frameBtn.type = 'button'; frameBtn.className = 'bp-frame-btn'; frameBtn.title = 'Encuadrar foto';
-      frameBtn.textContent = '⛶';
+      frameBtn.innerHTML = icon('frame');
       frameBtn.addEventListener('mousedown', e => e.stopPropagation());
       frameBtn.addEventListener('dragstart', e => { e.preventDefault(); e.stopPropagation(); });
       frameBtn.addEventListener('click', e => { e.stopPropagation(); openBookFrameModal(photo.driveFileId, idx, slotIdx); });
@@ -4362,7 +4446,7 @@ function buildBookReorderTile(page, idx) {
     // arriba), pero en touch hace falta un punto de arranque explícito
     // para no competir con el scroll horizontal de la tira (mismo criterio
     // que .bp-drag-handle, ver initBookPageTouchReorder()).
-    const pageHandle = document.createElement('span'); pageHandle.className = 'book-reorder-page-handle'; pageHandle.textContent = '⠿'; pageHandle.title = 'Arrastrar para reordenar';
+    const pageHandle = document.createElement('span'); pageHandle.className = 'book-reorder-page-handle'; pageHandle.innerHTML = icon('drag'); pageHandle.title = 'Arrastrar para reordenar';
     label.appendChild(pageHandle);
   }
   const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
@@ -4399,7 +4483,7 @@ function buildBookDrawerCell(photo, idx) {
   const cell = document.createElement('div'); cell.className = 'bp book-drawer-cell'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
   const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_DRAWER_COUNT);
   cell.appendChild(imgEl);
-  const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.textContent = '⠿';
+  const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.innerHTML = icon('drag');
   cell.appendChild(handle);
   return cell;
 }
@@ -5771,7 +5855,7 @@ function openBulkDiary() {
   document.getElementById('bulk-diary-step-drop').style.display = '';
   document.getElementById('bulk-diary-step-review').style.display = 'none';
   document.getElementById('bulk-diary-progress').textContent = '';
-  document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">📁</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
+  document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-diary').classList.add('open');
 }
 function closeBulkDiary() { document.getElementById('modal-bulk-diary').classList.remove('open'); }
@@ -5789,7 +5873,7 @@ function renderBulkDiaryReview() {
   renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped);
   const undatedList = document.getElementById('bulk-diary-undated-list'); undatedList.innerHTML = '';
   if (bulkDiaryGrouped.undated.length) {
-    const header = document.createElement('div'); header.className = 'bulk-undated-label'; header.textContent = `⚠ ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
+    const header = document.createElement('div'); header.className = 'bulk-undated-label'; header.innerHTML = `${icon('warning')} ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
     undatedList.appendChild(header);
     bulkDiaryGrouped.undated.forEach(file => {
       const row = document.createElement('div'); row.className = 'bulk-undated-file'; const today = todayStr();
@@ -5947,7 +6031,7 @@ async function startRecording() {
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recorderChunks.push(e.data); };
   mediaRecorder.onstop = finalizeRecording; mediaRecorder.start();
   document.getElementById('recorder-row').classList.add('recording'); document.getElementById('btn-record').classList.add('recording');
-  document.getElementById('btn-record').textContent = '⏹'; document.getElementById('recorder-label').textContent = 'Grabando...';
+  document.getElementById('btn-record').innerHTML = icon('stop'); document.getElementById('recorder-label').textContent = 'Grabando...';
   document.getElementById('recorder-sub').textContent = 'Tocá para detener'; document.getElementById('recorder-timer').style.display = 'block';
   recorderSeconds = 0; document.getElementById('recorder-timer').textContent = '0:00';
   recorderTimer = setInterval(() => { recorderSeconds++; document.getElementById('recorder-timer').textContent = `${Math.floor(recorderSeconds/60)}:${(recorderSeconds%60).toString().padStart(2,'0')}`; }, 1000);
@@ -5957,7 +6041,7 @@ function stopRecording() {
   if (recorderStream) { recorderStream.getTracks().forEach(t => t.stop()); recorderStream = null; }
   clearInterval(recorderTimer);
   document.getElementById('recorder-row').classList.remove('recording'); document.getElementById('btn-record').classList.remove('recording');
-  document.getElementById('btn-record').textContent = '🎙️'; document.getElementById('recorder-label').textContent = 'Grabar audio';
+  document.getElementById('btn-record').innerHTML = icon('mic'); document.getElementById('recorder-label').textContent = 'Grabar audio';
   document.getElementById('recorder-sub').textContent = 'Tocá para empezar a grabar'; document.getElementById('recorder-timer').style.display = 'none';
 }
 function finalizeRecording() {
@@ -6037,7 +6121,7 @@ async function startSlideshow(album) {
   document.getElementById('slideshow-caption').textContent = '';
   document.getElementById('slideshow-progress-bar').style.width = '0%';
   ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = true;
-  document.getElementById('slideshow-pause').textContent = '⏸';
+  document.getElementById('slideshow-pause').innerHTML = icon('pause');
   setSsLoaderVisible(true, 'Preparando tus recuerdos...');
   try {
     const albumFolderIdSS = album._shared ? album._folderId : await getAlbumFolderId(album.id);
@@ -6088,7 +6172,7 @@ function showSsItem() {
 }
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
-function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.textContent = ssPaused ? '▶' : '⏸'; if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
+function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
 function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
@@ -6108,13 +6192,13 @@ function toggleDiaryMenu() {
   menu.id = 'diary-menu-dropdown';
   menu.innerHTML = `
     ${canSelect ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(enterSelectionMode,50)">
-      <span class="diary-menu-item-icon">☑</span> Seleccionar fotos
+      <span class="diary-menu-item-icon">${icon('select')}</span> Seleccionar fotos
     </button>` : ''}
     ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
-      <span class="diary-menu-item-icon">⬆</span> Carga masiva
+      <span class="diary-menu-item-icon">${icon('upload')}</span> Carga masiva
     </button>` : ''}
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
-      <span class="diary-menu-item-icon">▣</span> Reproducir álbum
+      <span class="diary-menu-item-icon">${icon('play')}</span> Reproducir álbum
     </button>
     <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openHelp,50)">
       <span class="diary-menu-item-icon">?</span> Ayuda
@@ -6156,25 +6240,25 @@ function toggleBookOptionsMenu() {
   menu.id = 'book-options-dropdown';
   menu.innerHTML = `
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookExportModal,50)">
-      <span class="diary-menu-item-icon">⬇</span> Exportar
+      <span class="diary-menu-item-icon">${icon('download')}</span> Exportar
     </button>
     ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBulkDiary,50)">
-      <span class="diary-menu-item-icon">⬆</span> Agregar fotos
+      <span class="diary-menu-item-icon">${icon('upload')}</span> Agregar fotos
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
-      <span class="diary-menu-item-icon">▭</span> Tamaño de hoja
+      <span class="diary-menu-item-icon">${icon('size')}</span> Tamaño de hoja
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookAddPageModal,50)">
-      <span class="diary-menu-item-icon">＋</span> Agregar página
+      <span class="diary-menu-item-icon">${icon('plus')}</span> Agregar página
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(recreateBookRandom,50)">
-      <span class="diary-menu-item-icon">🔀</span> Recrear libro
+      <span class="diary-menu-item-icon">${icon('shuffle')}</span> Recrear libro
     </button>` : ''}
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(toggleBookText,50)">
       <span class="diary-menu-item-icon">Aa</span> ${bookShowText ? 'Ocultar' : 'Mostrar'} texto
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openAlbum,50)">
-      <span class="diary-menu-item-icon">▣</span> Reproducir álbum
+      <span class="diary-menu-item-icon">${icon('play')}</span> Reproducir álbum
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openHelp,50)">
       <span class="diary-menu-item-icon">?</span> Ayuda
