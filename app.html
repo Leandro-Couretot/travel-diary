@@ -1160,7 +1160,7 @@ audio { width: 100%; height: 32px; }
 
 <div class="slideshow-overlay" id="slideshow-overlay">
   <img class="slideshow-media" id="slideshow-img" src="" alt="" style="display:none;">
-  <video class="slideshow-video" id="slideshow-video" playsinline style="display:none;" muted></video>
+  <video class="slideshow-video" id="slideshow-video" playsinline style="display:none;"></video>
   <div class="slideshow-loader" id="slideshow-loader">
     <div class="slideshow-loader-rings"><span></span><span></span><span></span></div>
     <div class="slideshow-loader-text" id="slideshow-loader-text">Preparando tus recuerdos...</div>
@@ -1503,7 +1503,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.45';
+const APP_VERSION = '2.46';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -6115,8 +6115,32 @@ function setSsLoaderVisible(visible, text) {
   if (text) document.getElementById('slideshow-loader-text').textContent = text;
 }
 
+// Mantiene la pantalla despierta mientras dura el slideshow — sin esto, el
+// bloqueo automático por inactividad (el usuario solo está mirando, no
+// tocando la pantalla) corta la señal de casting/mirroring a la TV, aunque
+// el audio siga sonando del lado del teléfono. No evita un bloqueo manual
+// (botón de encendido) — eso es una decisión explícita del usuario, no algo
+// que la Wake Lock API esté pensada para pisar. Si el navegador no soporta
+// la API, o la rechaza (batería baja, etc.), el slideshow sigue andando
+// igual, solo sin esta protección.
+let ssWakeLock = null;
+async function acquireSsWakeLock() {
+  try { if ('wakeLock' in navigator) ssWakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function releaseSsWakeLock() {
+  try { ssWakeLock?.release(); } catch (e) {}
+  ssWakeLock = null;
+}
+// El wake lock se libera solo cuando la pestaña pasa a segundo plano (parte
+// del spec) — al volver a estar visible con el slideshow todavía abierto,
+// hay que volver a pedirlo.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && document.getElementById('slideshow-overlay')?.classList.contains('open')) acquireSsWakeLock();
+});
+
 async function startSlideshow(album) {
   const overlay = document.getElementById('slideshow-overlay'); overlay.classList.add('open');
+  acquireSsWakeLock();
   document.getElementById('slideshow-day-label').textContent = '';
   document.getElementById('slideshow-caption').textContent = '';
   document.getElementById('slideshow-progress-bar').style.width = '0%';
@@ -6173,7 +6197,7 @@ function showSsItem() {
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
-function closeSlideshow() { clearSsTimers(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
+function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
 let diaryMenuOpen = false;

@@ -1,4 +1,4 @@
 {
-  "version": "2.45",
-  "changelog": "Los íconos de emoji/símbolos de la app (carga masiva, reproducir, etc.) pasan a SVG propios, con el mismo estilo que la landing."
+  "version": "2.46",
+  "changelog": "Se arregló el audio del slideshow (los videos estaban silenciados de fábrica) y se agregó que la pantalla no se bloquee sola mientras se está reproduciendo, para que no se corte al proyectar a una TV."
 }
