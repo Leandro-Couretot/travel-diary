@@ -2,5 +2,5 @@
 <html><head><meta charset="UTF-8"><title>Legado</title></head>
 <body><script>
 // diary.html?album=X → app.html (SPA handles routing internally)
-location.replace('app.html');
+location.replace('app.html' + location.search);
 </script></body></html>

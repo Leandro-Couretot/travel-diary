@@ -982,7 +982,12 @@ async function shareAlbumWithUser(albumFolderId, guestEmail, role = 'reader') {
 
 function generateShareLink(folderId, name, dateFrom, dateTo) {
   const base = location.origin + location.pathname.replace(/[^/]*$/, 'index.html');
-  const p = new URLSearchParams({ join: folderId, name });
+  // utm_source/utm_medium (v2.44): mismo mecanismo genérico de first-touch
+  // de v2.07 — captureUtmFirstTouch() en app.html ya los lee de location.search
+  // solo, así que alcanza con sumarlos acá para que un signup que llega por
+  // una invitación a álbum compartido quede atribuido en Supabase
+  // (subscriptions.utm_source/utm_medium) sin tocar nada más.
+  const p = new URLSearchParams({ join: folderId, name, utm_source: 'shared_album', utm_medium: 'referral' });
   if (dateFrom) p.set('from', dateFrom);
   if (dateTo)   p.set('to', dateTo);
   return `${base}?${p.toString()}`;

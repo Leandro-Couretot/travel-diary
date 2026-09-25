@@ -1493,7 +1493,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.43';
+const APP_VERSION = '2.44';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -6305,6 +6305,7 @@ async function shareSelected() {
         document.body.removeChild(a); URL.revokeObjectURL(url);
       }
     }
+    trackEvent('media_shared', { count: files.length });
   } catch(e) { if (e.name !== 'AbortError') alert('No se pudo compartir: ' + e.message); }
   exitSelectionMode();
 }
@@ -6394,6 +6395,7 @@ async function shareMediaItem(item) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
+    trackEvent('media_shared', { type: item.type || 'unknown', count: 1 });
   } catch(e) {
     if (e.name !== 'AbortError') alert('No se pudo compartir: ' + e.message);
   }
