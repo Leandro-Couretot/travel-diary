@@ -1002,6 +1002,29 @@ async function shareAlbumWithUser(albumFolderId, guestEmail, role = 'reader') {
   return await res.json();
 }
 
+// v2.53: un DriveChildAccessError no siempre significa que Drive rechazó
+// TODO el pedido — en la práctica se vio un caso real donde el permiso de
+// la CARPETA se crea igual (queda compartida de verdad) aunque la API
+// responda con error por no poder cascadear a un hijo puntual (un day.json
+// al que la app perdió acceso por algún motivo). Antes de darle al usuario
+// el error, se confirma consultando los permisos reales de la carpeta —
+// si el invitado ya figura ahí con el rol pedido (o uno mejor), se trata
+// como éxito en vez de error.
+const _ROLE_RANK = { reader: 1, commenter: 1, writer: 2 };
+async function checkFolderShareApplied(albumFolderId, guestEmail, role) {
+  try {
+    const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${albumFolderId}?fields=permissions(emailAddress,role)`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    const perms = data.permissions || [];
+    const wanted = _ROLE_RANK[role] || 1;
+    const emailLower = (guestEmail || '').toLowerCase();
+    return perms.some(p => (p.emailAddress || '').toLowerCase() === emailLower && (_ROLE_RANK[p.role] || 0) >= wanted);
+  } catch {
+    return false;
+  }
+}
+
 // Complementa DriveChildAccessError: como el archivo bloqueado no fue
 // creado por la app, no se puede leer su metadata (drive.file scope lo
 // vuelve invisible, 404) — pero SÍ podemos leer cualquier day.json del

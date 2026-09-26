@@ -1,4 +1,4 @@
 {
-  "version": "2.52",
-  "changelog": "Si compartir un álbum falla por un archivo sin permiso, el error ahora incluye un link directo a Drive para que puedas abrir y ver ese archivo puntual vos mismo."
+  "version": "2.53",
+  "changelog": "Compartir un álbum: si Drive daba error pero el permiso se aplicó igual, ahora la app lo detecta y muestra éxito con el link, en vez de un error falso."
 }
