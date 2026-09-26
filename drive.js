@@ -98,6 +98,25 @@ class DriveQuotaExceededError extends Error {
   }
 }
 
+// v2.51: compartir un álbum falla si alguna de sus carpetas/días tiene un
+// archivo que NO fue creado por la app (ej. alguien lo subió directo desde
+// la app oficial de Google Drive) — el scope drive.file solo da acceso a
+// lo que la app misma creó o abrió, y Drive rechaza compartir la carpeta
+// padre entera si eso "afectaría" a un hijo fuera de ese permiso. Google
+// nombra el archivo bloqueado en el propio mensaje de error — se extrae acá
+// para poder identificarlo después (ver findMediaByDriveFileId en app.html).
+class DriveChildAccessError extends Error {
+  constructor(blockedFileId) {
+    super('No se pudo compartir: hay un archivo dentro de este álbum que no fue subido desde la app.');
+    this.name = 'DriveChildAccessError';
+    this.blockedFileId = blockedFileId;
+  }
+}
+function _extractBlockedChildFileId(message) {
+  const m = /child file ([\w-]+)/i.exec(message || '');
+  return m ? m[1] : null;
+}
+
 async function _driveErrorBody(res) {
   try { return (await res.clone().json()).error || null; } catch { return null; }
 }
@@ -975,9 +994,33 @@ async function shareAlbumWithUser(albumFolderId, guestEmail, role = 'reader') {
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'Error al compartir');
+    const message = err.error?.message || 'Error al compartir';
+    const blockedFileId = _extractBlockedChildFileId(message);
+    if (blockedFileId) throw new DriveChildAccessError(blockedFileId);
+    throw new Error(message);
   }
   return await res.json();
+}
+
+// Complementa DriveChildAccessError: como el archivo bloqueado no fue
+// creado por la app, no se puede leer su metadata (drive.file scope lo
+// vuelve invisible, 404) — pero SÍ podemos leer cualquier day.json del
+// álbum (esos los creó la app) y buscar ahí una referencia con el mismo
+// driveFileId, para poder decirle al usuario exactamente qué foto/video es
+// y de qué día, sin necesitar ningún permiso extra.
+async function findMediaByDriveFileId(albumFolderId, fileId) {
+  try {
+    const dates = await listDayFolders(albumFolderId);
+    for (const dateStr of dates) {
+      const day = await loadDayFromDrive(albumFolderId, dateStr);
+      if (!day) continue;
+      const match = day.media.find(m => m.driveFileId === fileId);
+      if (match) return { date: dateStr, name: match.name, type: match.type };
+    }
+  } catch (e) {
+    console.warn('Error buscando el archivo que bloquea el share:', e);
+  }
+  return null;
 }
 
 function generateShareLink(folderId, name, dateFrom, dateTo) {

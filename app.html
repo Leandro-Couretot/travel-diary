@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.50';
+const APP_VERSION = '2.51';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3003,8 +3003,9 @@ async function submitShare() {
   errEl.style.display = 'none'; okEl.style.display = 'none';
   const btn = document.querySelector('#modal-share-album .btn-primary');
   btn.textContent = 'Compartiendo...'; btn.disabled = true;
+  let folderId;
   try {
-    const folderId = await getAlbumFolderId(shareTargetAlbum.id);
+    folderId = await getAlbumFolderId(shareTargetAlbum.id);
     await shareAlbumWithUser(folderId, email, shareRole);
     trackEvent('album_shared', { role: shareRole });
     const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
@@ -3012,7 +3013,18 @@ async function submitShare() {
     try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
     catch { okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link: ${link}`; }
     okEl.style.display = 'block';
-  } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  } catch(e) {
+    if (e.name === 'DriveChildAccessError' && folderId) {
+      const info = await findMediaByDriveFileId(folderId, e.blockedFileId);
+      const typeLabel = info ? (info.type === 'video' ? 'video' : info.type === 'audio' ? 'audio' : 'foto') : null;
+      errEl.textContent = info
+        ? `No se pudo compartir: la ${typeLabel} "${info.name}" del día ${formatDate(info.date)} fue subida directo a tu Google Drive (no desde la app), y la app solo puede compartir lo que ella misma subió. Borrala del álbum y volvé a subirla desde acá, o sacala de esa carpeta en Drive, y probá compartir de nuevo.`
+        : 'No se pudo compartir: hay un archivo dentro de este álbum que fue subido directo a tu Google Drive (no desde la app), y la app solo puede compartir lo que ella misma subió. Revisá el álbum en Drive buscando algo que no hayas cargado desde acá, sacalo de la carpeta, y probá compartir de nuevo.';
+    } else {
+      errEl.textContent = e.message;
+    }
+    errEl.style.display = 'block';
+  }
   btn.textContent = 'Compartir y copiar link'; btn.disabled = false;
 }
 
