@@ -1,4 +1,4 @@
 {
-  "version": "2.48",
-  "changelog": "Slideshow proyectado a una TV: se saca la barra de estado del celular del mirroring (pantalla completa real) y se permite rotar a horizontal para que las fotos se vean más grandes en la TV."
+  "version": "2.49",
+  "changelog": "El aviso de \"reconstruimos tus álbumes\" ahora aclara que el archivo se borró desde tu Google Drive, no por un problema de la app."
 }
