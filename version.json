@@ -1,4 +1,4 @@
 {
-  "version": "2.47",
-  "changelog": "Fotolibro: se corrige un bug que dejaba fotos duplicadas en el libro (una foto listada dos veces en un día viejo quedaba también duplicada ahí) — se limpia solo la próxima vez que se abre el fotolibro."
+  "version": "2.48",
+  "changelog": "Slideshow proyectado a una TV: se saca la barra de estado del celular del mirroring (pantalla completa real) y se permite rotar a horizontal para que las fotos se vean más grandes en la TV."
 }

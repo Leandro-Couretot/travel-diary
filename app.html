@@ -1503,7 +1503,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.47';
+const APP_VERSION = '2.48';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -6163,9 +6163,30 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && document.getElementById('slideshow-overlay')?.classList.contains('open')) acquireSsWakeLock();
 });
 
+// Fullscreen real (no solo el overlay CSS a pantalla completa) — al mirror-ear
+// la pantalla del celular a una TV (Smart View/Miracast/AirPlay), lo que se
+// ve en la TV es exactamente lo que muestra la pantalla del teléfono: sin
+// esto, la barra de estado de arriba (hora, batería, señal) también queda
+// mirroreada, ocupando espacio de la TV con algo que no aporta nada ahí.
+// `requestFullscreen()` hace que el navegador entre en modo inmersivo (oculta
+// su propia UI y, en Chrome/Android, también la barra de estado del sistema)
+// — soportado en Chrome/Android y Safari/iOS 16.4+, mismo piso que ya usa el
+// Wake Lock de arriba; sin soporte, no hace nada y el slideshow sigue
+// funcionando igual, solo sin este beneficio extra.
+async function enterSsFullscreen() {
+  try {
+    const overlay = document.getElementById('slideshow-overlay');
+    if (overlay && !document.fullscreenElement && overlay.requestFullscreen) await overlay.requestFullscreen();
+  } catch (e) {}
+}
+function exitSsFullscreen() {
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+}
+
 async function startSlideshow(album) {
   const overlay = document.getElementById('slideshow-overlay'); overlay.classList.add('open');
   acquireSsWakeLock();
+  enterSsFullscreen();
   document.getElementById('slideshow-day-label').textContent = '';
   document.getElementById('slideshow-caption').textContent = '';
   document.getElementById('slideshow-progress-bar').style.width = '0%';
@@ -6222,7 +6243,7 @@ function showSsItem() {
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
-function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
+function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); exitSsFullscreen(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
 let diaryMenuOpen = false;
