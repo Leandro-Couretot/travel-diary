@@ -1,4 +1,4 @@
 {
-  "version": "2.49",
-  "changelog": "El aviso de \"reconstruimos tus álbumes\" ahora aclara que el archivo se borró desde tu Google Drive, no por un problema de la app."
+  "version": "2.50",
+  "changelog": "El aviso de \"reconstruimos tus álbumes\" ahora es un pop-up que nombra el archivo y explica qué pasó, en vez de un texto chico arriba de la grilla."
 }
