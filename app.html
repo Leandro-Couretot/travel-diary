@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.51';
+const APP_VERSION = '2.52';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3015,11 +3015,18 @@ async function submitShare() {
     okEl.style.display = 'block';
   } catch(e) {
     if (e.name === 'DriveChildAccessError' && folderId) {
+      // v2.52: el archivo bloqueado, por definición, no fue creado por la
+      // app — así que buscarlo en los day.json (findMediaByDriveFileId)
+      // solo encuentra algo si ese archivo SÍ pasó antes por la app de
+      // alguna forma (caso borde). El link directo a Drive, en cambio,
+      // siempre funciona: como dueño del archivo, el usuario lo puede abrir
+      // ahí sea cual sea el permiso que tenga esta app — es la forma
+      // confiable de identificarlo, no depende de que la app "sepa" nada.
+      const driveLink = `https://drive.google.com/file/d/${e.blockedFileId}/view`;
       const info = await findMediaByDriveFileId(folderId, e.blockedFileId);
-      const typeLabel = info ? (info.type === 'video' ? 'video' : info.type === 'audio' ? 'audio' : 'foto') : null;
-      errEl.textContent = info
-        ? `No se pudo compartir: la ${typeLabel} "${info.name}" del día ${formatDate(info.date)} fue subida directo a tu Google Drive (no desde la app), y la app solo puede compartir lo que ella misma subió. Borrala del álbum y volvé a subirla desde acá, o sacala de esa carpeta en Drive, y probá compartir de nuevo.`
-        : 'No se pudo compartir: hay un archivo dentro de este álbum que fue subido directo a tu Google Drive (no desde la app), y la app solo puede compartir lo que ella misma subió. Revisá el álbum en Drive buscando algo que no hayas cargado desde acá, sacalo de la carpeta, y probá compartir de nuevo.';
+      errEl.innerHTML = info
+        ? `No se pudo compartir: Drive bloqueó el permiso por un archivo de este álbum al que la app no tiene acceso de escritura — parece ser ${info.type === 'video' ? 'el video' : info.type === 'audio' ? 'el audio' : 'la foto'} "${escHtml(info.name)}" del día ${formatDate(info.date)}. Podés confirmarlo abriéndolo directo en tu Drive (<a href="${driveLink}" target="_blank" rel="noopener">ver archivo</a>) — sacalo de la carpeta del álbum o volvé a subirlo desde la app, y probá compartir de nuevo.`
+        : `No se pudo compartir: Drive bloqueó el permiso por un archivo de este álbum al que la app no tiene acceso de escritura — no aparece en ninguno de tus días, así que no podemos identificarlo solos. Abrilo directo en tu Drive para ver de qué se trata (<a href="${driveLink}" target="_blank" rel="noopener">ver archivo</a>) — si no debería estar en esa carpeta, sacalo de ahí y probá compartir de nuevo.`;
     } else {
       errEl.textContent = e.message;
     }

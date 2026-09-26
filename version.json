@@ -1,4 +1,4 @@
 {
-  "version": "2.51",
-  "changelog": "Cuando compartir un álbum falla por un archivo subido directo a Drive, el error ahora dice exactamente cuál foto/video es y qué día, en vez de mostrar el mensaje crudo de Google."
+  "version": "2.52",
+  "changelog": "Si compartir un álbum falla por un archivo sin permiso, el error ahora incluye un link directo a Drive para que puedas abrir y ver ese archivo puntual vos mismo."
 }
