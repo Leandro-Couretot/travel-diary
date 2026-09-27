@@ -1,4 +1,4 @@
 {
-  "version": "2.54",
-  "changelog": "El error de 'no se pudo unir al álbum' ahora muestra el motivo real de Drive, para poder diagnosticar casos donde el permiso ya estaba bien igual."
+  "version": "2.55",
+  "changelog": "Unirse a un álbum compartido nuevo ya no fallaba por una limitación real del scope de Drive al buscar el email del dueño — ese chequeo ahora es best-effort y no bloquea más el 'unirse'."
 }

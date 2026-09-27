@@ -1088,29 +1088,27 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
   if (stored.sharedAlbums.some(a => a.folderDriveId === folderDriveId)) {
     return { alreadyJoined: true };
   }
+  // v2.55: el v2.54 reveló el motivo real de un fallo real en producción —
+  // "File not found" en un GET directo por ID, la firma típica de Drive
+  // cuando el scope `drive.file` no le da acceso a una carpeta que la cuenta
+  // invitada nunca "abrió" antes con esta app (Drive devuelve 404 en vez de
+  // 403 a propósito, para no filtrar que el archivo existe), aunque el
+  // permiso real ya sea `writer`. Este chequeo solo existe para poder
+  // mostrar el email del dueño en la tarjeta del álbum compartido — no hay
+  // motivo para que una limitación de scope bloquee el "unirse" en sí. Pasa
+  // a ser best-effort: si falla, se seguía igual con `ownerEmail: null`
+  // (ya contemplado en el render, ver `${album.ownerEmail || ''}`).
   let ownerEmail = null;
   try {
     const metaRes = await driveReq('GET',
       `https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=id,owners`
     );
-    if (!metaRes.ok) {
-      // v2.54: se mostraba siempre el mismo mensaje genérico ("pedile al
-      // dueño que comparta") sin importar la causa real — no alcanzaba
-      // para diagnosticar un caso real donde el permiso de Drive estaba
-      // bien pero el join seguía fallando. Se suma el motivo real que
-      // devuelve la API (status + mensaje de Google) entre paréntesis,
-      // mismo criterio que _extractBlockedChildFileId()/DriveChildAccessError
-      // en shareAlbumWithUser() — mostrar el error real de Drive en vez de
-      // taparlo es lo que permitió diagnosticar ese otro bug.
-      const errBody = await metaRes.json().catch(() => ({}));
-      const reason = errBody.error?.message || `HTTP ${metaRes.status}`;
-      throw new Error(`No se pudo acceder a la carpeta. Pedile al dueño que te comparta el álbum primero. (${reason})`);
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      ownerEmail = meta.owners?.[0]?.emailAddress || null;
     }
-    const meta = await metaRes.json();
-    ownerEmail = meta.owners?.[0]?.emailAddress || null;
   } catch (e) {
-    if (e.message && e.message.indexOf('No se pudo acceder a la carpeta') === 0) throw e;
-    throw new Error(`No se pudo acceder a la carpeta. Pedile al dueño que te comparta el álbum primero. (${e.message || 'error de red'})`);
+    // best-effort — sin email de dueño, pero el join sigue.
   }
   stored.sharedAlbums.push({
     folderDriveId, name: albumName, ownerEmail,
