@@ -1,4 +1,4 @@
 {
-  "version": "2.55",
-  "changelog": "Unirse a un álbum compartido nuevo ya no fallaba por una limitación real del scope de Drive al buscar el email del dueño — ese chequeo ahora es best-effort y no bloquea más el 'unirse'."
+  "version": "2.56",
+  "changelog": "El link de vuelta después de pagar en Mercado Pago ahora apunta a legadofamiliar.com.ar en vez del dominio viejo de Firebase."
 }
