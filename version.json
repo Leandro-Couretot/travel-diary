@@ -1,4 +1,4 @@
 {
-  "version": "2.53",
-  "changelog": "Compartir un álbum: si Drive daba error pero el permiso se aplicó igual, ahora la app lo detecta y muestra éxito con el link, en vez de un error falso."
+  "version": "2.54",
+  "changelog": "El error de 'no se pudo unir al álbum' ahora muestra el motivo real de Drive, para poder diagnosticar casos donde el permiso ya estaba bien igual."
 }

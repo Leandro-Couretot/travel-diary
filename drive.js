@@ -1093,11 +1093,24 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
     const metaRes = await driveReq('GET',
       `https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=id,owners`
     );
-    if (!metaRes.ok) throw new Error('Sin acceso');
+    if (!metaRes.ok) {
+      // v2.54: se mostraba siempre el mismo mensaje genérico ("pedile al
+      // dueño que comparta") sin importar la causa real — no alcanzaba
+      // para diagnosticar un caso real donde el permiso de Drive estaba
+      // bien pero el join seguía fallando. Se suma el motivo real que
+      // devuelve la API (status + mensaje de Google) entre paréntesis,
+      // mismo criterio que _extractBlockedChildFileId()/DriveChildAccessError
+      // en shareAlbumWithUser() — mostrar el error real de Drive en vez de
+      // taparlo es lo que permitió diagnosticar ese otro bug.
+      const errBody = await metaRes.json().catch(() => ({}));
+      const reason = errBody.error?.message || `HTTP ${metaRes.status}`;
+      throw new Error(`No se pudo acceder a la carpeta. Pedile al dueño que te comparta el álbum primero. (${reason})`);
+    }
     const meta = await metaRes.json();
     ownerEmail = meta.owners?.[0]?.emailAddress || null;
-  } catch {
-    throw new Error('No se pudo acceder a la carpeta. Pedile al dueño que te comparta el álbum primero.');
+  } catch (e) {
+    if (e.message && e.message.indexOf('No se pudo acceder a la carpeta') === 0) throw e;
+    throw new Error(`No se pudo acceder a la carpeta. Pedile al dueño que te comparta el álbum primero. (${e.message || 'error de red'})`);
   }
   stored.sharedAlbums.push({
     folderDriveId, name: albumName, ownerEmail,
