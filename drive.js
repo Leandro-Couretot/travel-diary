@@ -11,7 +11,7 @@ const SCOPE_VERSION   = 5; // bumped: + userinfo.profile (foto/nombre para el av
 // compartidos, ver openSharedFolderPicker() más abajo. No es un secreto
 // (misma categoría que DRIVE_CLIENT_ID/firebaseConfig, pensada para vivir
 // en el navegador) — placeholder hasta que se cargue la real.
-const GOOGLE_PICKER_API_KEY = 'PENDIENTE_PEGAR_API_KEY_DEL_PICKER';
+const GOOGLE_PICKER_API_KEY = 'AIzaSyDPLdukKssUqn5-_euan6FwmxnML3xJiJM';
 
 // Caché de IDs de Drive ya resueltos (v2.15) — nunca contenido, solo
 // punteros, mismo criterio que ya se usaba para drive_token. Sin esto,
