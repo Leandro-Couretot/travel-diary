@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.62';
+const APP_VERSION = '2.63';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2067,10 +2067,11 @@ function sortAlbumsByTripDateDesc(list) {
 // Portadas más allá de EAGER_COVER_COUNT no piden su miniatura de Drive hasta
 // que la tarjeta entra en pantalla (o está por entrar, rootMargin) — evita que
 // todas las portadas compitan por red al mismo tiempo en álbumes con muchas.
-function scheduleCoverLoad(imgEl, fileId, size, idx) {
-  if (idx < EAGER_COVER_COUNT) { setAuthImg(imgEl, fileId, size); return; }
+function scheduleCoverLoad(imgEl, fileId, size, idx, proxyFolderId = null) {
+  if (idx < EAGER_COVER_COUNT) { setAuthImg(imgEl, fileId, size, proxyFolderId); return; }
   imgEl.dataset.coverFileId = fileId;
   imgEl.dataset.coverSize = size;
+  if (proxyFolderId) imgEl.dataset.coverProxyFolderId = proxyFolderId;
   coverObserver.observe(imgEl);
 }
 
@@ -2517,7 +2518,7 @@ async function renderAlbums() {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       obs.unobserve(entry.target);
-      setAuthImg(entry.target, entry.target.dataset.coverFileId, entry.target.dataset.coverSize);
+      setAuthImg(entry.target, entry.target.dataset.coverFileId, entry.target.dataset.coverSize, entry.target.dataset.coverProxyFolderId || null);
     });
   }, { rootMargin: '300px 0px' });
 
@@ -2605,7 +2606,12 @@ async function renderAlbums() {
           <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
         </div>`;
       if (album.coverFileId) {
-        scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', albums.length + idx);
+        // v2.63: la portada de un álbum compartido vive en Drive bajo el
+        // scope de la DUEÑA, nunca del invitado — sin pasar folderDriveId
+        // como proxyFolderId, setAuthImg() intentaba resolverla con el
+        // token del propio invitado (falla siempre) y caía al placeholder
+        // "No disponible" — bug real, ver CLAUDE.md.
+        scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', albums.length + idx, album.folderDriveId);
       } else {
         // v2.57: sin portada guardada todavía — se resuelve de fondo (ver
         // resolveSharedAlbumCover() en drive.js) y recién ahí se reemplaza
@@ -2622,7 +2628,7 @@ async function renderAlbums() {
           const img = document.createElement('img');
           img.className = 'album-cover'; img.alt = album.name; img.loading = 'lazy';
           emptyDiv.replaceWith(img);
-          setAuthImg(img, coverFileId, 'w1200');
+          setAuthImg(img, coverFileId, 'w1200', album.folderDriveId);
         }).catch(() => {});
       }
       card.addEventListener('click', e => {
@@ -3754,10 +3760,23 @@ async function loadDay(dateStr) {
   currentDate = dateStr; dirty = false; updateDateHeader();
   setStatus('', 'Cargando...');
   revokeMediaBlobUrls(currentDay.media);
-  try {
-    const day = await loadDayFromDrive(albumFolderId, dateStr, isSharedAlbum);
-    currentDay = day || emptyDay();
-  } catch(e) { setStatus('error', 'Error al cargar'); currentDay = emptyDay(); }
+  // v2.63: guarda de estabilidad — bug real reportado con álbumes
+  // compartidos (más lentos que uno propio por el proxy, ver drive.js
+  // → "ESCRITURA/LECTURA VÍA PROXY"): si mientras este pedido está en
+  // vuelo el usuario navega a OTRO álbum o a OTRO día, esta respuesta
+  // llega tarde y ya no corresponde a lo que se está mirando — sin este
+  // chequeo, pisaba currentDay/el DOM con fotos de un álbum/día distinto
+  // ("me cargan las fotos del álbum anterior"). navigateTo()/calGoDay()/
+  // etc. actualizan albumFolderId/isSharedAlbum/currentDate de forma
+  // síncrona antes de cualquier navegación nueva, así que comparar contra
+  // estos valores capturados acá alcanza para detectarlo.
+  const navFolderId = albumFolderId, navShared = isSharedAlbum;
+  let day = null, loadErr = null;
+  try { day = await loadDayFromDrive(albumFolderId, dateStr, isSharedAlbum); }
+  catch(e) { loadErr = e; }
+  if (albumFolderId !== navFolderId || isSharedAlbum !== navShared || currentDate !== dateStr) return;
+  if (loadErr) { setStatus('error', 'Error al cargar'); currentDay = emptyDay(); }
+  else currentDay = day || emptyDay();
   currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
   currentDayAudioCountAtLoad = currentDay.media.filter(m => m.type === 'audio').length;
   const titleEl = document.getElementById('day-title');
@@ -4112,7 +4131,13 @@ function compressImage(file) {
 async function renderListTab() {
   const wrap = document.getElementById('list-tab-content');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando fotos...</div>';
-  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar los días</div>'; return; } }
+  // v2.63: mismo criterio que loadDay() — un render de otro álbum, más
+  // lento por el proxy, puede resolver tarde y pisar la vista del álbum
+  // que se está mirando ahora. Se captura acá y se re-chequea después de
+  // cada pedido a Drive, antes de tocar el DOM/estado compartido.
+  const navFolderId = albumFolderId;
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar los días</div>'; return; } }
+  if (albumFolderId !== navFolderId) return;
   if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay días guardados</div>'; return; }
 
   const perDay = await Promise.all(allDates.slice().reverse().map(async date => {
@@ -4121,6 +4146,7 @@ async function renderListTab() {
       .filter(m => m.type === 'image' && m.driveFileId)
       .map(m => ({ driveFileId: m.driveFileId, date, name: m.name }));
   }));
+  if (albumFolderId !== navFolderId) return;
   const allPhotos = perDay.flat();
   if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos en este álbum</div>'; return; }
   galleryPhotos = allPhotos; // fuente para el modo selección (shareSelected/deleteSelectedGallery) — ver "SELECTION MODE"
@@ -4165,13 +4191,25 @@ async function renderListTab() {
 async function renderCalendar() {
   const wrap = document.getElementById('cal-wrap');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando...</div>';
-  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
+  // v2.63: `calDayData` es un objeto compartido a nivel módulo, reseteado
+  // a `{}` recién al ENTRAR a un álbum (bootstrapDiaryPage) — si el
+  // álbum anterior todavía tenía pedidos de día en vuelo (más lentos en
+  // uno compartido, por el proxy) cuando eso pasa, sus callbacks siguen
+  // referenciando el mismo binding de `calDayData` y podían terminar
+  // escribiendo la portada de OTRO álbum bajo una fecha que por casualidad
+  // coincide en el álbum nuevo — reproduce exacto "me cargan las fotos
+  // del álbum anterior". Se captura `albumFolderId` acá y se re-chequea
+  // antes de cada escritura, tanto en el `await` principal como en cada
+  // callback de fondo por día.
+  const navFolderId = albumFolderId;
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
+  if (albumFolderId !== navFolderId) return;
   if (allDates.length && !calDayData[allDates[0]]) { const d = new Date(currentDate + 'T12:00:00'); calYear = d.getFullYear(); calMonth = d.getMonth(); }
   renderCalendarMonth(wrap);
   for (const date of allDates) {
     if (calDayData[date]) continue;
     loadDayFromDrive(albumFolderId, date, isSharedAlbum).then(day => {
-      if (!day) return;
+      if (!day || albumFolderId !== navFolderId) return;
       calDayData[date] = { title: day.title || '', coverFileId: (day.media || []).find(m => m.type === 'image' && m.driveFileId)?.driveFileId || null };
       const cell = document.querySelector(`.cal-cell[data-date="${date}"]`);
       if (cell && calDayData[date].coverFileId) {
@@ -4220,7 +4258,13 @@ function calGoDay(dateStr) { if (dirty && !confirm('Tenés cambios sin guardar. 
 async function renderBook() {
   const wrap = document.getElementById('book-wrap');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto 0.5rem;"></div>Preparando libro...</div>';
-  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
+  // v2.63: mismo criterio que loadDay()/renderListTab()/renderCalendar()
+  // — bookPages/bookDrawer/bookPhotoByFileId son estado compartido a
+  // nivel módulo, reseteado recién al entrar a un álbum nuevo; un render
+  // del álbum anterior que resuelve tarde no debe pisarlo.
+  const navFolderId = albumFolderId;
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
+  if (albumFolderId !== navFolderId) return;
   if (!allDates.length) { wrap.innerHTML = `<div class="list-empty book-page-empty"><div class="book-empty-icon">${icon('book')}</div>Todavía no hay días guardados</div>`; return; }
 
   const perDay = await Promise.all(allDates.map(async date => {
@@ -4229,6 +4273,7 @@ async function renderBook() {
       .filter(m => m.type === 'image' && m.driveFileId)
       .map(m => ({ driveFileId: m.driveFileId, date, caption: m.caption || '' }));
   }));
+  if (albumFolderId !== navFolderId) return;
   const allPhotos = perDay.flat();
   if (!allPhotos.length) { wrap.innerHTML = `<div class="list-empty book-page-empty"><div class="book-empty-icon">${icon('photo')}</div>Todavía no hay fotos en este álbum</div>`; return; }
   bookPhotoByFileId = new Map(allPhotos.map(p => [p.driveFileId, p]));
@@ -4245,6 +4290,7 @@ async function renderBook() {
   const currentIds = allPhotos.map(p => p.driveFileId);
   let saved = null;
   try { saved = await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
+  if (albumFolderId !== navFolderId) return;
   bookPageSize = (saved && saved.pageSize) || defaultBookPageSize();
 
   if (!saved) {

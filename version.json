@@ -1,4 +1,4 @@
 {
-  "version": "2.62",
-  "changelog": "Álbumes compartidos: los invitados con permiso de editor ya pueden subir/borrar fotos, escribir notas y grabar audio — y el aviso de \"Confirmando...\" al entrar deja de ser invasivo."
+  "version": "2.63",
+  "changelog": "Álbumes compartidos: se arregla la portada rota en Home y un bug real de fondo donde, al entrar a un álbum justo después de otro, podían verse por un momento fotos del álbum anterior."
 }
