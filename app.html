@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.63';
+const APP_VERSION = '2.64';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2538,123 +2538,45 @@ async function renderAlbums() {
     return;
   }
 
-  main.innerHTML = `<div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><div class="home-totals" id="home-totals"></div></div><div id="section-own"></div>${sharedAlbums.length ? '<div id="section-shared"></div>' : ''}${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
+  main.innerHTML = `<div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><div class="home-totals" id="home-totals"></div></div><div id="section-albums"></div>${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
   if (wasReconstructed) showAlbumsReconstructedNotice();
 
-  const ownGrid = document.createElement('div');
-  ownGrid.className = 'albums-grid';
-  document.getElementById('section-own').appendChild(ownGrid);
+  // v2.64: álbumes propios y compartidos van en una sola grilla, ordenada
+  // por fecha de inicio — antes vivían en dos secciones separadas
+  // ("Tus álbumes" arriba, "Compartidos conmigo" abajo); a pedido del
+  // usuario ("no separemos... mezclemos los álbumes... ordenados
+  // cronológicamente"), se mezclan acá. El orden usa lo que ya se tiene
+  // cacheado (dateFrom de `albums.json`/`shared-albums.json`) para no
+  // demorar el primer render — si `refreshSharedAlbumCard()` (más abajo)
+  // trae una fecha real distinta para un álbum compartido, la corrige en
+  // pantalla pero no reordena la grilla ya pintada (mismo criterio que ya
+  // regía la portada resuelta de fondo, v2.57 — no vale la pena rearmar
+  // todo el layout por un dato que llega después).
+  const grid = document.createElement('div');
+  grid.className = 'albums-grid';
+  document.getElementById('section-albums').appendChild(grid);
+  const merged = [
+    ...albums.map(album => ({ type: 'own', album })),
+    ...sharedAlbums.map(album => ({ type: 'shared', album })),
+  ].sort((a, b) => (b.album.dateFrom || '').localeCompare(a.album.dateFrom || ''));
 
-  const dayInfoPromises = []; // se suman para el saludo con el total (v1.84)
-  albums.forEach((album, idx) => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'album-card-wrapper';
-    const card = document.createElement('div');
-    card.className = 'album-card';
-    card.style.animationDelay = `${idx * 0.07}s`;
-    const coverHtml = album.coverFileId
-      ? `<img class="album-cover" id="cover-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
-      : `<div class="album-cover-empty">L</div>`;
-    card.innerHTML = `
-      <div class="album-cover-wrap">${coverHtml}</div>
-      <div class="album-info">
-        <div class="album-name">${escHtml(album.name)}</div>
-        <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
-        <div class="album-meta"><div class="album-days-count" id="summary-${album.id}">—</div></div>
-      </div>`;
-    if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w1200', idx);
-    card.addEventListener('click', e => {
-      if (e.target.closest('.album-menu-btn')) return;
-      openAlbumDiary(album);
-    });
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'album-menu-btn'; menuBtn.title = 'Más opciones'; menuBtn.innerHTML = icon('more');
-    menuBtn.addEventListener('click', e => toggleAlbumMenu(e, album, wrapper));
-    wrapper.appendChild(card); wrapper.appendChild(menuBtn); ownGrid.appendChild(wrapper);
-    dayInfoPromises.push(loadAlbumDaysInfo(album));
+  const dayInfoPromises = []; // se suman para el saludo con el total (v1.84) — solo álbumes propios
+  merged.forEach((entry, idx) => {
+    if (entry.type === 'own') {
+      buildOwnAlbumCard(entry.album, idx, grid);
+      dayInfoPromises.push(loadAlbumDaysInfo(entry.album));
+    } else {
+      buildSharedAlbumCard(entry.album, idx, grid);
+    }
   });
   renderHomeTotals(albums.length, dayInfoPromises);
 
   const newCard = document.createElement('button');
   newCard.className = 'album-card-new';
-  newCard.style.animationDelay = `${albums.length * 0.07}s`;
+  newCard.style.animationDelay = `${merged.length * 0.07}s`;
   newCard.innerHTML = `<div class="album-card-new-icon">${icon('plus')}</div><div class="album-card-new-label">Nuevo álbum</div>`;
   newCard.onclick = openNewAlbumModal;
-  ownGrid.appendChild(newCard);
-
-  if (sharedAlbums.length) {
-    const sharedSection = document.getElementById('section-shared');
-    sharedSection.innerHTML = `<h2 class="section-heading">Compartidos conmigo</h2>`;
-    const sharedGrid = document.createElement('div');
-    sharedGrid.className = 'albums-grid';
-    sharedSection.appendChild(sharedGrid);
-    sharedAlbums.forEach((album, idx) => {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'album-card-wrapper';
-      const card = document.createElement('div');
-      card.className = 'album-card';
-      card.style.animationDelay = `${idx * 0.07}s`;
-      const coverHtml = album.coverFileId
-        ? `<img class="album-cover" id="cover-sh-${escHtml(album.folderDriveId)}" alt="${escHtml(album.name)}" loading="lazy">`
-        : `<div class="album-cover-empty">L</div>`;
-      card.innerHTML = `
-        <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">${icon('play')}</button></div>
-        <div class="album-info">
-          <div class="album-shared-badge">Compartido</div>
-          <div class="album-name">${escHtml(album.name)}</div>
-          <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
-          <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
-        </div>`;
-      if (album.coverFileId) {
-        // v2.63: la portada de un álbum compartido vive en Drive bajo el
-        // scope de la DUEÑA, nunca del invitado — sin pasar folderDriveId
-        // como proxyFolderId, setAuthImg() intentaba resolverla con el
-        // token del propio invitado (falla siempre) y caía al placeholder
-        // "No disponible" — bug real, ver CLAUDE.md.
-        scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', albums.length + idx, album.folderDriveId);
-      } else {
-        // v2.57: sin portada guardada todavía — se resuelve de fondo (ver
-        // resolveSharedAlbumCover() en drive.js) y recién ahí se reemplaza
-        // el placeholder "L" por la foto real, sin bloquear el resto del render.
-        // v2.61: resolveSharedAlbumCover() ya lee el contenido vía el proxy
-        // del servidor (ver "El scope drive.file no da acceso al contenido
-        // de una carpeta compartida" en CLAUDE.md) — no depende más de
-        // ningún picker confirmado, siempre vale la pena intentarlo.
-        resolveSharedAlbumCover(album).then(coverFileId => {
-          if (!coverFileId) return;
-          const wrap = card.querySelector('.album-cover-wrap');
-          const emptyDiv = wrap && wrap.querySelector('.album-cover-empty');
-          if (!emptyDiv || !wrap.isConnected) return;
-          const img = document.createElement('img');
-          img.className = 'album-cover'; img.alt = album.name; img.loading = 'lazy';
-          emptyDiv.replaceWith(img);
-          setAuthImg(img, coverFileId, 'w1200', album.folderDriveId);
-        }).catch(() => {});
-      }
-      card.addEventListener('click', e => {
-        if (e.target.closest('.album-play-btn') || e.target.closest('.album-leave-btn')) return;
-        openSharedAlbumDiary(album);
-      });
-      card.querySelector('.album-play-btn').addEventListener('click', e => {
-        e.stopPropagation();
-        startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true });
-      });
-      const leaveBtn = document.createElement('button');
-      leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.innerHTML = icon('close');
-      leaveBtn.addEventListener('click', async e => {
-        e.stopPropagation();
-        const ok = await customConfirm(
-          `Vas a dejar de ver "${album.name}" en tu Home. Esto no le saca el permiso a nadie más — si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
-          { title: 'Salir del álbum', confirmLabel: 'Salir' }
-        );
-        if (!ok) return;
-        await leaveSharedAlbum(album.folderDriveId);
-        await renderAlbums();
-      });
-      wrapper.appendChild(card); wrapper.appendChild(leaveBtn);
-      sharedGrid.appendChild(wrapper);
-    });
-  }
+  grid.appendChild(newCard);
 
   if (archivedOwnAlbums.length) {
     const archivedSection = document.getElementById('section-archived');
@@ -2681,7 +2603,7 @@ async function renderAlbums() {
           </div>
           <button class="btn-delete-album btn-delete-archived">Eliminar álbum</button>
         </div>`;
-      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w1200', albums.length + i);
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-${escHtml(album.id)}`), album.coverFileId, 'w1200', merged.length + i);
       card.querySelector('.btn-unarchive').addEventListener('click', async (e) => {
         const btn = e.target;
         const originalLabel = btn.textContent;
@@ -2710,6 +2632,158 @@ async function renderAlbums() {
       });
       archivedGrid.appendChild(card);
     });
+  }
+}
+
+// Extraída de renderAlbums() en v2.64 (antes vivía inline en la grilla de
+// "Tus álbumes") para poder mezclar álbumes propios y compartidos en una
+// sola grilla ordenada — ver renderAlbums().
+function buildOwnAlbumCard(album, idx, grid) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'album-card-wrapper';
+  const card = document.createElement('div');
+  card.className = 'album-card';
+  card.style.animationDelay = `${idx * 0.07}s`;
+  const coverHtml = album.coverFileId
+    ? `<img class="album-cover" id="cover-${escHtml(album.id)}" alt="${escHtml(album.name)}" loading="lazy">`
+    : `<div class="album-cover-empty">L</div>`;
+  card.innerHTML = `
+    <div class="album-cover-wrap">${coverHtml}</div>
+    <div class="album-info">
+      <div class="album-name">${escHtml(album.name)}</div>
+      <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+      <div class="album-meta"><div class="album-days-count" id="summary-${album.id}">—</div></div>
+    </div>`;
+  if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w1200', idx);
+  card.addEventListener('click', e => {
+    if (e.target.closest('.album-menu-btn')) return;
+    openAlbumDiary(album);
+  });
+  const menuBtn = document.createElement('button');
+  menuBtn.className = 'album-menu-btn'; menuBtn.title = 'Más opciones'; menuBtn.innerHTML = icon('more');
+  menuBtn.addEventListener('click', e => toggleAlbumMenu(e, album, wrapper));
+  wrapper.appendChild(card); wrapper.appendChild(menuBtn); grid.appendChild(wrapper);
+}
+
+// Extraída de renderAlbums() en v2.64, igual que buildOwnAlbumCard() —
+// ver esa función para el porqué. Suma refreshSharedAlbumCard() al final,
+// nuevo en esta entrega: corrige nombre/fechas/portada con el dato REAL
+// de la dueña apenas resuelve, en vez de confiar para siempre en la copia
+// que joinSharedAlbum() cacheó una sola vez al unirse (bug real, ver
+// CLAUDE.md).
+function buildSharedAlbumCard(album, idx, grid) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'album-card-wrapper';
+  const card = document.createElement('div');
+  card.className = 'album-card';
+  card.style.animationDelay = `${idx * 0.07}s`;
+  const initialCoverId = album.coverOverrideFileId || album.coverFileId || null;
+  const coverHtml = initialCoverId
+    ? `<img class="album-cover" id="cover-sh-${escHtml(album.folderDriveId)}" alt="${escHtml(album.name)}" loading="lazy">`
+    : `<div class="album-cover-empty">L</div>`;
+  card.innerHTML = `
+    <div class="album-cover-wrap">${coverHtml}<button class="album-play-btn" title="Ver slideshow">${icon('play')}</button></div>
+    <div class="album-info">
+      <div class="album-shared-badge">Compartido</div>
+      <div class="album-name" id="name-sh-${escHtml(album.folderDriveId)}">${escHtml(album.name)}</div>
+      <div class="album-dates" id="dates-sh-${escHtml(album.folderDriveId)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+      <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
+    </div>`;
+  if (initialCoverId) {
+    // v2.63: la portada de un álbum compartido vive en Drive bajo el
+    // scope de la DUEÑA, nunca del invitado — sin pasar folderDriveId
+    // como proxyFolderId, setAuthImg() intentaba resolverla con el
+    // token del propio invitado (falla siempre) y caía al placeholder
+    // "No disponible" — bug real, ver CLAUDE.md.
+    scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), initialCoverId, 'w1200', idx, album.folderDriveId);
+  }
+  card.addEventListener('click', e => {
+    if (e.target.closest('.album-play-btn') || e.target.closest('.album-leave-btn')) return;
+    openSharedAlbumDiary(album);
+  });
+  card.querySelector('.album-play-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true });
+  });
+  const leaveBtn = document.createElement('button');
+  leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.innerHTML = icon('close');
+  leaveBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    const ok = await customConfirm(
+      `Vas a dejar de ver "${album.name}" en tu Home. Esto no le saca el permiso a nadie más — si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
+      { title: 'Salir del álbum', confirmLabel: 'Salir' }
+    );
+    if (!ok) return;
+    await leaveSharedAlbum(album.folderDriveId);
+    await renderAlbums();
+  });
+  wrapper.appendChild(card); wrapper.appendChild(leaveBtn);
+  grid.appendChild(wrapper);
+  refreshSharedAlbumCard(album, card);
+}
+
+// v2.64: resuelve nombre/fechas/portada reales desde el albums.json de la
+// dueña (resolveSharedAlbumMeta(), vía el proxy) y actualiza la card ya
+// pintada en el lugar — sin bloquear el render inicial (mismo criterio
+// fire-and-forget que ya usaba resolveSharedAlbumCover() para la portada
+// desde v2.57). Corrige de raíz el bug reportado: antes, las fechas de
+// una card compartida quedaban congeladas en lo que fuera que
+// joinSharedAlbum() había cacheado el día de unirse — si la dueña
+// todavía no tenía fecha de fin cargada en ese momento, o la editó
+// después, el invitado nunca se enteraba. Si el dato cambió de verdad,
+// se persiste de vuelta en el shared-albums.json PROPIO del invitado
+// (best-effort, nunca bloquea ni rompe el render si falla) para que la
+// próxima carga arranque ya con el valor correcto.
+async function refreshSharedAlbumCard(album, card) {
+  const meta = await resolveSharedAlbumMeta(album.folderDriveId).catch(() => null);
+  if (!card.isConnected) return; // se navegó afuera de Home mientras esto resolvía
+  let changed = false;
+  if (meta) {
+    if (meta.name && meta.name !== album.name) { album.name = meta.name; changed = true; }
+    if ((meta.dateFrom || null) !== (album.dateFrom || null)) { album.dateFrom = meta.dateFrom || null; changed = true; }
+    if ((meta.dateTo || null) !== (album.dateTo || null)) { album.dateTo = meta.dateTo || null; changed = true; }
+    if (!album.coverOverrideFileId && meta.coverFileId && meta.coverFileId !== album.coverFileId) { album.coverFileId = meta.coverFileId; changed = true; }
+    const nameEl = card.querySelector(`#name-sh-${escHtml(album.folderDriveId)}`);
+    if (nameEl) nameEl.textContent = album.name;
+    const datesEl = card.querySelector(`#dates-sh-${escHtml(album.folderDriveId)}`);
+    if (datesEl) datesEl.textContent = `${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}`;
+  }
+  const effectiveCover = album.coverOverrideFileId || (meta && meta.coverFileId) || album.coverFileId || null;
+  if (effectiveCover && !card.querySelector('.album-cover')) {
+    const wrap = card.querySelector('.album-cover-wrap');
+    const emptyDiv = wrap && wrap.querySelector('.album-cover-empty');
+    if (emptyDiv && wrap.isConnected) {
+      const img = document.createElement('img');
+      img.className = 'album-cover'; img.alt = album.name; img.loading = 'lazy';
+      emptyDiv.replaceWith(img);
+      setAuthImg(img, effectiveCover, 'w1200', album.folderDriveId);
+    }
+  } else if (!effectiveCover) {
+    // Último recurso — mismo escaneo de siempre (v2.57), solo si ni la
+    // dueña ni el invitado tienen ninguna portada asignada.
+    const scanned = await resolveSharedAlbumCover(album).catch(() => null);
+    if (scanned) album.coverFileId = scanned; // resolveSharedAlbumCover() ya lo persistió — se refleja acá para que el bloque de abajo no lo pise con null
+    if (scanned && card.isConnected && !card.querySelector('.album-cover')) {
+      const wrap = card.querySelector('.album-cover-wrap');
+      const emptyDiv = wrap && wrap.querySelector('.album-cover-empty');
+      if (emptyDiv && wrap.isConnected) {
+        const img = document.createElement('img');
+        img.className = 'album-cover'; img.alt = album.name; img.loading = 'lazy';
+        emptyDiv.replaceWith(img);
+        setAuthImg(img, scanned, 'w1200', album.folderDriveId);
+      }
+    }
+  }
+  if (changed) {
+    try {
+      const stored = await loadSharedAlbums();
+      const entry = stored.sharedAlbums.find(a => a.folderDriveId === album.folderDriveId);
+      if (entry) {
+        entry.name = album.name; entry.dateFrom = album.dateFrom; entry.dateTo = album.dateTo;
+        if (!entry.coverOverrideFileId && album.coverFileId) entry.coverFileId = album.coverFileId;
+        await saveSharedAlbums(stored);
+      }
+    } catch { /* no crítico — se vuelve a resolver en vivo la próxima carga */ }
   }
 }
 
@@ -3646,7 +3720,18 @@ async function bootstrapDiaryPage() {
       document.getElementById('header-subtitle').textContent = albumMeta.name;
       albumCanEdit = true; // álbum propio: siempre editable
     } else {
-      albumMeta = { name: null, dateFrom: sharedAlbumDateFrom, dateTo: sharedAlbumDateTo };
+      // v2.64: coverFileId acá representa la portada PROPIA que este
+      // invitado eligió a mano (coverOverrideFileId en shared-albums.json),
+      // nunca la portada real de la dueña — un invitado nunca puede
+      // escribir el albums.json de la dueña, así que "★ portada" en Día
+      // (ver renderMedia()) solo puede marcar "usar esta foto como MI
+      // portada", no como la oficial del álbum.
+      let coverOverride = null;
+      try {
+        const sharedData = await loadSharedAlbums();
+        coverOverride = sharedData.sharedAlbums.find(a => a.folderDriveId === albumFolderId)?.coverOverrideFileId || null;
+      } catch {}
+      albumMeta = { name: null, dateFrom: sharedAlbumDateFrom, dateTo: sharedAlbumDateTo, coverFileId: coverOverride };
       albumCanEdit = await canEditFolder(albumFolderId);
     }
     // Lectura rápida (un GET), sin importar el plan ni si el álbum es de
@@ -3911,10 +3996,13 @@ function renderMedia() {
     const captionAttrs = albumCanEdit ? '' : 'readonly';
 
     if (item.type === 'image') {
-      // v2.62: "★ portada" no se ofrece en un álbum compartido — la
-      // portada oficial vive en el albums.json del dueño, que un
-      // invitado (aunque sea editor) nunca tiene forma de escribir.
-      const coverBtn = (albumCanEdit && !isSharedAlbum) ? `<button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? 'Portada' : 'Establecer portada'}">${isCover ? '★' : '☆'}</button>` : '';
+      // v2.64: en un álbum compartido, "★" ya no está oculto — un
+      // invitado con rol de editor puede elegir SU PROPIA portada
+      // (coverOverrideFileId, guardado en su shared-albums.json propio)
+      // sin tocar el albums.json de la dueña, que sigue sin poder
+      // escribir. `isCover` acá compara contra ese override, no contra
+      // la portada oficial del álbum — ver bootstrapDiaryPage().
+      const coverBtn = albumCanEdit ? `<button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? (isSharedAlbum ? 'Tu portada' : 'Portada') : (isSharedAlbum ? 'Usar como tu portada' : 'Establecer portada')}">${isCover ? '★' : '☆'}</button>` : '';
       card.innerHTML = `
         ${dragHandle}
         <div class="selection-check">✓</div>
@@ -3997,7 +4085,13 @@ function renderMedia() {
   grid.querySelectorAll('.media-set-cover').forEach(btn => btn.addEventListener('click', async e => {
     const item = currentDay.media[parseInt(e.target.dataset.idx)];
     if (!item.driveFileId) { alert('Guardá el día primero para poder establecer la portada.'); return; }
-    albumMeta = await updateAlbumMeta(albumId, { coverFileId: item.driveFileId }); renderMedia();
+    if (isSharedAlbum) {
+      albumMeta = { ...albumMeta, coverFileId: item.driveFileId };
+      await setSharedAlbumCoverOverride(albumFolderId, item.driveFileId);
+    } else {
+      albumMeta = await updateAlbumMeta(albumId, { coverFileId: item.driveFileId });
+    }
+    renderMedia();
   }));
   grid.querySelectorAll('.media-share').forEach(btn => btn.addEventListener('click', async e => {
     const item = currentDay.media[parseInt(e.target.dataset.idx)];

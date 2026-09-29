@@ -4,6 +4,14 @@ const { getSupabaseClient } = require('./lib/supabase');
 const { verifySession } = require('./lib/session');
 const { mintAccessTokenFromRefreshToken } = require('./lib/driveAuth');
 
+// Mismos nombres que ALBUMS_JSON_NAME/ALBUMS_JSON_OLD_NAME en drive.js —
+// duplicados a propósito (no hay ningún módulo compartido entre el
+// frontend y functions/ hoy) para que getAlbumMeta pueda encontrar el
+// albums.json real de la dueña sin depender de que el cliente le diga
+// dónde está.
+const ALBUMS_JSON_NAME = '[Legado] - Mis álbumes.json';
+const ALBUMS_JSON_OLD_NAMES = ['[Travel Diary] - Mis álbumes.json', 'albums.json'];
+
 const GOOGLE_CLIENT_ID = defineSecret('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_CLIENT_SECRET');
 const SESSION_JWT_SECRET = defineSecret('SESSION_JWT_SECRET');
@@ -59,6 +67,15 @@ const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 // rol de solo lectura (`reader`) nunca puede disparar ninguna de estas
 // 4 acciones — se re-chequea el rol real en cada pedido, igual que la
 // lectura.
+//
+// v2.64 — Acción de lectura nueva (getAlbumMeta): devuelve nombre/fechas/
+// portada REALES del álbum, leídos del albums.json de la dueña — no del
+// shared-albums.json cacheado del invitado, que solo se poblaba una vez
+// al unirse y nunca se refrescaba (bug real: fechas desactualizadas/
+// incompletas). Es la única acción que no pasa por isDescendant(), porque
+// albums.json vive en la raíz del Drive de la dueña, no dentro de la
+// carpeta del álbum — la autorización sigue siendo folderDriveId en sí,
+// ya validado por guestRole(), y solo se devuelve la entrada de ESE álbum.
 exports.sharedAlbumProxy = onRequest(
   {
     region: 'southamerica-east1',
@@ -222,6 +239,48 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     } catch {
       res.status(502).json({ error: 'invalid_json' });
     }
+    return;
+  }
+
+  // v2.64: metadata pura del álbum (nombre/fechas/portada), leída del
+  // albums.json REAL de la dueña en vez de la copia que el invitado cachea
+  // una sola vez en su propio shared-albums.json al unirse — esa copia
+  // nunca se refrescaba después, así que si la dueña editaba el álbum
+  // (fechas, nombre) o si al momento de compartir todavía no tenía fecha
+  // de fin, el invitado quedaba con datos viejos/incompletos para
+  // siempre (bug real reportado). albums.json vive en la RAÍZ del Drive
+  // de la dueña — fuera del árbol de folderDriveId — así que no pasa por
+  // isDescendant(); la autorización acá es folderDriveId en sí, ya
+  // validado por guestRole() antes de llegar a dispatchAction(), y solo
+  // se devuelve la ÚNICA entrada que corresponde a este álbum puntual
+  // (nunca la lista completa — no filtra el resto de los álbumes de la
+  // dueña a un invitado).
+  if (action === 'getAlbumMeta') {
+    const fr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=id,name,parents`, ownerAccessToken);
+    if (!fr.ok) { res.status(502).json({ error: 'drive_error' }); return; }
+    const folder = await fr.json();
+    const rootId = (folder.parents || [])[0];
+    if (!rootId) { res.status(200).json({ meta: null }); return; }
+    let albumsFileId = await driveFindByName(rootId, ALBUMS_JSON_NAME, ownerAccessToken);
+    if (!albumsFileId) {
+      for (const oldName of ALBUMS_JSON_OLD_NAMES) {
+        albumsFileId = await driveFindByName(rootId, oldName, ownerAccessToken);
+        if (albumsFileId) break;
+      }
+    }
+    if (!albumsFileId) { res.status(200).json({ meta: null }); return; }
+    const ar = await driveFetch(`https://www.googleapis.com/drive/v3/files/${albumsFileId}?alt=media`, ownerAccessToken);
+    if (!ar.ok) { res.status(200).json({ meta: null }); return; }
+    let albumsJson;
+    try { albumsJson = await ar.json(); } catch { res.status(200).json({ meta: null }); return; }
+    const entry = (albumsJson.albums || []).find(a => a.id === folder.name);
+    if (!entry) { res.status(200).json({ meta: null }); return; }
+    res.status(200).json({ meta: {
+      name: entry.name || folder.name,
+      dateFrom: entry.dateFrom || null,
+      dateTo: entry.dateTo || null,
+      coverFileId: entry.coverFileId || null,
+    } });
     return;
   }
 

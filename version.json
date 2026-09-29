@@ -1,4 +1,4 @@
 {
-  "version": "2.63",
-  "changelog": "Álbumes compartidos: se arregla la portada rota en Home y un bug real de fondo donde, al entrar a un álbum justo después de otro, podían verse por un momento fotos del álbum anterior."
+  "version": "2.64",
+  "changelog": "Home: álbumes propios y compartidos ahora en una sola grilla ordenada por fecha — y los álbumes compartidos muestran nombre/fechas/portada reales de la dueña, con opción de elegir tu propia portada si sos editor."
 }

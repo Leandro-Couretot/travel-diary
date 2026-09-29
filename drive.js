@@ -1212,6 +1212,41 @@ async function resolveSharedAlbumCover(album) {
   return null;
 }
 
+// v2.64: fuente de verdad de nombre/fechas/portada de un álbum
+// compartido — lee la entrada real del albums.json de la DUEÑA (vía el
+// proxy, acción getAlbumMeta) en vez de confiar en la copia que
+// joinSharedAlbum() cacheó una sola vez, al momento de unirse, en el
+// shared-albums.json propio del invitado. Esa copia nunca se actualizaba
+// después — si la dueña todavía no tenía fecha de fin cargada en ese
+// momento, o si editó el álbum más tarde, el invitado quedaba con datos
+// viejos/incompletos para siempre (bug real reportado). Se resuelve en
+// vivo cada vez que se pinta la card, nunca se cachea de este lado —
+// devuelve `null` si algo falla (sin red, dueña no migrada, etc.), para
+// que el caller caiga a lo que ya tenía guardado en vez de romper nada.
+async function resolveSharedAlbumMeta(folderDriveId) {
+  try {
+    const res = await sharedAlbumProxyCall(folderDriveId, 'getAlbumMeta', {});
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.meta || null;
+  } catch { return null; }
+}
+
+// Portada elegida a mano por un invitado con rol de editor, guardada en
+// SU PROPIO shared-albums.json — nunca en el albums.json de la dueña,
+// que un invitado no tiene forma de escribir (mismo límite que ya
+// documenta saveCurrentDay() para el auto-cover de un álbum propio).
+// Gana siempre sobre la portada real de la dueña para esa cuenta puntual
+// (ver resolveSharedAlbumMeta()), sin afectar lo que ve nadie más.
+async function setSharedAlbumCoverOverride(folderDriveId, driveFileId) {
+  const stored = await loadSharedAlbums();
+  const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
+  if (!entry) throw new Error('Álbum no encontrado');
+  entry.coverOverrideFileId = driveFileId || null;
+  await saveSharedAlbums(stored);
+  return entry;
+}
+
 // v2.61: el picker de v2.58-v2.60 resultó no alcanzar — Google documenta
 // que `drive.file` nunca da acceso al CONTENIDO de una carpeta compartida,
 // ni siquiera tras confirmarla con el Picker, solo a la carpeta como
