@@ -5,13 +5,6 @@ const ROOT_FOLDER     = 'legado';
 const ROOT_FOLDER_OLD = 'travel-diary'; // nombre de antes del rebrand — ver getOrCreateFolderMigrating()
 const SCOPE_VERSION   = 5; // bumped: + userinfo.profile (foto/nombre para el avatar del header, v1.81)
 
-// v2.58: API key del Google Picker (Cloud Console → APIs & Services →
-// Credentials → API key, restringida por HTTP referrer + a la "Google
-// Picker API") — necesaria para el re-consentimiento de álbumes
-// compartidos, ver openSharedFolderPicker() más abajo. No es un secreto
-// (misma categoría que DRIVE_CLIENT_ID/firebaseConfig, pensada para vivir
-// en el navegador) — placeholder hasta que se cargue la real.
-const GOOGLE_PICKER_API_KEY = 'AIzaSyDPLdukKssUqn5-_euan6FwmxnML3xJiJM';
 
 // Caché de IDs de Drive ya resueltos (v2.15) — nunca contenido, solo
 // punteros, mismo criterio que ya se usaba para drive_token. Sin esto,
@@ -296,7 +289,13 @@ function invalidateDayCache(albumFolderId, dateStr) {
   delete _dayCache[_dayKey(albumFolderId, dateStr)];
 }
 
-async function listDayFolders(albumFolderId) {
+// v2.61: `viaProxy` opcional — cuando es `true` (álbum compartido, ver
+// "El scope drive.file no da acceso al contenido de una carpeta
+// compartida" en CLAUDE.md), delega en listDayFoldersViaProxy() en vez de
+// pedirle esto a Drive con el token propio del invitado (que nunca lo va a
+// poder ver). Sin este parámetro, comportamiento idéntico al de siempre.
+async function listDayFolders(albumFolderId, viaProxy = false) {
+  if (viaProxy) return await listDayFoldersViaProxy(albumFolderId);
   const folders = await listFolders(albumFolderId);
   // Filter to date-shaped folders only (YYYY-MM-DD)
   const dayFolders = folders.filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f.name));
@@ -341,7 +340,11 @@ async function readJsonFile(fileId) {
 // de overhead de base64 ni el bloqueo del hilo principal codificando.
 // Quien lo use debe revocarlo con URL.revokeObjectURL() cuando ya no
 // lo necesite.
-async function fetchFileAsDataUrl(fileId) {
+// v2.61: `proxyFolderId` opcional — mismo criterio que setAuthImg()/
+// listDayFolders(), delega en fetchFileAsDataUrlViaProxy() para contenido
+// de un álbum compartido (el token propio del invitado no puede verlo).
+async function fetchFileAsDataUrl(fileId, proxyFolderId = null) {
+  if (proxyFolderId) return await fetchFileAsDataUrlViaProxy(proxyFolderId, fileId);
   const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   if (!res.ok) throw new Error('Este archivo ya no está disponible en Drive');
   const blob = await res.blob();
@@ -936,7 +939,10 @@ function _cloneDay(day) {
   return clone;
 }
 
-async function loadDayFromDrive(albumFolderId, dateStr) {
+// v2.61: mismo criterio que listDayFolders() — `viaProxy` delega en
+// loadDayFromDriveViaProxy() para álbumes compartidos.
+async function loadDayFromDrive(albumFolderId, dateStr, viaProxy = false) {
+  if (viaProxy) return await loadDayFromDriveViaProxy(albumFolderId, dateStr);
   try {
     const key = _dayKey(albumFolderId, dateStr);
     const cached = _dayCache[key];
@@ -1008,6 +1014,25 @@ async function shareAlbumWithUser(albumFolderId, guestEmail, role = 'reader') {
     throw new Error(message);
   }
   return await res.json();
+}
+
+// v2.61: registra en Supabase que ESTA cuenta (la que llama, autenticada
+// por su propia sesión) es la dueña real de `albumFolderId` — lo que
+// necesita shared-album-proxy.js para saber de quién usar el
+// refresh_token al leer contenido en nombre de un invitado (ver "El scope
+// drive.file no da acceso al contenido de una carpeta compartida" en
+// CLAUDE.md). Se llama desde submitShare() (app.html) en cada camino que
+// confirma que el álbum quedó compartido de verdad. Best-effort — un
+// fallo acá nunca puede romper el flujo de compartir en sí, que ya
+// terminó de verdad del lado de Drive para cuando se llega a esto.
+async function registerSharedAlbumOwner(folderDriveId) {
+  try {
+    await fetch('/api/shared-album/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+      body: JSON.stringify({ folderDriveId }),
+    });
+  } catch (e) { console.warn('No se pudo registrar la titularidad del álbum compartido:', e); }
 }
 
 // v2.53: un DriveChildAccessError no siempre significa que Drive rechazó
@@ -1143,10 +1168,10 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
 async function resolveSharedAlbumCover(album) {
   if (album.coverFileId) return album.coverFileId;
   let dates;
-  try { dates = await listDayFolders(album.folderDriveId); } catch { return null; }
+  try { dates = await listDayFolders(album.folderDriveId, true); } catch { return null; }
   for (const dateStr of dates) {
     let day;
-    try { day = await loadDayFromDrive(album.folderDriveId, dateStr); } catch { continue; }
+    try { day = await loadDayFromDrive(album.folderDriveId, dateStr, true); } catch { continue; }
     const firstImg = (day.media || []).find(m => m.type === 'image' && m.driveFileId);
     if (!firstImg) continue;
     try {
@@ -1162,94 +1187,137 @@ async function resolveSharedAlbumCover(album) {
   return null;
 }
 
-// ─── PICKER: re-consentimiento para álbumes compartidos (v2.58) ─────────
-// El scope `drive.file` le da acceso a la app solo a archivos que la app
-// creó CON ESA CUENTA, o que la cuenta "abrió" explícitamente con un
-// diálogo nativo de Google (Picker) — compartir una carpeta por email
-// arregla el permiso real en Drive (confirmado: el invitado queda
-// `writer` de verdad), pero no le abre esa puerta al scope acotado de la
-// app para la cuenta invitada. Sin este paso, listar/leer el contenido
-// real de un álbum compartido (portadas, días, fotos) falla en silencio
-// para el invitado — ver "Funcionando bien" en CLAUDE.md para el
-// diagnóstico completo. Este bloque resuelve ese único paso pendiente:
-// mostrarle al invitado un picker de Google ya angostado a esa carpeta
-// puntual, para que la confirme una sola vez.
-let _pickerLoadPromise = null;
-function ensurePickerLoaded() {
-  if (window.google?.picker) return Promise.resolve();
-  if (_pickerLoadPromise) return _pickerLoadPromise;
-  _pickerLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = () => {
-      gapi.load('picker', { callback: resolve, onerror: reject });
-    };
-    script.onerror = () => reject(new Error('No se pudo cargar Google Picker'));
-    document.head.appendChild(script);
+// v2.61: el picker de v2.58-v2.60 resultó no alcanzar — Google documenta
+// que `drive.file` nunca da acceso al CONTENIDO de una carpeta compartida,
+// ni siquiera tras confirmarla con el Picker, solo a la carpeta como
+// objeto (ver CLAUDE.md → "El scope drive.file no da acceso al contenido
+// de una carpeta compartida, ni siquiera con el Picker"). La solución real:
+// el servidor lee el contenido usando el access_token de la DUEÑA del
+// álbum (que sí tiene visibilidad total sobre lo que ella misma creó),
+// autenticando al invitado por su propia sesión — nunca por su token de
+// Drive. `sessionToken`/`appCheckHeaders()` son de billing.js — accesibles
+// acá porque los `<script>` de esta app comparten el mismo scope léxico de
+// nivel superior (mismo patrón ya documentado para debug.js/billing.js);
+// esta función solo se llama en respuesta a una interacción real del
+// usuario, mucho después de que billing.js ya haya terminado de cargar.
+async function sharedAlbumProxyCall(folderDriveId, action, params) {
+  const res = await fetch('/api/shared-album/proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    body: JSON.stringify({ folderDriveId, action, params: params || {} }),
   });
-  return _pickerLoadPromise;
+  return res;
 }
 
-// Abre el picker acotado a carpetas compartidas con la cuenta (no las
-// propias — no tiene sentido re-confirmar algo que ya creó ella misma),
-// pre-filtrado por nombre para que la carpeta buscada aparezca de
-// entrada. Devuelve 'granted' (confirmó la carpeta correcta), 'mismatch'
-// (eligió otra carpeta) o 'cancelled' (cerró sin elegir nada).
-async function openSharedFolderPicker(folderId, folderName) {
-  await ensurePickerLoaded();
-  return new Promise((resolve) => {
-    const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
-      .setIncludeFolders(true)
-      .setSelectFolderEnabled(true)
-      .setOwnedByMe(false)
-      .setMimeTypes('application/vnd.google-apps.folder');
-    if (folderName) view.setQuery(folderName);
-    const picker = new google.picker.PickerBuilder()
-      .addView(view)
-      .setOAuthToken(driveToken)
-      .setDeveloperKey(GOOGLE_PICKER_API_KEY)
-      .setCallback((data) => {
-        if (data.action === google.picker.Action.PICKED) {
-          const picked = data.docs?.[0];
-          resolve(picked && picked.id === folderId ? 'granted' : 'mismatch');
-        } else if (data.action === google.picker.Action.CANCEL) {
-          resolve('cancelled');
-        }
-      })
-      .build();
-    picker.setVisible(true);
+// Mismo criterio y misma forma que listDayFolders() (incluida la escritura
+// en _dayCache, así loadDayFromDriveViaProxy() no tiene que volver a
+// buscar el id de cada carpeta de día) — solo cambia que el pedido real
+// sale con el token de la dueña, vía el proxy.
+async function listDayFoldersViaProxy(albumFolderId) {
+  const res = await sharedAlbumProxyCall(albumFolderId, 'listFolders', { parentId: albumFolderId });
+  if (!res.ok) throw new Error('No se pudo listar los días de este álbum compartido');
+  const data = await res.json();
+  const folders = data.folders || [];
+  const dayFolders = folders.filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f.name));
+  dayFolders.forEach(f => {
+    const key = _dayKey(albumFolderId, f.name);
+    _dayCache[key] = { ..._dayCache[key], folderId: f.id };
   });
+  return dayFolders.map(f => f.name).sort();
 }
 
-// Persiste que este álbum compartido ya pasó por el picker — para no
-// volver a pedirlo en cada visita. Best-effort: si falla el guardado, el
-// picker se vuelve a ofrecer la próxima vez, no rompe nada (mismo
-// criterio que el resto de esta app con escrituras no críticas).
-async function markSharedAlbumPickerGranted(folderDriveId) {
+// Mismo comportamiento que loadDayFromDrive() (misma caché, mismo
+// dedupeMediaByDriveFileId/stripMediaNamePrefix, misma reconstrucción si
+// falta el day.json) pero resolviendo cada pedido a Drive a través del
+// proxy — necesario porque el token de un invitado nunca puede ver este
+// contenido directo. Deliberadamente una función aparte en vez de
+// ramificar loadDayFromDrive() por dentro: así el camino de un álbum
+// propio (usado todo el tiempo, por el único usuario que hoy paga/usa la
+// app de verdad) queda sin tocar un solo byte.
+async function loadDayFromDriveViaProxy(albumFolderId, dateStr) {
   try {
-    const stored = await loadSharedAlbums();
-    const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
-    if (entry && !entry.pickerGranted) {
-      entry.pickerGranted = true;
-      await saveSharedAlbums(stored);
+    const key = _dayKey(albumFolderId, dateStr);
+    const cached = _dayCache[key];
+    if (cached && cached.json) return _cloneDay(cached.json);
+
+    let dayFolderId = cached && cached.folderId;
+    if (!dayFolderId) {
+      const res = await sharedAlbumProxyCall(albumFolderId, 'findFileByName', { parentId: albumFolderId, names: [dateStr] });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.id) return null;
+      dayFolderId = data.id;
     }
-  } catch { /* se vuelve a pedir en la próxima visita, no rompe nada */ }
+
+    const jsonRes = await sharedAlbumProxyCall(albumFolderId, 'findFileByName', {
+      parentId: dayFolderId,
+      names: [dayJsonName(dateStr), dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY],
+    });
+    const jsonId = jsonRes.ok ? (await jsonRes.json()).id : null;
+
+    let result;
+    if (!jsonId) {
+      const filesRes = await sharedAlbumProxyCall(albumFolderId, 'listFiles', { parentId: dayFolderId });
+      if (!filesRes.ok) return null;
+      const filesData = await filesRes.json();
+      const media = (filesData.files || [])
+        .map(f => {
+          const type = f.mimeType.startsWith('image/') ? 'image'
+            : f.mimeType.startsWith('video/') ? 'video'
+            : f.mimeType.startsWith('audio/') ? 'audio' : null;
+          return type ? { type, name: stripMediaNamePrefix(f.name), driveFileId: f.id, caption: '' } : null;
+        })
+        .filter(Boolean);
+      if (!media.length) return null;
+      result = { title: '', notes: '', media, _reconstructed: true };
+    } else {
+      const contentRes = await sharedAlbumProxyCall(albumFolderId, 'getFileJson', { fileId: jsonId });
+      if (!contentRes.ok) return null;
+      const dayJson = (await contentRes.json()).content;
+      result = {
+        title: dayJson.title || '',
+        notes: dayJson.notes || '',
+        media: dedupeMediaByDriveFileId((dayJson.media || []).map(m => ({
+          type: m.type, name: m.name,
+          driveFileId: m.driveFileId,
+          caption: m.caption || ''
+        })))
+      };
+    }
+    _dayCache[key] = { folderId: dayFolderId, json: result };
+    return _cloneDay(result);
+  } catch (e) {
+    console.warn('Error cargando día (álbum compartido, vía proxy):', e);
+    return null;
+  }
 }
 
-// v2.60: contraparte de markSharedAlbumPickerGranted() — se usa cuando un
-// álbum ya marcado `pickerGranted:true` falla igual al verificar acceso
-// real (ver verifyAndEnterSharedAlbum() en app.html), para no quedar
-// trabado repitiendo el mismo fallo silencioso para siempre: limpia el
-// flag para que la próxima entrada vuelva a ofrecer el picker.
-async function clearSharedAlbumPickerGranted(folderDriveId) {
+// Contraparte de fetchAuthImgUrl()/fetchFileAsDataUrl() para contenido de
+// álbumes compartidos — mismo resultado (blob: URL), mismo criterio de
+// caché en `_imgCache` para las miniaturas (el fileId de Drive es único
+// globalmente, así que reusar la misma caché no puede pisarse con la de un
+// álbum propio), pero pidiendo los bytes vía el proxy en vez de con el
+// token del invitado.
+async function fetchAuthImgUrlViaProxy(folderDriveId, fileId) {
+  const cacheKey = `auth_${fileId}`;
+  if (_imgCache[cacheKey]) return _imgCache[cacheKey];
   try {
-    const stored = await loadSharedAlbums();
-    const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
-    if (entry && entry.pickerGranted) {
-      entry.pickerGranted = false;
-      await saveSharedAlbums(stored);
-    }
-  } catch { /* no bloquea el aviso de error que ya se le mostró al usuario */ }
+    const res = await sharedAlbumProxyCall(folderDriveId, 'getMediaBytes', { fileId });
+    if (!res.ok) return '';
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    _imgCache[cacheKey] = url;
+    return url;
+  } catch (e) {
+    console.warn('Error cargando imagen autenticada (álbum compartido, vía proxy):', e);
+    return '';
+  }
+}
+async function fetchFileAsDataUrlViaProxy(folderDriveId, fileId) {
+  const res = await sharedAlbumProxyCall(folderDriveId, 'getMediaBytes', { fileId });
+  if (!res.ok) throw new Error('Este archivo ya no está disponible en Drive');
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 // ─── AUTHENTICATED IMAGE URLS ────────────────────────────
@@ -1343,6 +1411,20 @@ async function applyFullFileFallback(imgEl, fileId) {
     imgEl.classList.add('media-unavailable');
   }
 }
+// v2.61: mismo rol que applyFullFileFallback(), para una foto de un álbum
+// compartido — el token propio del invitado no puede traer esto (ver
+// "El scope drive.file no da acceso al contenido de una carpeta
+// compartida"), así que va directo por el proxy en vez de driveReq().
+async function applyFullFileFallbackViaProxy(imgEl, fileId, proxyFolderId) {
+  const authUrl = await fetchAuthImgUrlViaProxy(proxyFolderId, fileId);
+  if (authUrl) {
+    imgEl.src = authUrl;
+  } else {
+    imgEl.src = MEDIA_UNAVAILABLE_SVG;
+    imgEl.title = 'Este archivo ya no está disponible en Drive';
+    imgEl.classList.add('media-unavailable');
+  }
+}
 
 // Helper para img elements: cascada de hasta 3 niveles, del más barato al
 // más caro. (1) URL directa de miniatura (gratis, no pega la API de Drive)
@@ -1364,7 +1446,17 @@ async function applyFullFileFallback(imgEl, fileId) {
 // para estos casos, sin perder el ahorro de bytes del nivel 2 donde sí
 // aplica (grillas, calendario, fotolibro, todas en w200).
 const THUMBNAIL_LINK_MAX_WIDTH = 1000;
-function setAuthImg(imgEl, fileId, size = 'w800') {
+// v2.61: `proxyFolderId` opcional — cuando se pasa (álbum compartido, el
+// token propio del invitado no ve este contenido), el nivel 1 sigue
+// siendo el mismo (URL directa de miniatura por cookie de sesión de
+// Google, gratis, independiente de nuestro scope — puede funcionar igual
+// para el invitado si la cuenta tiene sesión real de Google activa) pero
+// si falla, salta directo al archivo completo vía el proxy en vez de
+// intentar el nivel 2 (thumbnailLink)/nivel 3 con el token del invitado,
+// que fallarían siempre. Sin este parámetro, comportamiento 100% idéntico
+// al de siempre — todos los call-sites existentes (álbumes propios) no lo
+// pasan.
+function setAuthImg(imgEl, fileId, size = 'w800', proxyFolderId = null) {
   if (!fileId || !imgEl) return;
   // Evita el ícono nativo de "imagen rota/cargando" del navegador durante el
   // instante entre insertar el <img> sin src todavía cargado y que la miniatura
@@ -1390,6 +1482,10 @@ function setAuthImg(imgEl, fileId, size = 'w800') {
   const skipThumbnailLinkLevel = requestedWidth >= THUMBNAIL_LINK_MAX_WIDTH;
   imgEl.onerror = async () => {
     imgEl.onerror = null; // evitar loop en este primer nivel
+    if (proxyFolderId) {
+      await applyFullFileFallbackViaProxy(imgEl, fileId, proxyFolderId);
+      return;
+    }
     if (skipThumbnailLinkLevel) {
       await applyFullFileFallback(imgEl, fileId);
       return;

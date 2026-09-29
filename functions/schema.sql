@@ -134,10 +134,29 @@ create table if not exists travel_diary.campaign_links (
   created_at   timestamptz not null default now()
 );
 
+-- Proxy de lectura para álbumes compartidos (v2.61) — mapea la carpeta de un
+-- álbum a quién es el dueño real, para que shared-album-proxy.js sepa de
+-- quién usar el refresh_token al leer contenido en nombre de un invitado.
+-- Ver CLAUDE.md → "El scope drive.file no da acceso al contenido de una
+-- carpeta compartida, ni siquiera con el Picker" — descubierto DESPUÉS de
+-- que el picker de re-consentimiento (v2.58-v2.60) resultó no alcanzar: ese
+-- scope simplemente nunca da acceso al contenido existente de una carpeta
+-- que el invitado no creó, confirmado por la documentación/comunidad de
+-- Google, no algo resoluble con más JS del lado del cliente. La única
+-- autorización real por invitado se chequea EN VIVO contra los permisos
+-- reales de Drive en cada pedido (mismo patrón que checkFolderShareApplied,
+-- v2.53) — esta tabla NO guarda por-invitado, solo qué cuenta es la dueña.
+create table if not exists travel_diary.shared_album_owner (
+  folder_drive_id  text primary key,
+  owner_google_sub text not null references travel_diary.subscriptions(google_sub),
+  created_at       timestamptz not null default now()
+);
+
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 alter table travel_diary.usage_events enable row level security;
 alter table travel_diary.campaign_links enable row level security;
+alter table travel_diary.shared_album_owner enable row level security;
 -- Sin policies = solo la service_role key (usada por las Cloud Functions)
 -- puede leer/escribir. Igual que en cualquier otro cliente de la agencia.
 

@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.60';
+const APP_VERSION = '2.61';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2085,10 +2085,11 @@ function scheduleCoverLoad(imgEl, fileId, size, idx) {
 // navegador y dejaba fotos en blanco durante mucho tiempo. Igual que
 // scheduleCoverLoad(): las primeras EAGER_GALLERY_COUNT piden su miniatura
 // ya mismo, el resto recién al entrar en pantalla.
-function scheduleGalleryImgLoad(imgEl, fileId, size, idx) {
-  if (idx < EAGER_GALLERY_COUNT) { setAuthImg(imgEl, fileId, size); return; }
+function scheduleGalleryImgLoad(imgEl, fileId, size, idx, proxyFolderId = null) {
+  if (idx < EAGER_GALLERY_COUNT) { setAuthImg(imgEl, fileId, size, proxyFolderId); return; }
   imgEl.dataset.galleryFileId = fileId;
   imgEl.dataset.gallerySize = size;
+  if (proxyFolderId) imgEl.dataset.galleryProxyFolderId = proxyFolderId;
   galleryImgObserver.observe(imgEl);
 }
 
@@ -2605,13 +2606,14 @@ async function renderAlbums() {
         </div>`;
       if (album.coverFileId) {
         scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', albums.length + idx);
-      } else if (album.pickerGranted) {
+      } else {
         // v2.57: sin portada guardada todavía — se resuelve de fondo (ver
         // resolveSharedAlbumCover() en drive.js) y recién ahí se reemplaza
         // el placeholder "L" por la foto real, sin bloquear el resto del render.
-        // v2.58: sin el picker confirmado todavía (ver más abajo) ni se
-        // intenta — listar la carpeta va a fallar en silencio igual, mejor
-        // no gastar el pedido de más.
+        // v2.61: resolveSharedAlbumCover() ya lee el contenido vía el proxy
+        // del servidor (ver "El scope drive.file no da acceso al contenido
+        // de una carpeta compartida" en CLAUDE.md) — no depende más de
+        // ningún picker confirmado, siempre vale la pena intentarlo.
         resolveSharedAlbumCover(album).then(coverFileId => {
           if (!coverFileId) return;
           const wrap = card.querySelector('.album-cover-wrap');
@@ -2629,7 +2631,6 @@ async function renderAlbums() {
       });
       card.querySelector('.album-play-btn').addEventListener('click', e => {
         e.stopPropagation();
-        if (!album.pickerGranted) { promptSharedAlbumPickerConsent(album); return; }
         startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true });
       });
       const leaveBtn = document.createElement('button');
@@ -2712,80 +2713,27 @@ function openAlbumDiary(album) {
 function navigateToSharedAlbum(album) {
   navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId, dateFrom: album.dateFrom, dateTo: album.dateTo });
 }
-// v2.58: el scope `drive.file` no le da a la app visibilidad real sobre
-// una carpeta que la cuenta invitada nunca "abrió" con un diálogo nativo
-// de Google, aunque el permiso real de Drive (compartir por email) ya
-// esté aplicado — ver "Funcionando bien" en CLAUDE.md. `album.pickerGranted`
-// (guardado en el shared-albums.json PROPIO del invitado, ver
-// markSharedAlbumPickerGranted() en drive.js) marca si ya se hizo ese
-// paso una vez para este álbum puntual — si no, se pide antes de entrar.
-//
-// v2.60: bug real de v2.59, encontrado por el usuario al primer uso real —
-// la verificación nueva (listDayFolders antes de navegar) solo corría
-// DENTRO de runSharedAlbumPickerFlow(), justo después de un picker recién
-// concedido — pero si `pickerGranted` ya venía en `true` de un intento
-// anterior (el picker de v2.58 marcaba el flag ANTES de verificar nada,
-// así que un intento previo interrumpido por el cartel de cookies de
-// Safari lo dejó persistido igual), openSharedAlbumDiary() saltaba directo
-// a navigateToSharedAlbum() sin pasar por ningún picker NI por ninguna
-// verificación — exactamente lo reportado: "no apareció el picker esta
-// vez... y sigue sin verse nada". Ahora la verificación (listDayFolders)
-// se hace SIEMPRE antes de entrar, haya o no haya que mostrar el picker
-// primero — y si un álbum ya marcado `pickerGranted` falla la verificación,
-// se asume que ese flag quedó mal persistido y se limpia, volviendo a
-// pedir el picker en vez de quedar trabado para siempre sin poder
-// reintentarlo.
+// v2.61: cierra de raíz lo que v2.58-v2.60 estaban parchando — el picker de
+// re-consentimiento nunca podía funcionar (Google documenta que `drive.file`
+// no da acceso al CONTENIDO de una carpeta compartida ni siquiera tras
+// confirmarla con el Picker, ver "El scope drive.file no da acceso al
+// contenido de una carpeta compartida, ni siquiera con el Picker" en
+// CLAUDE.md). La solución real: el servidor lee el contenido con el
+// access_token de la DUEÑA del álbum (shared-album-proxy.js), autenticando
+// al invitado por su propia sesión — nunca por su token de Drive. Con esto,
+// el invitado ya no necesita "abrir" nada en Google antes de entrar — se
+// verifica el acceso real (vía el proxy) y se navega directo.
 function openSharedAlbumDiary(album) {
-  if (!album.pickerGranted) { promptSharedAlbumPickerConsent(album); return; }
-  verifyAndEnterSharedAlbum(album, /* alreadyGranted */ true);
+  verifyAndEnterSharedAlbum(album);
 }
-function promptSharedAlbumPickerConsent(album) {
-  showOnboardingInfoModal({
-    title: 'Confirmá el acceso al álbum',
-    itemsHtml: `
-      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">Para ver las fotos de <strong>${escHtml(album.name)}</strong> hace falta confirmar el acceso a esa carpeta en tu Google Drive — un paso de Google, una sola vez para este álbum.</p>
-      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Se va a abrir un selector de Google — buscá la carpeta <strong>${escHtml(album.name)}</strong> y tocala para confirmar.</p>`,
-    ctaLabel: 'Confirmar acceso',
-    onCta: () => runSharedAlbumPickerFlow(album),
-  });
-}
-async function runSharedAlbumPickerFlow(album) {
-  let result;
-  try { result = await openSharedFolderPicker(album.folderDriveId, album.name); }
-  catch (e) { result = 'error'; }
-  if (result === 'granted') {
-    await markSharedAlbumPickerGranted(album.folderDriveId);
-    album.pickerGranted = true;
-    await verifyAndEnterSharedAlbum(album, /* alreadyGranted */ false);
-    return;
-  }
-  const msg = result === 'mismatch'
-    ? 'Elegiste una carpeta distinta — buscá y tocá exactamente la carpeta de este álbum.'
-    : result === 'error'
-    ? 'No se pudo abrir el selector de Google. Probá de nuevo.'
-    : 'No se confirmó el acceso — sin este paso no vas a poder ver las fotos de este álbum.';
-  showOnboardingInfoModal({
-    title: 'Todavía no',
-    itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">${escHtml(msg)}</p>`,
-    ctaLabel: 'Reintentar',
-    onCta: () => promptSharedAlbumPickerConsent(album),
-  });
-}
-// v2.60: única fuente de verdad de "¿de verdad tenemos acceso a este álbum
-// compartido?" — corre siempre antes de entrar, sea que el picker se acaba
-// de conceder (alreadyGranted:false) o que ya estaba marcado de una visita
-// anterior (alreadyGranted:true). Si falla, nunca entra a un diario vacío
-// en silencio: muestra el error real de Drive y, si el flag ya estaba
-// puesto de antes, lo limpia (persistido) para que la próxima vez vuelva a
-// ofrecer el picker en vez de quedar trabado repitiendo el mismo fallo.
-async function verifyAndEnterSharedAlbum(album, alreadyGranted) {
+async function verifyAndEnterSharedAlbum(album) {
   showOnboardingInfoModal({
     title: 'Confirmando...',
     itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Verificando el acceso a <strong>${escHtml(album.name)}</strong>...</p>`,
     ctaLabel: 'Cerrar (sigue verificando)',
   });
   try {
-    const dates = await listDayFolders(album.folderDriveId);
+    const dates = await listDayFolders(album.folderDriveId, true);
     closeOnboardingInfoModal();
     navigateToSharedAlbum(album);
     if (!dates.length) {
@@ -2801,20 +2749,14 @@ async function verifyAndEnterSharedAlbum(album, alreadyGranted) {
     }
   } catch (e) {
     closeOnboardingInfoModal();
-    if (alreadyGranted) {
-      album.pickerGranted = false;
-      try { await clearSharedAlbumPickerGranted(album.folderDriveId); } catch {}
-    }
     showOnboardingInfoModal({
-      title: alreadyGranted ? 'Perdiste el acceso a este álbum' : 'Confirmaste el acceso, pero Drive lo sigue rechazando',
+      title: 'No se pudo acceder a este álbum',
       itemsHtml: `
-        <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">${alreadyGranted
-          ? 'Habías confirmado el acceso antes, pero al intentar leer el álbum ahora Drive respondió con un error real:'
-          : 'Elegiste la carpeta correcta y Google lo registró, pero al intentar leer su contenido Drive respondió con un error real (no un simple "vacío"):'}</p>
+        <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">Drive respondió con un error real al intentar leer el contenido:</p>
         <p style="font-size:0.82rem;color:var(--red);background:var(--accent-light);padding:0.6rem 0.8rem;border-radius:8px;line-height:1.4;margin:0 0 0.9rem;word-break:break-word;">${escHtml(e.message || String(e))}</p>
-        <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Mandale este mensaje exacto a quien mantiene la app. Podés reintentar el selector de Google acá abajo.</p>`,
+        <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Mandale este mensaje exacto a quien mantiene la app.</p>`,
       ctaLabel: 'Reintentar',
-      onCta: () => promptSharedAlbumPickerConsent(album),
+      onCta: () => verifyAndEnterSharedAlbum(album),
     });
   }
 }
@@ -3139,6 +3081,7 @@ async function submitShare() {
     folderId = await getAlbumFolderId(shareTargetAlbum.id);
     await shareAlbumWithUser(folderId, email, shareRole);
     trackEvent('album_shared', { role: shareRole });
+    registerSharedAlbumOwner(folderId);
     const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
     const roleLabel = shareRole === 'writer' ? 'edición' : 'lectura';
     try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
@@ -3154,6 +3097,7 @@ async function submitShare() {
       const applied = await checkFolderShareApplied(folderId, email, shareRole);
       if (applied) {
         trackEvent('album_shared', { role: shareRole });
+        registerSharedAlbumOwner(folderId);
         const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
         const roleLabel = shareRole === 'writer' ? 'edición' : 'lectura';
         try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
@@ -3719,7 +3663,7 @@ async function resolveStartDate() {
   // Álbum terminado en el pasado → primer día con contenido
   if (dateTo && dateTo < today) {
     try {
-      const dates = await listDayFolders(albumFolderId);
+      const dates = await listDayFolders(albumFolderId, isSharedAlbum);
       if (dates.length) return dates[0]; // primer día con contenido
     } catch {}
     return dateFrom || today;
@@ -3795,7 +3739,7 @@ async function loadDay(dateStr) {
   setStatus('', 'Cargando...');
   revokeMediaBlobUrls(currentDay.media);
   try {
-    const day = await loadDayFromDrive(albumFolderId, dateStr);
+    const day = await loadDayFromDrive(albumFolderId, dateStr, isSharedAlbum);
     currentDay = day || emptyDay();
   } catch(e) { setStatus('error', 'Error al cargar'); currentDay = emptyDay(); }
   currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
@@ -3937,7 +3881,7 @@ function renderMedia() {
         </div>`;
       const imgEl = card.querySelector(`#mt-${idx}`);
       if (item.data) imgEl.src = item.data;
-      else if (item.driveFileId) setAuthImg(imgEl, item.driveFileId, 'w1200');
+      else if (item.driveFileId) setAuthImg(imgEl, item.driveFileId, 'w1200', isSharedAlbum ? albumFolderId : null);
       // El markup ya traía data-lightbox/cursor:zoom-in pero nunca se había
       // conectado ningún click a openLightbox() — quedó preparado y sin
       // cablear. En modo selección no abre nada: deja que el click le
@@ -3959,7 +3903,7 @@ function renderMedia() {
       const src = item.data || '';
       if (src) { card.querySelector(`#vt-${idx}`).replaceWith(buildVideoThumbEl(src)); }
       else if (item.driveFileId) {
-        fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
+        fetchFileAsDataUrl(item.driveFileId, isSharedAlbum ? albumFolderId : null).then(dataUrl => {
           item.data = dataUrl;
           const el = card.querySelector(`#vt-${idx}`);
           if (el) el.replaceWith(buildVideoThumbEl(dataUrl));
@@ -3984,7 +3928,7 @@ function renderMedia() {
           <div class="media-footer-actions">${deleteBtn}</div>
         </div>`;
       if (!audioSrc && item.driveFileId) {
-        fetchFileAsDataUrl(item.driveFileId).then(dataUrl => {
+        fetchFileAsDataUrl(item.driveFileId, isSharedAlbum ? albumFolderId : null).then(dataUrl => {
           item.data = dataUrl;
           const el = card.querySelector(`#al-${idx}`);
           if (el) { const a = document.createElement('audio'); a.controls = true; a.src = dataUrl; el.replaceWith(a); }
@@ -4132,11 +4076,11 @@ function compressImage(file) {
 async function renderListTab() {
   const wrap = document.getElementById('list-tab-content');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando fotos...</div>';
-  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar los días</div>'; return; } }
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar los días</div>'; return; } }
   if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay días guardados</div>'; return; }
 
   const perDay = await Promise.all(allDates.slice().reverse().map(async date => {
-    const day = await loadDayFromDrive(albumFolderId, date).catch(() => null) || { media: [] };
+    const day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum).catch(() => null) || { media: [] };
     return (day.media || [])
       .filter(m => m.type === 'image' && m.driveFileId)
       .map(m => ({ driveFileId: m.driveFileId, date, name: m.name }));
@@ -4155,7 +4099,7 @@ async function renderListTab() {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       obs.unobserve(entry.target);
-      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize);
+      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize, entry.target.dataset.galleryProxyFolderId || null);
     });
   }, { rootMargin: '300px 0px' });
   allPhotos.forEach((p, i) => {
@@ -4175,7 +4119,7 @@ async function renderListTab() {
       if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
       switchTab('day'); loadDay(p.date);
     });
-    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i);
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, isSharedAlbum ? albumFolderId : null);
     grid.appendChild(item);
   });
   wrap.appendChild(grid);
@@ -4185,18 +4129,18 @@ async function renderListTab() {
 async function renderCalendar() {
   const wrap = document.getElementById('cal-wrap');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando...</div>';
-  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
   if (allDates.length && !calDayData[allDates[0]]) { const d = new Date(currentDate + 'T12:00:00'); calYear = d.getFullYear(); calMonth = d.getMonth(); }
   renderCalendarMonth(wrap);
   for (const date of allDates) {
     if (calDayData[date]) continue;
-    loadDayFromDrive(albumFolderId, date).then(day => {
+    loadDayFromDrive(albumFolderId, date, isSharedAlbum).then(day => {
       if (!day) return;
       calDayData[date] = { title: day.title || '', coverFileId: (day.media || []).find(m => m.type === 'image' && m.driveFileId)?.driveFileId || null };
       const cell = document.querySelector(`.cal-cell[data-date="${date}"]`);
       if (cell && calDayData[date].coverFileId) {
         const img = document.createElement('img'); img.className = 'cal-cell-img'; img.loading = 'lazy';
-        setAuthImg(img, calDayData[date].coverFileId, 'w200');
+        setAuthImg(img, calDayData[date].coverFileId, 'w200', isSharedAlbum ? albumFolderId : null);
         cell.insertBefore(img, cell.firstChild); cell.querySelector('.cal-cell-num')?.classList.remove('dark');
       }
     }).catch(() => {});
@@ -4229,7 +4173,7 @@ function renderCalendarMonth(wrap) {
     </div>`;
   Object.keys(calDayData).forEach(date => {
     const data = calDayData[date]; if (!data?.coverFileId) return;
-    const img = wrap.querySelector(`#cal-${date}`); if (img) setAuthImg(img, data.coverFileId, 'w200');
+    const img = wrap.querySelector(`#cal-${date}`); if (img) setAuthImg(img, data.coverFileId, 'w200', isSharedAlbum ? albumFolderId : null);
   });
 }
 
@@ -6220,7 +6164,7 @@ function renderLightbox() {
     // alcanza con limpiar cualquier opacity inline que haya quedado de una
     // apertura anterior con item.data.
     img.style.opacity = '';
-    setAuthImg(img, item.driveFileId, 'w2000');
+    setAuthImg(img, item.driveFileId, 'w2000', isSharedAlbum ? albumFolderId : null);
   }
   document.getElementById('lightbox-caption').textContent = item.caption || '';
   document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
@@ -6709,7 +6653,7 @@ async function shareMediaItem(item) {
     let dataUrl = item.data;
     let fetchedFresh = false;
     if (!dataUrl && item.driveFileId) {
-      dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+      dataUrl = await fetchFileAsDataUrl(item.driveFileId, isSharedAlbum ? albumFolderId : null);
       fetchedFresh = true;
     }
     if (!dataUrl) { alert('No se pudo cargar el archivo para compartir.'); return; }

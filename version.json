@@ -1,4 +1,4 @@
 {
-  "version": "2.60",
-  "changelog": "Se corrige un bug real de la versión anterior: si un álbum compartido ya había quedado marcado como 'acceso confirmado' de un intento previo (aunque no hubiera funcionado del todo), la app entraba directo sin volver a verificar nada. Ahora siempre verifica el acceso real antes de entrar."
+  "version": "2.61",
+  "changelog": "Los álbumes compartidos ahora se leen del lado del servidor (con permiso real de quien los creó) — se acabó el paso del selector de Google, y las fotos del día, la galería y el calendario ya deberían verse de verdad."
 }

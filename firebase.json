@@ -17,6 +17,8 @@
       { "source": "/api/webhooks/mercadopago", "function": "webhookMercadopago" },
       { "source": "/api/track", "function": "trackEvent" },
       { "source": "/api/drive/token/refresh", "function": "driveTokenRefresh" },
+      { "source": "/api/shared-album/register", "function": "sharedAlbumRegister" },
+      { "source": "/api/shared-album/proxy", "function": "sharedAlbumProxy" },
       { "source": "/:slug", "function": "campaignLink" }
     ],
     "headers": [

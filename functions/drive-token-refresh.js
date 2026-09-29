@@ -2,6 +2,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { getSupabaseClient } = require('./lib/supabase');
 const { verifySession } = require('./lib/session');
+const { mintAccessTokenFromRefreshToken } = require('./lib/driveAuth');
 
 const GOOGLE_CLIENT_ID = defineSecret('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_CLIENT_SECRET');
@@ -57,18 +58,10 @@ exports.driveTokenRefresh = onRequest(
         return;
       }
 
-      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          refresh_token: row.drive_refresh_token,
-          client_id: GOOGLE_CLIENT_ID.value(),
-          client_secret: GOOGLE_CLIENT_SECRET.value(),
-          grant_type: 'refresh_token',
-        }),
-      });
-
-      if (!tokenRes.ok) {
+      let accessToken, expiresIn;
+      try {
+        ({ accessToken, expiresIn } = await mintAccessTokenFromRefreshToken(row.drive_refresh_token, GOOGLE_CLIENT_ID.value(), GOOGLE_CLIENT_SECRET.value()));
+      } catch (e) {
         // El caso típico acá es invalid_grant — el usuario revocó el acceso
         // desde myaccount.google.com/permissions, o Google invalidó el
         // refresh_token por inactividad prolongada. Se borra el que
@@ -80,8 +73,7 @@ exports.driveTokenRefresh = onRequest(
         return;
       }
 
-      const tokens = await tokenRes.json(); // { access_token, expires_in, scope, token_type }
-      res.status(200).json({ access_token: tokens.access_token, expires_in: tokens.expires_in });
+      res.status(200).json({ access_token: accessToken, expires_in: expiresIn });
     } catch (e) {
       console.error('drive-token-refresh error:', e);
       res.status(500).json({ error: 'internal_error' });
