@@ -1236,6 +1236,22 @@ async function markSharedAlbumPickerGranted(folderDriveId) {
   } catch { /* se vuelve a pedir en la próxima visita, no rompe nada */ }
 }
 
+// v2.60: contraparte de markSharedAlbumPickerGranted() — se usa cuando un
+// álbum ya marcado `pickerGranted:true` falla igual al verificar acceso
+// real (ver verifyAndEnterSharedAlbum() en app.html), para no quedar
+// trabado repitiendo el mismo fallo silencioso para siempre: limpia el
+// flag para que la próxima entrada vuelva a ofrecer el picker.
+async function clearSharedAlbumPickerGranted(folderDriveId) {
+  try {
+    const stored = await loadSharedAlbums();
+    const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
+    if (entry && entry.pickerGranted) {
+      entry.pickerGranted = false;
+      await saveSharedAlbums(stored);
+    }
+  } catch { /* no bloquea el aviso de error que ya se le mostró al usuario */ }
+}
+
 // ─── AUTHENTICATED IMAGE URLS ────────────────────────────
 // Cache de blob URLs para no re-descargar imágenes
 const _imgCache = {};

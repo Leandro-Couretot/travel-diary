@@ -1,4 +1,4 @@
 {
-  "version": "2.59",
-  "changelog": "Confirmar el acceso a un álbum compartido ahora avisa de una si Drive lo sigue rechazando (con el motivo real), en vez de entrar a un álbum silenciosamente vacío."
+  "version": "2.60",
+  "changelog": "Se corrige un bug real de la versión anterior: si un álbum compartido ya había quedado marcado como 'acceso confirmado' de un intento previo (aunque no hubiera funcionado del todo), la app entraba directo sin volver a verificar nada. Ahora siempre verifica el acceso real antes de entrar."
 }
