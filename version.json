@@ -1,4 +1,4 @@
 {
-  "version": "2.57",
-  "changelog": "Los álbumes compartidos en Home ya muestran la foto real de portada, no el placeholder \"L\" de siempre."
+  "version": "2.58",
+  "changelog": "Los álbumes compartidos piden confirmar el acceso una vez con Google, para que las fotos se vean de verdad. Además, el día inicial de un álbum compartido ya no salta siempre a hoy."
 }

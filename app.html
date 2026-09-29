@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.57';
+const APP_VERSION = '2.58';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1832,6 +1832,8 @@ function navigateTo(view, params = {}) {
     isSharedAlbum  = params.shared  || false;
     albumFolderId  = params.folderId || null;
     diaryTargetDate = params.targetDate || null;
+    sharedAlbumDateFrom = params.dateFrom || null;
+    sharedAlbumDateTo   = params.dateTo || null;
     document.getElementById('header-subtitle').textContent = params.name || 'diario';
     renderDiaryHeader();
     bootstrapDiaryPage();
@@ -2603,10 +2605,13 @@ async function renderAlbums() {
         </div>`;
       if (album.coverFileId) {
         scheduleCoverLoad(card.querySelector(`#cover-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', albums.length + idx);
-      } else {
+      } else if (album.pickerGranted) {
         // v2.57: sin portada guardada todavía — se resuelve de fondo (ver
         // resolveSharedAlbumCover() en drive.js) y recién ahí se reemplaza
         // el placeholder "L" por la foto real, sin bloquear el resto del render.
+        // v2.58: sin el picker confirmado todavía (ver más abajo) ni se
+        // intenta — listar la carpeta va a fallar en silencio igual, mejor
+        // no gastar el pedido de más.
         resolveSharedAlbumCover(album).then(coverFileId => {
           if (!coverFileId) return;
           const wrap = card.querySelector('.album-cover-wrap');
@@ -2622,7 +2627,11 @@ async function renderAlbums() {
         if (e.target.closest('.album-play-btn') || e.target.closest('.album-leave-btn')) return;
         openSharedAlbumDiary(album);
       });
-      card.querySelector('.album-play-btn').addEventListener('click', e => { e.stopPropagation(); startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true }); });
+      card.querySelector('.album-play-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        if (!album.pickerGranted) { promptSharedAlbumPickerConsent(album); return; }
+        startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true });
+      });
       const leaveBtn = document.createElement('button');
       leaveBtn.className = 'album-leave-btn'; leaveBtn.title = 'Salir del álbum compartido'; leaveBtn.innerHTML = icon('close');
       leaveBtn.addEventListener('click', async e => {
@@ -2700,8 +2709,51 @@ async function renderAlbums() {
 function openAlbumDiary(album) {
   navigateTo('diary', { albumId: album.id, name: album.name, shared: false });
 }
+function navigateToSharedAlbum(album) {
+  navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId, dateFrom: album.dateFrom, dateTo: album.dateTo });
+}
+// v2.58: el scope `drive.file` no le da a la app visibilidad real sobre
+// una carpeta que la cuenta invitada nunca "abrió" con un diálogo nativo
+// de Google, aunque el permiso real de Drive (compartir por email) ya
+// esté aplicado — ver "Funcionando bien" en CLAUDE.md. `album.pickerGranted`
+// (guardado en el shared-albums.json PROPIO del invitado, ver
+// markSharedAlbumPickerGranted() en drive.js) marca si ya se hizo ese
+// paso una vez para este álbum puntual — si no, se pide antes de entrar.
 function openSharedAlbumDiary(album) {
-  navigateTo('diary', { albumId: null, name: album.name, shared: true, folderId: album.folderDriveId });
+  if (!album.pickerGranted) { promptSharedAlbumPickerConsent(album); return; }
+  navigateToSharedAlbum(album);
+}
+function promptSharedAlbumPickerConsent(album) {
+  showOnboardingInfoModal({
+    title: 'Confirmá el acceso al álbum',
+    itemsHtml: `
+      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">Para ver las fotos de <strong>${escHtml(album.name)}</strong> hace falta confirmar el acceso a esa carpeta en tu Google Drive — un paso de Google, una sola vez para este álbum.</p>
+      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Se va a abrir un selector de Google — buscá la carpeta <strong>${escHtml(album.name)}</strong> y tocala para confirmar.</p>`,
+    ctaLabel: 'Confirmar acceso',
+    onCta: () => runSharedAlbumPickerFlow(album),
+  });
+}
+async function runSharedAlbumPickerFlow(album) {
+  let result;
+  try { result = await openSharedFolderPicker(album.folderDriveId, album.name); }
+  catch (e) { result = 'error'; }
+  if (result === 'granted') {
+    await markSharedAlbumPickerGranted(album.folderDriveId);
+    album.pickerGranted = true;
+    navigateToSharedAlbum(album);
+    return;
+  }
+  const msg = result === 'mismatch'
+    ? 'Elegiste una carpeta distinta — buscá y tocá exactamente la carpeta de este álbum.'
+    : result === 'error'
+    ? 'No se pudo abrir el selector de Google. Probá de nuevo.'
+    : 'No se confirmó el acceso — sin este paso no vas a poder ver las fotos de este álbum.';
+  showOnboardingInfoModal({
+    title: 'Todavía no',
+    itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">${escHtml(msg)}</p>`,
+    ctaLabel: 'Reintentar',
+    onCta: () => promptSharedAlbumPickerConsent(album),
+  });
 }
 
 // Devuelve { photoCount, videoCount } además de pintar el resumen de la
@@ -3349,6 +3401,18 @@ let albumMeta     = null;
 // resolveStartDate() por su cuenta) — se consume una sola vez en
 // bootstrapDiaryPage() y vuelve a null.
 let diaryTargetDate = null;
+// v2.58: bug real — resolveStartDate() decide el día inicial mirando
+// `albumMeta.dateTo`, pero para un álbum COMPARTIDO `albumMeta` nunca se
+// poblaba (bootstrapDiaryPage() solo lo arma en la rama de álbum propio),
+// así que siempre caía al default "hoy" sin importar que el álbum ya
+// hubiera terminado hace meses — un invitado entraba a un álbum viejo y
+// veía el día de HOY vacío, en vez del primer día real con contenido.
+// Se pasan por navigateTo()/openSharedAlbumDiary() desde el mismo dato que
+// ya tiene la card de Home (shared-albums.json), y bootstrapDiaryPage()
+// arma un albumMeta liviano con esto para que resolveStartDate() funcione
+// igual que para un álbum propio.
+let sharedAlbumDateFrom = null;
+let sharedAlbumDateTo   = null;
 let albumCanEdit  = true;
 let currentDate   = localDateStr();
 let currentDay    = { title: '', notes: '', media: [] };
@@ -3553,6 +3617,7 @@ async function bootstrapDiaryPage() {
       document.getElementById('header-subtitle').textContent = albumMeta.name;
       albumCanEdit = true; // álbum propio: siempre editable
     } else {
+      albumMeta = { name: null, dateFrom: sharedAlbumDateFrom, dateTo: sharedAlbumDateTo };
       albumCanEdit = await canEditFolder(albumFolderId);
     }
     // Lectura rápida (un GET), sin importar el plan ni si el álbum es de

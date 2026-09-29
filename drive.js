@@ -5,6 +5,14 @@ const ROOT_FOLDER     = 'legado';
 const ROOT_FOLDER_OLD = 'travel-diary'; // nombre de antes del rebrand — ver getOrCreateFolderMigrating()
 const SCOPE_VERSION   = 5; // bumped: + userinfo.profile (foto/nombre para el avatar del header, v1.81)
 
+// v2.58: API key del Google Picker (Cloud Console → APIs & Services →
+// Credentials → API key, restringida por HTTP referrer + a la "Google
+// Picker API") — necesaria para el re-consentimiento de álbumes
+// compartidos, ver openSharedFolderPicker() más abajo. No es un secreto
+// (misma categoría que DRIVE_CLIENT_ID/firebaseConfig, pensada para vivir
+// en el navegador) — placeholder hasta que se cargue la real.
+const GOOGLE_PICKER_API_KEY = 'PENDIENTE_PEGAR_API_KEY_DEL_PICKER';
+
 // Caché de IDs de Drive ya resueltos (v2.15) — nunca contenido, solo
 // punteros, mismo criterio que ya se usaba para drive_token. Sin esto,
 // cada carga en frío hacía 3 idas y vueltas SECUENCIALES antes de poder
@@ -1152,6 +1160,80 @@ async function resolveSharedAlbumCover(album) {
     return firstImg.driveFileId;
   }
   return null;
+}
+
+// ─── PICKER: re-consentimiento para álbumes compartidos (v2.58) ─────────
+// El scope `drive.file` le da acceso a la app solo a archivos que la app
+// creó CON ESA CUENTA, o que la cuenta "abrió" explícitamente con un
+// diálogo nativo de Google (Picker) — compartir una carpeta por email
+// arregla el permiso real en Drive (confirmado: el invitado queda
+// `writer` de verdad), pero no le abre esa puerta al scope acotado de la
+// app para la cuenta invitada. Sin este paso, listar/leer el contenido
+// real de un álbum compartido (portadas, días, fotos) falla en silencio
+// para el invitado — ver "Funcionando bien" en CLAUDE.md para el
+// diagnóstico completo. Este bloque resuelve ese único paso pendiente:
+// mostrarle al invitado un picker de Google ya angostado a esa carpeta
+// puntual, para que la confirme una sola vez.
+let _pickerLoadPromise = null;
+function ensurePickerLoaded() {
+  if (window.google?.picker) return Promise.resolve();
+  if (_pickerLoadPromise) return _pickerLoadPromise;
+  _pickerLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => {
+      gapi.load('picker', { callback: resolve, onerror: reject });
+    };
+    script.onerror = () => reject(new Error('No se pudo cargar Google Picker'));
+    document.head.appendChild(script);
+  });
+  return _pickerLoadPromise;
+}
+
+// Abre el picker acotado a carpetas compartidas con la cuenta (no las
+// propias — no tiene sentido re-confirmar algo que ya creó ella misma),
+// pre-filtrado por nombre para que la carpeta buscada aparezca de
+// entrada. Devuelve 'granted' (confirmó la carpeta correcta), 'mismatch'
+// (eligió otra carpeta) o 'cancelled' (cerró sin elegir nada).
+async function openSharedFolderPicker(folderId, folderName) {
+  await ensurePickerLoaded();
+  return new Promise((resolve) => {
+    const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(true)
+      .setOwnedByMe(false)
+      .setMimeTypes('application/vnd.google-apps.folder');
+    if (folderName) view.setQuery(folderName);
+    const picker = new google.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(driveToken)
+      .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+      .setCallback((data) => {
+        if (data.action === google.picker.Action.PICKED) {
+          const picked = data.docs?.[0];
+          resolve(picked && picked.id === folderId ? 'granted' : 'mismatch');
+        } else if (data.action === google.picker.Action.CANCEL) {
+          resolve('cancelled');
+        }
+      })
+      .build();
+    picker.setVisible(true);
+  });
+}
+
+// Persiste que este álbum compartido ya pasó por el picker — para no
+// volver a pedirlo en cada visita. Best-effort: si falla el guardado, el
+// picker se vuelve a ofrecer la próxima vez, no rompe nada (mismo
+// criterio que el resto de esta app con escrituras no críticas).
+async function markSharedAlbumPickerGranted(folderDriveId) {
+  try {
+    const stored = await loadSharedAlbums();
+    const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
+    if (entry && !entry.pickerGranted) {
+      entry.pickerGranted = true;
+      await saveSharedAlbums(stored);
+    }
+  } catch { /* se vuelve a pedir en la próxima visita, no rompe nada */ }
 }
 
 // ─── AUTHENTICATED IMAGE URLS ────────────────────────────
