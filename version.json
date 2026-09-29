@@ -1,4 +1,4 @@
 {
-  "version": "2.58",
-  "changelog": "Los álbumes compartidos piden confirmar el acceso una vez con Google, para que las fotos se vean de verdad. Además, el día inicial de un álbum compartido ya no salta siempre a hoy."
+  "version": "2.59",
+  "changelog": "Confirmar el acceso a un álbum compartido ahora avisa de una si Drive lo sigue rechazando (con el motivo real), en vez de entrar a un álbum silenciosamente vacío."
 }

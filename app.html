@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.58';
+const APP_VERSION = '2.59';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2740,7 +2740,46 @@ async function runSharedAlbumPickerFlow(album) {
   if (result === 'granted') {
     await markSharedAlbumPickerGranted(album.folderDriveId);
     album.pickerGranted = true;
-    navigateToSharedAlbum(album);
+    // v2.59: hasta acá se navegaba directo al diario confiando en que
+    // "granted" ya implicaba acceso real — pero si el picker granted no
+    // alcanza (o el listado sigue fallando por cualquier otro motivo), el
+    // usuario entraba a un álbum vacío sin ningún error visible, exactamente
+    // el síntoma reportado ("sigue sin verse nada, sin error en consola").
+    // Se verifica ACÁ, antes de navegar, con el mismo pedido que va a hacer
+    // el diario (listDayFolders) — si falla, se muestra el motivo real de
+    // Drive en vez de un álbum silenciosamente vacío.
+    showOnboardingInfoModal({
+      title: 'Confirmando...',
+      itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Verificando el acceso a <strong>${escHtml(album.name)}</strong>...</p>`,
+      ctaLabel: 'Cerrar (sigue verificando)',
+    });
+    try {
+      const dates = await listDayFolders(album.folderDriveId);
+      closeOnboardingInfoModal();
+      navigateToSharedAlbum(album);
+      if (!dates.length) {
+        // Acceso real confirmado (no tiró error) pero el álbum no tiene
+        // ningún día todavía — distinto de "no tenemos acceso", vale la
+        // pena aclararlo para no generar la misma duda de "¿por qué no veo
+        // nada?" con otra causa.
+        showOnboardingInfoModal({
+          title: 'Acceso confirmado',
+          itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Ya podés ver este álbum — todavía no tiene ningún día con contenido cargado.</p>`,
+          ctaLabel: 'Entendido',
+        });
+      }
+    } catch (e) {
+      closeOnboardingInfoModal();
+      showOnboardingInfoModal({
+        title: 'Confirmaste el acceso, pero Drive lo sigue rechazando',
+        itemsHtml: `
+          <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">Elegiste la carpeta correcta y Google lo registró, pero al intentar leer su contenido Drive respondió con un error real (no un simple "vacío"):</p>
+          <p style="font-size:0.82rem;color:var(--red);background:var(--accent-light);padding:0.6rem 0.8rem;border-radius:8px;line-height:1.4;margin:0 0 0.9rem;word-break:break-word;">${escHtml(e.message || String(e))}</p>
+          <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Mandale este mensaje exacto a quien mantiene la app.</p>`,
+        ctaLabel: 'Reintentar',
+        onCta: () => promptSharedAlbumPickerConsent(album),
+      });
+    }
     return;
   }
   const msg = result === 'mismatch'
