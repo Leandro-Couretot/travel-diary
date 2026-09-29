@@ -1118,6 +1118,42 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
   return { alreadyJoined: false };
 }
 
+// v2.57: a diferencia de un álbum propio (donde saveCurrentDay() setea
+// coverFileId solo, la primera vez que se guarda un día con foto —
+// ver "Funcionando bien" en CLAUDE.md), un álbum compartido nunca tuvo
+// ninguna forma de conseguir portada — joinSharedAlbum() lo deja en
+// `coverFileId: null` para siempre, así que TODAS las tarjetas de
+// "Compartidos conmigo" en Home mostraban el placeholder "L" sin importar
+// cuánto contenido real tuviera el álbum (reportado por la esposa del
+// usuario apenas confirmó que unirse ya funciona bien, v2.55). Resuelve
+// una portada real escaneando los días del álbum (mismos
+// listDayFolders()/loadDayFromDrive() de siempre — el mismo mecanismo que
+// ya usan Día/Mes/Galería/Libro dentro de un álbum compartido, sin pedir
+// nada nuevo a Drive) hasta encontrar la primera foto, y la persiste en el
+// shared-albums.json PROPIO del invitado (su índice, ella sí puede
+// escribirlo) para no tener que recalcularla en cada carga de Home.
+async function resolveSharedAlbumCover(album) {
+  if (album.coverFileId) return album.coverFileId;
+  let dates;
+  try { dates = await listDayFolders(album.folderDriveId); } catch { return null; }
+  for (const dateStr of dates) {
+    let day;
+    try { day = await loadDayFromDrive(album.folderDriveId, dateStr); } catch { continue; }
+    const firstImg = (day.media || []).find(m => m.type === 'image' && m.driveFileId);
+    if (!firstImg) continue;
+    try {
+      const stored = await loadSharedAlbums();
+      const entry = stored.sharedAlbums.find(a => a.folderDriveId === album.folderDriveId);
+      if (entry && !entry.coverFileId) {
+        entry.coverFileId = firstImg.driveFileId;
+        await saveSharedAlbums(stored);
+      }
+    } catch { /* la portada igual se muestra esta vez, se reintenta en la próxima carga */ }
+    return firstImg.driveFileId;
+  }
+  return null;
+}
+
 // ─── AUTHENTICATED IMAGE URLS ────────────────────────────
 // Cache de blob URLs para no re-descargar imágenes
 const _imgCache = {};

@@ -1,4 +1,4 @@
 {
-  "version": "2.56",
-  "changelog": "El link de vuelta después de pagar en Mercado Pago ahora apunta a legadofamiliar.com.ar en vez del dominio viejo de Firebase."
+  "version": "2.57",
+  "changelog": "Los álbumes compartidos en Home ya muestran la foto real de portada, no el placeholder \"L\" de siempre."
 }
