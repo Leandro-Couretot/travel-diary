@@ -45,6 +45,20 @@ const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 // antes de tocarlo (isDescendant), para que un cliente comprometido no
 // pueda usar este proxy para leer archivos del resto del Drive de la
 // dueña.
+//
+// v2.62 — Acciones de ESCRITURA (getOrCreateFolder/uploadMedia/writeJson/
+// trashFile): mismo mecanismo, pero para que un invitado con rol de
+// EDITOR pueda subir/borrar fotos, escribir notas, grabar audio, etc. en
+// un álbum compartido — hasta acá el escritor seguía usando su propio
+// token (drive.file), que nunca puede tocar un día/archivo que no creó
+// él mismo (mismo límite de fondo que bloqueaba la lectura, dado vuelta:
+// una foto que el invitado sube bajo SU autorización nunca es visible
+// para el token de la dueña, así que el proxy de lectura nunca la
+// encontraba). La solución es la misma: el servidor escribe usando el
+// access_token de la DUEÑA, autenticando al invitado por su sesión. Un
+// rol de solo lectura (`reader`) nunca puede disparar ninguna de estas
+// 4 acciones — se re-chequea el rol real en cada pedido, igual que la
+// lectura.
 exports.sharedAlbumProxy = onRequest(
   {
     region: 'southamerica-east1',
@@ -106,8 +120,9 @@ exports.sharedAlbumProxy = onRequest(
         return;
       }
 
-      const authorized = await guestHasAccess(folderDriveId, session.email, ownerAccessToken);
-      if (!authorized) { res.status(403).json({ error: 'not_authorized' }); return; }
+      const role = await guestRole(folderDriveId, session.email, ownerAccessToken);
+      if (!role) { res.status(403).json({ error: 'not_authorized' }); return; }
+      if (WRITE_ACTIONS.has(action) && !EDITOR_ROLES.has(role)) { res.status(403).json({ error: 'read_only' }); return; }
 
       await dispatchAction(action, params || {}, folderDriveId, ownerAccessToken, res);
     } catch (e) {
@@ -121,14 +136,21 @@ async function driveFetch(url, accessToken) {
   return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 }
 
-async function guestHasAccess(folderDriveId, guestEmail, ownerAccessToken) {
+// v2.62: devuelve el rol real (`'reader'`/`'writer'`/...) en vez de solo
+// true/false — lectura sigue aceptando cualquier rol, escritura exige uno
+// de EDITOR_ROLES (chequeado en el handler principal).
+const EDITOR_ROLES = new Set(['owner', 'organizer', 'fileOrganizer', 'writer']);
+const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'writeJson', 'trashFile']);
+
+async function guestRole(folderDriveId, guestEmail, ownerAccessToken) {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=trashed,permissions(emailAddress,role)`, ownerAccessToken);
-  if (!res.ok) return false;
+  if (!res.ok) return null;
   const data = await res.json();
-  if (data.trashed) return false;
+  if (data.trashed) return null;
   const perms = data.permissions || [];
   const target = guestEmail.toLowerCase();
-  return perms.some(p => (p.emailAddress || '').toLowerCase() === target);
+  const match = perms.find(p => (p.emailAddress || '').toLowerCase() === target);
+  return match ? match.role : null;
 }
 
 // Confirma que `id` es folderDriveId en sí, o un descendiente real —
@@ -214,5 +236,105 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     return;
   }
 
+  // ── Escritura (v2.62, ver el comentario grande al principio del archivo) ──
+
+  if (action === 'getOrCreateFolder') {
+    const { parentId, name } = params;
+    if (!parentId || !name || !(await isDescendant(parentId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const existing = await driveFindByName(parentId, name, ownerAccessToken);
+    if (existing) { res.status(200).json({ id: existing }); return; }
+    const cr = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ownerAccessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+    });
+    if (!cr.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(cr) }); return; }
+    const folder = await cr.json();
+    res.status(200).json({ id: folder.id });
+    return;
+  }
+
+  if (action === 'uploadMedia') {
+    const { parentId, name, mimeType, dataBase64, existingId, description } = params;
+    if (!name || !dataBase64) { res.status(400).json({ error: 'bad_request' }); return; }
+    const targetOk = existingId
+      ? await isDescendant(existingId, folderDriveId, ownerAccessToken)
+      : (parentId && await isDescendant(parentId, folderDriveId, ownerAccessToken));
+    if (!targetOk) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const buf = Buffer.from(dataBase64, 'base64');
+    const ur = await driveUploadMultipart(existingId, name, parentId, description, buf, mimeType, ownerAccessToken);
+    if (!ur.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(ur) }); return; }
+    const file = await ur.json();
+    res.status(200).json({ id: file.id });
+    return;
+  }
+
+  if (action === 'writeJson') {
+    const { parentId, newName, oldNames, content, description } = params;
+    if (!parentId || !newName || content === undefined || !(await isDescendant(parentId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    let existingId = await driveFindByName(parentId, newName, ownerAccessToken);
+    if (!existingId) {
+      for (const oldName of (Array.isArray(oldNames) ? oldNames : (oldNames ? [oldNames] : []))) {
+        existingId = await driveFindByName(parentId, oldName, ownerAccessToken);
+        if (existingId) break;
+      }
+    }
+    const buf = Buffer.from(JSON.stringify(content, null, 2), 'utf8');
+    const ur = await driveUploadMultipart(existingId, newName, parentId, description, buf, 'application/json', ownerAccessToken);
+    if (!ur.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(ur) }); return; }
+    const file = await ur.json();
+    res.status(200).json({ id: file.id });
+    return;
+  }
+
+  if (action === 'trashFile') {
+    const fileId = params.fileId;
+    if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const pr = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${ownerAccessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed: true }),
+    });
+    if (!pr.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(pr) }); return; }
+    res.status(200).json({ ok: true });
+    return;
+  }
+
   res.status(400).json({ error: 'unknown_action' });
+}
+
+// Mismo find-by-name (un solo nombre) que ya usaba la acción
+// `findFileByName` de lectura para cada nombre de su lista — extraído acá
+// para reusarlo también en `getOrCreateFolder`/`writeJson`, que necesitan
+// resolver un id existente antes de decidir crear vs. actualizar.
+async function driveFindByName(parentId, name, ownerAccessToken) {
+  const q = `name='${String(name).replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false`;
+  const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, ownerAccessToken);
+  if (!dr.ok) return null;
+  const data = await dr.json();
+  return data.files && data.files.length ? data.files[0].id : null;
+}
+
+// Multipart upload/update genérico (nuevo archivo si `existingId` es
+// falsy, PATCH de contenido si no) — mismo formato que uploadFile() del
+// lado del cliente (drive.js), reusado tanto para media real
+// (uploadMedia) como para JSON (writeJson).
+async function driveUploadMultipart(existingId, name, parentId, description, buf, mimeType, ownerAccessToken) {
+  const meta = { name };
+  if (description) meta.description = description;
+  if (!existingId) meta.parents = [parentId];
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+  form.append('file', new Blob([buf], { type: mimeType || 'application/octet-stream' }));
+  const url = existingId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  return fetch(url, { method: existingId ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${ownerAccessToken}` }, body: form });
+}
+
+// Reenvía el error real de Drive (útil para que el cliente pueda detectar
+// cuota excedida igual que con un pedido directo — ver _isQuotaExceeded()
+// en drive.js) — nunca tira si el cuerpo no es JSON parseable.
+async function driveErrorDetail(res) {
+  try { return (await res.clone().json()).error || null; } catch { return null; }
 }

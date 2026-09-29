@@ -1,4 +1,4 @@
 {
-  "version": "2.61",
-  "changelog": "Los álbumes compartidos ahora se leen del lado del servidor (con permiso real de quien los creó) — se acabó el paso del selector de Google, y las fotos del día, la galería y el calendario ya deberían verse de verdad."
+  "version": "2.62",
+  "changelog": "Álbumes compartidos: los invitados con permiso de editor ya pueden subir/borrar fotos, escribir notas y grabar audio — y el aviso de \"Confirmando...\" al entrar deja de ser invasivo."
 }

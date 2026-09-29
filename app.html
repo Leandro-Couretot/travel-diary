@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.61';
+const APP_VERSION = '2.62';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2720,23 +2720,33 @@ function navigateToSharedAlbum(album) {
 // contenido de una carpeta compartida, ni siquiera con el Picker" en
 // CLAUDE.md). La solución real: el servidor lee el contenido con el
 // access_token de la DUEÑA del álbum (shared-album-proxy.js), autenticando
-// al invitado por su propia sesión — nunca por su token de Drive. Con esto,
-// el invitado ya no necesita "abrir" nada en Google antes de entrar — se
-// verifica el acceso real (vía el proxy) y se navega directo.
+// al invitado por su propia sesión — nunca por su token de Drive.
+//
+// v2.62: se saca el modal "Confirmando..." que se mostraba SIEMPRE antes de
+// entrar — el usuario lo reportó como invasivo, y de hecho era redundante:
+// el pedido que hacía (`listDayFolders(..., true)`) es el MISMO que
+// `bootstrapDiaryPage()`/`resolveStartDate()` ya iban a disparar al entrar
+// al diario, no un paso de seguridad aparte (la seguridad real la sigue
+// aplicando el servidor en cada pedido, se muestre o no este chequeo).
+// Ahora se navega directo (mismo criterio que un álbum propio — "el acceso
+// ya se valida cuando el usuario toca para abrir el álbum", sin un paso
+// manual extra) y la verificación corre en paralelo, sin bloquear nada —
+// solo interrumpe con un modal si de verdad hay un problema real que
+// contar (nunca en el camino feliz, que es la enorme mayoría de las veces).
 function openSharedAlbumDiary(album) {
-  verifyAndEnterSharedAlbum(album);
+  navigateToSharedAlbum(album);
+  verifySharedAlbumAccess(album);
 }
-async function verifyAndEnterSharedAlbum(album) {
-  showOnboardingInfoModal({
-    title: 'Confirmando...',
-    itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Verificando el acceso a <strong>${escHtml(album.name)}</strong>...</p>`,
-    ctaLabel: 'Cerrar (sigue verificando)',
-  });
+// `stillOnThisAlbum()` evita que un error/aviso tardío de una verificación
+// vieja aparezca encima de una pantalla distinta si el usuario ya navegó
+// a otro lado mientras esto resolvía (volvió a Home, entró a otro álbum).
+function stillOnThisAlbum(album) {
+  return currentView === 'diary' && isSharedAlbum && albumFolderId === album.folderDriveId;
+}
+async function verifySharedAlbumAccess(album) {
   try {
     const dates = await listDayFolders(album.folderDriveId, true);
-    closeOnboardingInfoModal();
-    navigateToSharedAlbum(album);
-    if (!dates.length) {
+    if (!dates.length && stillOnThisAlbum(album)) {
       // Acceso real confirmado (no tiró error) pero el álbum no tiene
       // ningún día todavía — distinto de "no tenemos acceso", vale la
       // pena aclararlo para no generar la misma duda de "¿por qué no veo
@@ -2748,7 +2758,7 @@ async function verifyAndEnterSharedAlbum(album) {
       });
     }
   } catch (e) {
-    closeOnboardingInfoModal();
+    if (!stillOnThisAlbum(album)) return;
     showOnboardingInfoModal({
       title: 'No se pudo acceder a este álbum',
       itemsHtml: `
@@ -2756,7 +2766,7 @@ async function verifyAndEnterSharedAlbum(album) {
         <p style="font-size:0.82rem;color:var(--red);background:var(--accent-light);padding:0.6rem 0.8rem;border-radius:8px;line-height:1.4;margin:0 0 0.9rem;word-break:break-word;">${escHtml(e.message || String(e))}</p>
         <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Mandale este mensaje exacto a quien mantiene la app.</p>`,
       ctaLabel: 'Reintentar',
-      onCta: () => verifyAndEnterSharedAlbum(album),
+      onCta: () => verifySharedAlbumAccess(album),
     });
   }
 }
@@ -3254,14 +3264,20 @@ function renderBulkReview() {
 const BULK_UPLOAD_CONCURRENCY = 5;
 let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
 
-async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess) {
+// v2.62: `proxyAlbumId` opcional (último parámetro) — carga masiva dentro
+// de un álbum compartido donde el invitado es editor (ver confirmBulkDiary())
+// pasa `albumFolderId` acá para que TODO (carpeta del día, subida, day.json)
+// pase por el proxy con el token de la dueña. La carga masiva desde Home
+// (confirmBulkUpload()) nunca lo pasa — ahí solo se gestionan álbumes
+// propios, nunca compartidos.
+async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess, proxyAlbumId = null) {
   // Aviso mientras dura la subida — minimizar la app o bloquear el
   // celular puede cortarla a mitad de camino (ver ERROR_HANDLING_PLAN.md).
   const hintEl = document.getElementById(progressEl.id.replace('-progress', '-upload-hint'));
   if (hintEl) hintEl.style.display = '';
   const dates = Object.keys(groupsByDate).sort();
   const dayFolderIds = {};
-  for (const date of dates) dayFolderIds[date] = await getOrCreateFolder(date, albumFolderId);
+  for (const date of dates) dayFolderIds[date] = await getOrCreateFolder(date, albumFolderId, proxyAlbumId);
 
   const tasks = [];
   dates.forEach(date => groupsByDate[date].forEach(file => tasks.push({ date, file })));
@@ -3277,7 +3293,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
     const isImg = file.type.startsWith('image/');
     let blob = file;
     if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
-    const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION);
+    const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
     if (!newMediaByDate[date]) newMediaByDate[date] = [];
     newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
     done++; progressEl.textContent = `Subiendo... ${done}/${total}`;
@@ -3288,9 +3304,9 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
   if (failedTasks.length) trackEvent('error', { context: 'bulk_upload', message: quotaExceeded ? 'quota_exceeded' : 'upload_failed', failed_count: failedTasks.length });
 
   for (const date of Object.keys(newMediaByDate)) {
-    const day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
+    const day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId) || { title: '', notes: '', media: [] };
     day.media.push(...newMediaByDate[date]);
-    await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media });
+    await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
     invalidateDayCache(albumFolderId, date);
   }
 
@@ -3301,7 +3317,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
       : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
     progressEl.innerHTML = `${icon('warning')} ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
-    bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess };
+    bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess, proxyAlbumId };
   } else {
     progressEl.textContent = `✓ ${total} archivo${total > 1 ? 's' : ''} guardado${total > 1 ? 's' : ''} correctamente`;
     progressEl.className = 'bulk-progress';
@@ -3313,11 +3329,11 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess)
 
 function retryFailedBulkUpload() {
   if (!bulkRetryCtx) return;
-  const { albumFolderId, tasks, progressEl, onSuccess } = bulkRetryCtx;
+  const { albumFolderId, tasks, progressEl, onSuccess, proxyAlbumId } = bulkRetryCtx;
   const groups = {};
   tasks.forEach(({ date, file }) => { if (!groups[date]) groups[date] = []; groups[date].push(file); });
   progressEl.className = 'bulk-progress';
-  runBulkUpload(albumFolderId, groups, progressEl, onSuccess).catch(e => {
+  runBulkUpload(albumFolderId, groups, progressEl, onSuccess, proxyAlbumId).catch(e => {
     progressEl.textContent = 'Error: ' + e.message; progressEl.className = 'bulk-progress error';
   });
 }
@@ -3779,14 +3795,24 @@ async function saveCurrentDay() {
   if (saveStatusHideTimer) { clearTimeout(saveStatusHideTimer); saveStatusHideTimer = null; }
   setStatus('', 'Guardando...');
   try {
-    currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay, currentDayOriginalIds);
+    // v2.62: en un álbum compartido con permiso de editor, se guarda con
+    // el token de la DUEÑA vía el proxy (isSharedAlbum ? albumFolderId :
+    // null) — el token propio del invitado nunca puede tocar un día que
+    // no creó él mismo, ver "ESCRITURA VÍA PROXY" en drive.js.
+    currentDay = await saveDayToDrive(albumFolderId, currentDate, currentDay, currentDayOriginalIds, isSharedAlbum ? albumFolderId : null);
     currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
     await syncAudioUsageAfterSave();
     // photo_count cuenta todos los tipos de media del día (fotos/videos/
     // audios), no solo fotos — se mantiene ese nombre porque así lo definió
     // ANALYTICS_PLAN.md, pero el conteo real es de todo el media[].
     trackEvent('day_saved', { photo_count: currentDay.media.length, has_title: !!currentDay.title, has_notes: !!currentDay.notes });
-    if (albumMeta && !albumMeta.coverFileId) {
+    // La portada "oficial" del álbum vive en el albums.json del DUEÑO —
+    // un invitado (aunque sea editor) nunca tiene ese archivo en el suyo
+    // propio, updateAlbumMeta() tiraría "Álbum no encontrado" acá. La
+    // portada de un álbum compartido se resuelve aparte, de forma lazy,
+    // en resolveSharedAlbumCover() (drive.js) — este mecanismo es solo
+    // para álbumes propios.
+    if (!isSharedAlbum && albumMeta && !albumMeta.coverFileId) {
       const firstImg = currentDay.media.find(m => m.type === 'image' && m.driveFileId);
       if (firstImg) albumMeta = await updateAlbumMeta(albumId, { coverFileId: firstImg.driveFileId });
     }
@@ -3866,7 +3892,10 @@ function renderMedia() {
     const captionAttrs = albumCanEdit ? '' : 'readonly';
 
     if (item.type === 'image') {
-      const coverBtn = albumCanEdit ? `<button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? 'Portada' : 'Establecer portada'}">${isCover ? '★' : '☆'}</button>` : '';
+      // v2.62: "★ portada" no se ofrece en un álbum compartido — la
+      // portada oficial vive en el albums.json del dueño, que un
+      // invitado (aunque sea editor) nunca tiene forma de escribir.
+      const coverBtn = (albumCanEdit && !isSharedAlbum) ? `<button class="media-set-cover ${isCover ? 'is-cover' : ''}" data-idx="${idx}" title="${isCover ? 'Portada' : 'Establecer portada'}">${isCover ? '★' : '☆'}</button>` : '';
       card.innerHTML = `
         ${dragHandle}
         <div class="selection-check">✓</div>
@@ -4003,22 +4032,29 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
   // aviso, quedando duplicada con dos driveFileId distintos (ver CLAUDE.md,
   // fotos duplicadas). Mismo criterio acá: se omite en silencio (no hay UI
   // de revisión por archivo en este flujo) y se avisa el total al final.
+  // v2.62: mismo criterio de proxy que saveCurrentDay()/runBulkUpload() —
+  // álbum compartido con permiso de editor lee/escribe con el token de la
+  // dueña. `loadDayFromDrive` acá tenía además un bug de fondo real
+  // (encontrado al wirear esto): nunca pasaba `isSharedAlbum` como
+  // `viaProxy`, así que esta ruta ya fallaba en silencio para álbumes
+  // compartidos incluso antes de que existiera la escritura vía proxy.
+  const proxyAlbumId = isSharedAlbum ? albumFolderId : null;
   let skippedCount = 0;
   for (const date of Object.keys(grouped.dated).sort()) {
     const files = grouped.dated[date];
-    let day = await loadDayFromDrive(albumFolderId, date) || { title: '', notes: '', media: [] };
-    const dayFolderId = await getOrCreateFolder(date, albumFolderId);
+    let day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum) || { title: '', notes: '', media: [] };
+    const dayFolderId = await getOrCreateFolder(date, albumFolderId, proxyAlbumId);
     const existingNames = new Set(day.media.map(m => stripMediaNamePrefix(m.name)));
     for (const file of files) {
       if (existingNames.has(file.name)) { skippedCount++; continue; }
       const isImg = file.type.startsWith('image/');
       let blob = file;
       if (isImg) { const data = await compressImage(file); blob = base64ToBlob(data); }
-      const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION);
+      const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
       day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
       existingNames.add(file.name);
     }
-    await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media });
+    await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
     invalidateDayCache(albumFolderId, date);
   }
   const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
@@ -6067,6 +6103,8 @@ async function confirmBulkDiary() {
     // y las fotos nuevas aparecen en "Sin ubicar", que es lo que tiene
     // sentido ahí (el Libro no tiene notas de día que escribir).
     const lastDate = Object.keys(allGroups).sort().pop();
+    // v2.62: álbum compartido con permiso de editor → sube con el token
+    // de la dueña vía el proxy, mismo criterio que saveCurrentDay().
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
       setTimeout(() => {
         closeBulkDiary();
@@ -6079,7 +6117,7 @@ async function confirmBulkDiary() {
         if (bulkDiaryOriginTab === 'book') { switchTab('book'); }
         else { switchTab('day'); loadDay(lastDate); }
       }, 1500);
-    });
+    }, isSharedAlbum ? albumFolderId : null);
   } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
   btn.disabled = false;
 }
@@ -6631,15 +6669,18 @@ async function deleteSelectedGallery() {
     { title: 'Eliminar fotos', confirmLabel: 'Eliminar' }
   );
   if (!ok) return;
+  // v2.62: `loadDayFromDrive` acá nunca pasaba `isSharedAlbum` — bug de
+  // fondo real (esta ruta ya fallaba en silencio para álbumes compartidos)
+  // encontrado al wirear la escritura vía proxy para invitados editores.
   const byDate = new Map();
   items.forEach(p => { if (!byDate.has(p.date)) byDate.set(p.date, []); byDate.get(p.date).push(p.driveFileId); });
   for (const [date, ids] of byDate) {
     try {
-      const day = await loadDayFromDrive(albumFolderId, date);
+      const day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum);
       if (!day) continue;
       const previousIds = day.media.filter(m => m.driveFileId).map(m => m.driveFileId);
       day.media = day.media.filter(m => !ids.includes(m.driveFileId));
-      await saveDayToDrive(albumFolderId, date, day, previousIds);
+      await saveDayToDrive(albumFolderId, date, day, previousIds, isSharedAlbum ? albumFolderId : null);
       if (date === currentDate) currentDay.media = currentDay.media.filter(m => !ids.includes(m.driveFileId));
     } catch (e) { console.warn('No se pudo eliminar fotos del día', date, e); }
   }

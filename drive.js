@@ -207,7 +207,14 @@ async function driveReq(method, url, body) {
 }
 
 // ─── FOLDER HELPERS ──────────────────────────────────────
-async function getOrCreateFolder(name, parentId) {
+// v2.62: `proxyAlbumId` opcional — mismo criterio que listDayFolders()/
+// setAuthImg() (ver "ESCRITURA VÍA PROXY" más abajo): cuando se pasa
+// (álbum compartido donde el invitado es editor), delega en
+// getOrCreateFolderViaProxy() en vez de crear/buscar la carpeta con el
+// token propio del invitado (que nunca puede tocar un día que no creó
+// él mismo). Sin este parámetro, comportamiento idéntico al de siempre.
+async function getOrCreateFolder(name, parentId, proxyAlbumId = null) {
+  if (proxyAlbumId) return await getOrCreateFolderViaProxy(name, parentId, proxyAlbumId);
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
   const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
   const data = await res.json();
@@ -309,7 +316,11 @@ async function listDayFolders(albumFolderId, viaProxy = false) {
 }
 
 // ─── FILE HELPERS ────────────────────────────────────────
-async function uploadFile(blob, name, folderId, existingId = null, description = null) {
+// v2.62: `proxyAlbumId` opcional, mismo criterio de arriba — sube el
+// archivo con el token de la DUEÑA del álbum vía el proxy en vez del
+// token del invitado.
+async function uploadFile(blob, name, folderId, existingId = null, description = null, proxyAlbumId = null) {
+  if (proxyAlbumId) return await uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId);
   const meta = { name };
   if (description) meta.description = description;
   if (!existingId) meta.parents = [folderId];
@@ -424,7 +435,11 @@ async function findFileInFolderMigrating(newName, oldNames, folderId) {
 // viejos (probados en orden), lo actualiza Y renombra en el mismo
 // pedido (uploadFile hace PATCH del name además del contenido); si no
 // existe ninguno, crea uno nuevo.
-async function writeJsonFileMigrating(obj, newName, oldNames, folderId, description) {
+// v2.62: `proxyAlbumId` opcional — delega en writeJsonFileMigratingViaProxy(),
+// que hace la misma resolución de nombre nuevo/viejo pero del lado del
+// servidor (con el token de la dueña).
+async function writeJsonFileMigrating(obj, newName, oldNames, folderId, description, proxyAlbumId = null) {
+  if (proxyAlbumId) return await writeJsonFileMigratingViaProxy(obj, newName, oldNames, folderId, description, proxyAlbumId);
   let existingId = await findFileInFolder(newName, folderId);
   if (!existingId) {
     for (const oldName of (Array.isArray(oldNames) ? oldNames : [oldNames])) {
@@ -456,8 +471,8 @@ const DAY_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado. Borrarlo 
 async function findDayJsonId(dayFolderId, dateStr) {
   return await findFileInFolderMigrating(dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId);
 }
-async function saveDayJson(dayFolderId, dateStr, dayJson) {
-  return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId, DAY_JSON_DESCRIPTION);
+async function saveDayJson(dayFolderId, dateStr, dayJson, proxyAlbumId = null) {
+  return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId, DAY_JSON_DESCRIPTION, proxyAlbumId);
 }
 
 const MEDIA_KIND_LABELS = { image: 'foto', video: 'video', audio: 'audio' };
@@ -866,9 +881,16 @@ function dedupeMediaByDriveFileId(media) {
   });
 }
 
-async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
+// v2.62: `proxyAlbumId` opcional (último parámetro, mismo criterio que
+// `viaProxy` en loadDayFromDrive()) — un álbum compartido donde el
+// invitado es editor pasa `albumFolderId` acá para que TODO lo que esta
+// función toca (carpeta del día, subida de media, papelera, day.json)
+// pase por el proxy con el token de la dueña, en vez del token del
+// invitado (que nunca puede tocar un día que no creó él mismo). Sin este
+// parámetro, comportamiento 100% idéntico al de siempre.
+async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null, proxyAlbumId = null) {
   if (!albumFolderId) throw new Error('albumFolderId no disponible — esperá a que Drive termine de cargar');
-  const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId);
+  const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId, proxyAlbumId);
   // Si un archivo falla (cuota excedida, se minimizó la app a mitad de
   // subida, etc.) no se aborta todo el guardado — se sigue con el resto
   // y al final se persiste igual lo que sí llegó a Drive (mismo criterio
@@ -886,7 +908,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
         continue; // blob URL or no data — skip
       }
       try {
-        item.driveFileId = await uploadFile(blob, mediaFileName(item.type, item.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION);
+        item.driveFileId = await uploadFile(blob, mediaFileName(item.type, item.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
         if (item._file) {
           // Replace blob URL with Drive thumbnail reference, free memory
           URL.revokeObjectURL(item.data);
@@ -902,7 +924,10 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
     const currentIds = new Set(day.media.filter(m => m.driveFileId).map(m => m.driveFileId));
     const removedIds = [...previousIds].filter(id => !currentIds.has(id));
     for (const id of removedIds) {
-      try { await driveReq('PATCH', `https://www.googleapis.com/drive/v3/files/${id}`, { trashed: true }); }
+      try {
+        if (proxyAlbumId) await trashFileViaProxy(id, proxyAlbumId);
+        else await driveReq('PATCH', `https://www.googleapis.com/drive/v3/files/${id}`, { trashed: true });
+      }
       catch (e) { console.warn('No se pudo mover a la papelera:', id, e); }
     }
   }
@@ -920,7 +945,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null) {
       caption: m.caption || ''
     }))
   };
-  await saveDayJson(dayFolderId, dateStr, dayJson);
+  await saveDayJson(dayFolderId, dateStr, dayJson, proxyAlbumId);
   _dayCache[_dayKey(albumFolderId, dateStr)] = { folderId: dayFolderId, json: { title: dayJson.title, notes: dayJson.notes, media: dayJson.media } };
   if (failedItems.length) {
     const isQuota = failedItems.some(e => e instanceof DriveQuotaExceededError);
@@ -1207,6 +1232,80 @@ async function sharedAlbumProxyCall(folderDriveId, action, params) {
     body: JSON.stringify({ folderDriveId, action, params: params || {} }),
   });
   return res;
+}
+
+// ─── ESCRITURA VÍA PROXY (v2.62) ─────────────────────────
+// Mismas acciones de escritura del lado del servidor (getOrCreateFolder/
+// uploadMedia/writeJson/trashFile en shared-album-proxy.js), para que un
+// invitado con rol de editor pueda subir/borrar fotos, escribir notas,
+// grabar audio, etc. en un álbum compartido — ver el comentario grande al
+// principio de shared-album-proxy.js para el porqué (mismo límite de
+// drive.file que bloqueaba la lectura, dado vuelta: una foto que el
+// invitado sube bajo SU token nunca queda visible para el token de la
+// dueña, que es el que usa el proxy de lectura).
+
+// Helper de errores del proxy — la forma de la respuesta es
+// {error: 'código', detail?: {...}} en vez del {error:{message,...}} que
+// devuelve Drive directo, así que `detail` (cuando viene) es justo ese
+// shape de Drive — se lo puede pasar tal cual a _isQuotaExceeded().
+async function _proxyErrorBody(res) {
+  try { return await res.clone().json(); } catch { return null; }
+}
+function _proxyErrorMessage(code) {
+  const map = {
+    not_authorized: 'Ya no tenés acceso a este álbum compartido — puede que te hayan sacado el permiso.',
+    read_only: 'No podés hacer cambios en este álbum — tu acceso ahí es solo de lectura.',
+    owner_not_migrated: 'Quien creó este álbum todavía no activó el acceso nuevo a Drive — pedile que vuelva a conectar Drive desde la app.',
+    owner_token_invalid: 'Quien creó este álbum le sacó el acceso a la app desde su cuenta de Google — pedile que reconecte Drive.',
+    not_shared: 'Este álbum ya no aparece como compartido.',
+    drive_error: 'Drive no pudo completar la operación. Probá de nuevo.',
+    bad_request: 'Pedido inválido.',
+  };
+  return map[code] || 'No se pudo completar la operación en este álbum compartido.';
+}
+// Convierte un Blob/File a base64 — el proxy recibe el archivo dentro del
+// body JSON (nunca FormData, la Cloud Function lo decodifica del lado del
+// servidor) porque el pedido en sí ya va autenticado con el JWT de sesión
+// del invitado + App Check, mismo formato que el resto de sharedAlbumProxyCall().
+// Se arma en chunks para no reventar el límite de argumentos de
+// String.fromCharCode con archivos grandes.
+async function _blobToBase64(blob) {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+async function _proxyWriteThrow(res, fallbackMsg) {
+  const body = await _proxyErrorBody(res);
+  if (_isQuotaExceeded(body?.detail)) throw new DriveQuotaExceededError();
+  throw new Error(body?.error ? _proxyErrorMessage(body.error) : fallbackMsg);
+}
+async function getOrCreateFolderViaProxy(name, parentId, proxyAlbumId) {
+  const res = await sharedAlbumProxyCall(proxyAlbumId, 'getOrCreateFolder', { name, parentId });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo crear la carpeta del día');
+  return (await res.json()).id;
+}
+async function uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId) {
+  const dataBase64 = await _blobToBase64(blob);
+  const res = await sharedAlbumProxyCall(proxyAlbumId, 'uploadMedia', {
+    parentId: folderId, name, mimeType: blob.type || 'application/octet-stream',
+    dataBase64, existingId: existingId || undefined, description,
+  });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo subir el archivo a Drive');
+  return (await res.json()).id;
+}
+async function writeJsonFileMigratingViaProxy(obj, newName, oldNames, folderId, description, proxyAlbumId) {
+  const res = await sharedAlbumProxyCall(proxyAlbumId, 'writeJson', { parentId: folderId, newName, oldNames, content: obj, description });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo guardar en Drive');
+  return (await res.json()).id;
+}
+async function trashFileViaProxy(fileId, proxyAlbumId) {
+  const res = await sharedAlbumProxyCall(proxyAlbumId, 'trashFile', { fileId });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo mover el archivo a la papelera');
 }
 
 // Mismo criterio y misma forma que listDayFolders() (incluida la escritura
