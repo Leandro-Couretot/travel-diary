@@ -1,4 +1,4 @@
 {
-  "version": "2.67",
-  "changelog": "Álbumes compartidos: un invitado editor ya puede editar el álbum, invitar a más gente y cargar fotos masivas desde Home — el menú \"···\" de la card se adapta solo a su rol real."
+  "version": "2.68",
+  "changelog": "Fotolibro personal en álbumes compartidos: cualquier invitado — editor o solo lector — puede armar su propio libro con las fotos del álbum, guardado en su propio Drive."
 }

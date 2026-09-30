@@ -371,13 +371,29 @@ async function fetchFileAsDataUrl(fileId, proxyFolderId = null) {
 // (nunca tira) si la metadata no está disponible por el motivo que sea —
 // el llamador trata una foto "no chequeable" como que no amerita aviso,
 // nunca como un error que corte el resto del chequeo.
-async function getImageDimensions(fileId) {
+async function getImageDimensions(fileId, proxyFolderId = null) {
+  if (proxyFolderId) return getImageDimensionsViaProxy(fileId, proxyFolderId);
   try {
     const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=imageMediaMetadata(width,height)`);
     if (!res.ok) return null;
     const data = await res.json();
     const meta = data.imageMediaMetadata;
     if (meta && meta.width > 0 && meta.height > 0) return { width: meta.width, height: meta.height };
+  } catch {}
+  return null;
+}
+
+// v2.68: mismo chequeo, para una foto de un álbum compartido — el
+// fotolibro PERSONAL de un invitado necesita saber la resolución real de
+// cada foto (aviso de calidad antes de exportar, ver
+// checkBookExportResolution() en app.html) sin poder leer su metadata
+// con el token propio (mismo límite de drive.file de siempre).
+async function getImageDimensionsViaProxy(fileId, proxyFolderId) {
+  try {
+    const res = await sharedAlbumProxyCall(proxyFolderId, 'getImageMeta', { fileId });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.width > 0 && data.height > 0) return { width: data.width, height: data.height };
   } catch {}
   return null;
 }
@@ -859,6 +875,44 @@ async function saveBookLayout(albumFolderId, { pages, drawer, pageSize, framing 
   // concreto (nunca null) del que sale su capacidad — `images` es un
   // array de ese largo fijo, con `null` en los huecos vacíos.
   await writeJsonFileMigrating({ version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
+}
+
+// v2.68 — Fotolibro PERSONAL por invitado (ver CLAUDE.md → "Fotolibro
+// personal por invitado"): a diferencia de un álbum propio (un único
+// book.json, compartido por quien sea que lo edite, porque solo la dueña
+// edita su propio álbum), un álbum COMPARTIDO puede tener un invitado
+// distinto armando SU PROPIO libro con las mismas fotos — cada uno ve su
+// propio recorte/orden, sin pisar el de los demás. Decidido explícitamente
+// con el usuario: se guarda en el Drive PROPIO del invitado (nunca en el
+// de la dueña, ni en un archivo único compartido dentro de la carpeta del
+// álbum) — el lugar más simple y ya existente para "contenido compartido,
+// ajuste personal" es la propia entrada de ESE álbum en
+// shared-albums.json (mismo criterio que `coverOverrideFileId`, v2.64):
+// se suma un campo `book` con la misma forma que guarda `saveBookLayout()`
+// para un álbum propio (`{version,pages,drawer,pageSize,framing}`), sin
+// tocar ningún otro campo de la entrada (name/dateFrom/dateTo/etc.).
+// Cualquier invitado aceptado —viewer o editor— puede armar y guardar su
+// propio libro: no es una edición del álbum en sí (nunca escribe nada en
+// Drive de la dueña ni en el day.json real), es un archivo 100% propio.
+async function loadSharedBookLayout(folderDriveId) {
+  const stored = await loadSharedAlbums();
+  const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
+  const raw = entry && entry.book;
+  if (!raw || !Array.isArray(raw.pages)) return null;
+  return {
+    pages: raw.pages,
+    drawer: Array.isArray(raw.drawer) ? raw.drawer : [],
+    pageSize: normalizeBookPageSize(raw.pageSize),
+    framing: normalizeBookFraming(raw.framing),
+  };
+}
+
+async function saveSharedBookLayout(folderDriveId, { pages, drawer, pageSize, framing }) {
+  const stored = await loadSharedAlbums();
+  const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
+  if (!entry) throw new Error('Álbum compartido no encontrado');
+  entry.book = { version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing) };
+  await saveSharedAlbums(stored);
 }
 
 // ─── DAY OPERATIONS ──────────────────────────────────────
@@ -1507,7 +1561,8 @@ async function getAuthImgUrl(fileId, size = 'w800') {
   }
 }
 
-async function fetchAuthImgUrl(fileId) {
+async function fetchAuthImgUrl(fileId, proxyFolderId = null) {
+  if (proxyFolderId) return fetchAuthImgUrlViaProxy(proxyFolderId, fileId);
   const cacheKey = `auth_${fileId}`;
   if (_imgCache[cacheKey]) return _imgCache[cacheKey];
   try {

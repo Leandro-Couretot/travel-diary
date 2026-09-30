@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.67';
+const APP_VERSION = '2.68';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3648,6 +3648,13 @@ let diaryTargetDate = null;
 let sharedAlbumDateFrom = null;
 let sharedAlbumDateTo   = null;
 let albumCanEdit  = true;
+// v2.68: separado de albumCanEdit — el fotolibro PERSONAL de un invitado
+// (ver "Fotolibro personal por invitado" en CLAUDE.md) se puede armar
+// aunque el invitado sea solo VIEWER del álbum en sí; es su propio
+// archivo, en su propio Drive, nunca una edición del álbum compartido.
+// Para un álbum propio sigue siendo lo mismo que albumCanEdit (que ahí
+// siempre es true).
+let bookCanEdit   = true;
 let currentDate   = localDateStr();
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
@@ -3685,14 +3692,19 @@ let bookImgObserver = null;
 const EAGER_BOOK_PAGES = 3;         // páginas cuyas fotos piden ya mismo
 const EAGER_BOOK_DRAWER_COUNT = 8;  // fotos del drawer ("Sin ubicar") que piden ya mismo
 
-function scheduleBookImgLoad(imgEl, fileId, size, eagerIdx, eagerLimit) {
+function scheduleBookImgLoad(imgEl, fileId, size, eagerIdx, eagerLimit, proxyFolderId) {
   // `bookLoadAttempted` marca qué <img> realmente disparó un pedido a Drive
   // (a diferencia de uno lazy que todavía espera entrar en pantalla) — lo
   // usa `scheduleBookGridWatchdog()` (v2.25) para no confundir "todavía no
   // le tocó cargar" con "cargó y falló".
-  if (eagerIdx < eagerLimit) { imgEl.dataset.bookLoadAttempted = '1'; setAuthImg(imgEl, fileId, size); return; }
+  if (eagerIdx < eagerLimit) { imgEl.dataset.bookLoadAttempted = '1'; setAuthImg(imgEl, fileId, size, proxyFolderId); return; }
   imgEl.dataset.bookFileId = fileId;
   imgEl.dataset.bookSize = size;
+  // v2.68: guardado en el dataset (no hay forma de "cerrar" sobre
+  // proxyFolderId desde acá — el observer es compartido por todas las
+  // fotos, sean de un álbum propio o compartido) para que el callback de
+  // resetBookImgObserver() lo lea recién cuando la foto entra en pantalla.
+  if (proxyFolderId) imgEl.dataset.bookProxyFolderId = proxyFolderId;
   bookImgObserver.observe(imgEl);
 }
 
@@ -3708,7 +3720,7 @@ function resetBookImgObserver() {
       if (!entry.isIntersecting) return;
       obs.unobserve(entry.target);
       entry.target.dataset.bookLoadAttempted = '1';
-      setAuthImg(entry.target, entry.target.dataset.bookFileId, entry.target.dataset.bookSize);
+      setAuthImg(entry.target, entry.target.dataset.bookFileId, entry.target.dataset.bookSize, entry.target.dataset.bookProxyFolderId || null);
     });
   }, { rootMargin: '300px 300px' });
 }
@@ -3865,6 +3877,7 @@ async function bootstrapDiaryPage() {
       albumMeta = { name: null, dateFrom: sharedAlbumDateFrom, dateTo: sharedAlbumDateTo, coverFileId: coverOverride };
       albumCanEdit = await canEditFolder(albumFolderId);
     }
+    bookCanEdit = isSharedAlbum ? true : albumCanEdit;
     // Lectura rápida (un GET), sin importar el plan ni si el álbum es de
     // solo lectura: un usuario Pro no consulta el gate, pero igual
     // necesitamos que el contador esté al día para el día en que baje a
@@ -4477,6 +4490,19 @@ function renderCalendarMonth(wrap) {
 }
 
 function calNavMonth(delta) { calMonth += delta; if (calMonth < 0) { calMonth = 11; calYear--; } if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendarMonth(document.getElementById('cal-wrap')); }
+
+// v2.68: único punto que decide DÓNDE persiste el fotolibro — álbum propio
+// (book.json, de siempre) vs. álbum compartido (el fotolibro PERSONAL de
+// este invitado, guardado en su propio shared-albums.json — ver
+// "Fotolibro personal por invitado" en CLAUDE.md). Los ~9 call-sites que
+// antes llamaban a `saveBookLayout(albumFolderId, {...})` directo ahora
+// llaman a esta función — centralizar el branch acá evita repetirlo (y
+// arriesgar olvidarlo) en cada uno, mismo aprendizaje que ya dejó agregar
+// `framing`/`pageSize` a los mismos 9 lugares en su momento (ver v1.57/v2.03).
+function persistBookLayout() {
+  const payload = { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming };
+  return isSharedAlbum ? saveSharedBookLayout(albumFolderId, payload) : saveBookLayout(albumFolderId, payload);
+}
 function calGoDay(dateStr) { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; switchTab('day'); loadDay(dateStr); }
 
 // ─── Book tab ─────────────────────────────────────────────
@@ -4488,12 +4514,12 @@ async function renderBook() {
   // nivel módulo, reseteado recién al entrar a un álbum nuevo; un render
   // del álbum anterior que resuelve tarde no debe pisarlo.
   const navFolderId = albumFolderId;
-  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId); } catch(e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
+  if (!allDates.length) { try { allDates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar</div>'; return; } }
   if (albumFolderId !== navFolderId) return;
   if (!allDates.length) { wrap.innerHTML = `<div class="list-empty book-page-empty"><div class="book-empty-icon">${icon('book')}</div>Todavía no hay días guardados</div>`; return; }
 
   const perDay = await Promise.all(allDates.map(async date => {
-    const day = await loadDayFromDrive(albumFolderId, date) || { media: [] };
+    const day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum) || { media: [] };
     return (day.media || [])
       .filter(m => m.type === 'image' && m.driveFileId)
       .map(m => ({ driveFileId: m.driveFileId, date, caption: m.caption || '' }));
@@ -4514,7 +4540,10 @@ async function renderBook() {
   // "Fotolibro: páginas explícitas + drawer".
   const currentIds = allPhotos.map(p => p.driveFileId);
   let saved = null;
-  try { saved = await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
+  // v2.68: un álbum compartido lee/escribe el fotolibro PERSONAL de ESTE
+  // invitado (guardado en su propio shared-albums.json), nunca el book.json
+  // de la dueña — ver "Fotolibro personal por invitado" en CLAUDE.md.
+  try { saved = isSharedAlbum ? await loadSharedBookLayout(albumFolderId) : await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
   if (albumFolderId !== navFolderId) return;
   bookPageSize = (saved && saved.pageSize) || defaultBookPageSize();
 
@@ -4582,8 +4611,8 @@ async function renderBook() {
     // queda ahí hasta que el usuario la borra a mano ("Eliminar página").
     bookPages = cleanedPages;
     bookDrawer = [...dedupedDrawer, ...added];
-    if (albumCanEdit && changed) {
-      saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo sincronizar el libro:', e));
+    if (bookCanEdit && changed) {
+      persistBookLayout().catch(e => console.warn('No se pudo sincronizar el libro:', e));
     }
   }
 
@@ -4741,8 +4770,10 @@ for (const [key, def] of Object.entries(BOOK_LAYOUTS)) {
 // llegaba acá a través del botón "Reordenar", ya gateado por
 // `albumCanEdit`), todo lo que implica editar — el "+" de agregar
 // página, el drawer entero, y los mecanismos de arrastre — se gatea acá
-// mismo por `albumCanEdit`; un álbum compartido de solo lectura ve las
-// páginas tal cual están, sin ningún affordance de edición.
+// mismo, por `bookCanEdit` (v2.68: el fotolibro es personal — un
+// invitado VIEWER puede armar el suyo igual, aunque no pueda tocar el
+// contenido real del álbum compartido, ver "Fotolibro personal por
+// invitado" en CLAUDE.md).
 function renderBookReorderGrid() {
   const container = document.getElementById('book-reorder-container');
   const drawerEl = document.getElementById('book-drawer-container');
@@ -4755,17 +4786,17 @@ function renderBookReorderGrid() {
   // del botón global "Agregar página", que siempre iba al final) y
   // además sirve de blanco de drop al arrastrar una página existente
   // (ver resolveBookPageDropIndex/initBookPageDragReorder).
-  if (albumCanEdit) container.appendChild(buildBookInsertGap(0));
+  if (bookCanEdit) container.appendChild(buildBookInsertGap(0));
   bookPages.forEach((page, idx) => {
     container.appendChild(buildBookReorderTile(page, idx));
-    if (albumCanEdit) container.appendChild(buildBookInsertGap(idx + 1));
+    if (bookCanEdit) container.appendChild(buildBookInsertGap(idx + 1));
   });
   // El drawer ("Sin ubicar") es puro reacomodo — sin permiso de edición
   // no hay nada que hacer ahí, se oculta entero (mismo alcance que ya
   // tenía: antes solo aparecía en el modo Reordenar, que ya estaba
   // gateado por el botón que llevaba a él).
-  drawerEl.style.display = albumCanEdit ? '' : 'none';
-  if (albumCanEdit) {
+  drawerEl.style.display = bookCanEdit ? '' : 'none';
+  if (bookCanEdit) {
     drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
     const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
     bookDrawer.forEach((id, idx) => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo, idx)); });
@@ -4845,8 +4876,9 @@ function buildBookReorderTile(page, idx) {
   // están, sin ningún affordance de edición — antes esta vista solo se
   // alcanzaba a través del botón "Reordenar", ya gateado por
   // `albumCanEdit`; ahora que es la única vista del Libro, el gate pasa
-  // a estar acá adentro.
-  if (albumCanEdit) tile.draggable = true;
+  // a estar acá adentro, por `bookCanEdit` (el fotolibro es personal —
+  // hasta un viewer del álbum puede armar el suyo, ver v2.68 más arriba).
+  if (bookCanEdit) tile.draggable = true;
   const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
   wrap.appendChild(grid);
   // Misma fuente (BOOK_LAYOUTS/computeCellRectMm) que ya usa el editor de
@@ -4865,8 +4897,8 @@ function buildBookReorderTile(page, idx) {
       grid.appendChild(cell);
       return cell;
     }
-    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = albumCanEdit;
-    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES);
+    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = bookCanEdit;
+    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES, isSharedAlbum ? albumFolderId : null);
     const cellRect = computeCellRectMm(bookPageSize.w, bookPageSize.h, layoutDef, slotIdx, 0);
     applyBookFramingTransform(imgEl, photo.driveFileId, cellRect.w / cellRect.h);
     cell.appendChild(imgEl);
@@ -4877,7 +4909,7 @@ function buildBookReorderTile(page, idx) {
     const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
     chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
     cell.appendChild(chip);
-    if (albumCanEdit) {
+    if (bookCanEdit) {
       const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.innerHTML = icon('drag'); cell.appendChild(handle);
       // Encuadre por foto (zoom + paneo) — pedido de la esposa del usuario
       // (diseñadora). Vive DENTRO de `.bp`, que es `draggable` (a
@@ -4904,7 +4936,7 @@ function buildBookReorderTile(page, idx) {
   // libro impreso, donde el número de página vive en el margen, nunca
   // superpuesto al contenido (pedido explícito del usuario).
   const label = document.createElement('div'); label.className = 'book-reorder-tile-label';
-  if (albumCanEdit) {
+  if (bookCanEdit) {
     // Manija de arrastre de la PÁGINA entera (a diferencia de la manija
     // ⠿ de cada foto, que mueve fotos dentro/entre páginas) — en desktop
     // alcanza con arrastrar cualquier parte del tile (tile.draggable de
@@ -4916,7 +4948,7 @@ function buildBookReorderTile(page, idx) {
   }
   const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
   label.appendChild(labelText);
-  if (albumCanEdit) {
+  if (bookCanEdit) {
     // "⊞"/"✕" vivían flotando sobre las esquinas de la tarjeta (wrap) hasta
     // v2.23 — ahí se superponían pixel a pixel con los botones de la PRIMERA
     // foto de la página (.bp-drag-handle/.bp-frame-btn, mismas esquinas,
@@ -4946,7 +4978,7 @@ function buildBookReorderTile(page, idx) {
 
 function buildBookDrawerCell(photo, idx) {
   const cell = document.createElement('div'); cell.className = 'bp book-drawer-cell'; cell.dataset.fileId = photo.driveFileId; cell.draggable = true;
-  const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_DRAWER_COUNT);
+  const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_DRAWER_COUNT, isSharedAlbum ? albumFolderId : null);
   cell.appendChild(imgEl);
   const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.innerHTML = icon('drag');
   cell.appendChild(handle);
@@ -5052,7 +5084,7 @@ function chooseBookLayout(layoutClass) {
   if (page) page.layout = layoutClass; // siempre un layout concreto, misma capacidad (ver openBookLayoutModal)
   closeBookLayoutModal();
   renderBookReorderGrid();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el layout:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el layout:', e));
 }
 
 function closeBookLayoutModal() {
@@ -5108,7 +5140,7 @@ function confirmBookAddPage(layoutClass) {
   const idx = (bookAddPageInsertIdx === null) ? bookPages.length : bookAddPageInsertIdx;
   bookPages.splice(idx, 0, { images: Array(capacity).fill(null), layout: layoutClass });
   closeBookAddPageModal();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
 }
 
@@ -5132,7 +5164,7 @@ async function deleteBookPage(idx) {
   if (!ok) return;
   bookDrawer.push(...realPhotos);
   bookPages.splice(idx, 1);
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
 }
 
@@ -5170,7 +5202,7 @@ async function recreateBookRandom() {
   }
   bookPages = newPages;
   bookDrawer = [];
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
 }
 
@@ -5222,7 +5254,7 @@ function chooseBookPageSize(sizeObj) {
   bookPageSize = { id: sizeObj.id, w: sizeObj.w, h: sizeObj.h };
   closeBookPageSizeModal();
   renderBookReorderGrid();
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el tamaño de hoja:', e));
 }
 
 function closeBookPageSizeModal() {
@@ -5310,7 +5342,7 @@ function collectBookExportPhotos() {
 async function checkBookExportResolution(pageWmm, pageHmm) {
   const placed = collectBookExportPhotos();
   const results = await runWithConcurrency(placed, 5, async ({ photo, pageIdx, cellIdx, layoutClass }) => {
-    const dims = await getImageDimensions(photo.driveFileId);
+    const dims = await getImageDimensions(photo.driveFileId, isSharedAlbum ? albumFolderId : null);
     if (!dims) return null;
     const def = bookLayoutDef(layoutClass);
     const rect = computeCellRectMm(pageWmm, pageHmm, def, cellIdx, EXPORT_GAP_MM);
@@ -5420,7 +5452,7 @@ async function generateBookPdf(bleedMm, onProgress) {
       const fileId = page.images[c];
       if (!fileId || !bookPhotoByFileId.has(fileId)) continue;
       const rect = computeCellRectMm(pageWmm, pageHmm, def, c, EXPORT_GAP_MM);
-      const blobUrl = await fetchFileAsDataUrl(fileId);
+      const blobUrl = await fetchFileAsDataUrl(fileId, isSharedAlbum ? albumFolderId : null);
       try {
         const imgEl = await loadImageElementFromUrl(blobUrl);
         const canvas = coverCropToCanvas(imgEl, rect.w / rect.h, bookFraming[fileId]);
@@ -5485,7 +5517,7 @@ function renderExportLowResList(lowRes) {
   listEl.style.display = '';
   lowRes.forEach((item, i) => {
     const img = document.getElementById(`export-lowres-thumb-${i}`);
-    if (img) setAuthImg(img, item.photo.driveFileId, 'w200');
+    if (img) setAuthImg(img, item.photo.driveFileId, 'w200', isSharedAlbum ? albumFolderId : null);
   });
 }
 
@@ -5668,7 +5700,7 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   // sólido en vez de reescalada, mostrando un padding que no es parte de
   // la foto real (bug reportado por el usuario, v2.19 en CLAUDE.md).
   img.classList.add('auth-img-loading');
-  fetchAuthImgUrl(fileId).then(url => {
+  fetchAuthImgUrl(fileId, isSharedAlbum ? albumFolderId : null).then(url => {
     if (bookFrameFileId !== fileId) return; // se cerró o cambió de foto mientras bajaba
     img.src = url || MEDIA_UNAVAILABLE_SVG;
     // v2.23: si esta foto ya se había abierto antes en esta misma sesión
@@ -5828,7 +5860,7 @@ function confirmBookFrame() {
     const img = cell.querySelector('img');
     if (img) applyBookFramingTransform(img, editedFileId, editedFrameAspect);
   });
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el encuadre:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el encuadre:', e));
 }
 
 function closeBookFrameModal() {
@@ -6095,7 +6127,7 @@ function moveBookPage(srcIdx, targetInsertIdx) {
   const [page] = bookPages.splice(srcIdx, 1);
   const insertAt = targetInsertIdx > srcIdx ? targetInsertIdx - 1 : targetInsertIdx;
   bookPages.splice(insertAt, 0, page);
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el orden de páginas:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el orden de páginas:', e));
   renderBookReorderGrid();
 }
 
@@ -6299,7 +6331,7 @@ function moveBookPhoto(srcId, target) {
     bookDrawer.push(srcId);
   }
 
-  saveBookLayout(albumFolderId, { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming }).catch(e => console.warn('No se pudo guardar el libro:', e));
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el libro:', e));
   renderBookReorderGrid();
   const newContainerEl = document.getElementById(containerId);
   const newScrollEl = newContainerEl ? bookScrollTarget(newContainerEl) : null;
@@ -6777,8 +6809,8 @@ function toggleBookOptionsMenu() {
     </button>
     ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBulkDiary,50)">
       <span class="diary-menu-item-icon">${icon('upload')}</span> Agregar fotos
-    </button>
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
+    </button>` : ''}
+    ${bookCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
       <span class="diary-menu-item-icon">${icon('size')}</span> Tamaño de hoja
     </button>
     <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookAddPageModal,50)">

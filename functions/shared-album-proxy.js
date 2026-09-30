@@ -378,6 +378,24 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     return;
   }
 
+  // v2.68: metadata liviana de una foto (ancho/alto reales) — la usa el
+  // fotolibro PERSONAL de un invitado (ver CLAUDE.md → "Fotolibro
+  // personal por invitado") para el aviso de "esta foto se va a ver
+  // borrosa impresa", sin descargar el archivo completo solo para leer
+  // sus dimensiones (mismo espíritu que getImageDimensions() del lado del
+  // cliente, ver drive.js). Acción de LECTURA — cualquier rol (viewer
+  // incluido) puede consultarla, igual que getFileJson/getMediaBytes.
+  if (action === 'getImageMeta') {
+    const fileId = params.fileId;
+    if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=imageMediaMetadata(width,height)`, ownerAccessToken);
+    if (!dr.ok) { res.status(404).json({ error: 'not_found' }); return; }
+    const data = await dr.json();
+    const meta = data.imageMediaMetadata || {};
+    res.status(200).json({ width: meta.width || null, height: meta.height || null });
+    return;
+  }
+
   if (action === 'getMediaBytes') {
     const fileId = params.fileId;
     if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
