@@ -18,6 +18,12 @@ const SESSION_JWT_SECRET = defineSecret('SESSION_JWT_SECRET');
 const SUPABASE_URL = defineSecret('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 
+// v2.65 — ver el comentario grande sobre "Cachés en memoria" más abajo.
+const ownerTokenCache = new Map(); // owner_google_sub -> { accessToken, expiresAt }
+const guestPermissionCache = new Map(); // "email:folderDriveId" -> { role, expiresAt }
+const OWNER_TOKEN_SAFETY_BUFFER_MS = 5 * 60 * 1000;
+const GUEST_PERMISSION_TTL_MS = 15 * 60 * 1000;
+
 // v2.61 — Proxy de lectura para álbumes compartidos.
 //
 // Por qué existe: el scope `drive.file` de esta app nunca le da a un
@@ -34,17 +40,21 @@ const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 // sesión (td_session) — nunca por su token de Drive, que es justo el que
 // no alcanza acá — y devolviéndole el resultado.
 //
-// Autorización, en cada pedido (nunca cacheada, se re-chequea siempre
-// contra el estado real de Drive — mismo patrón que checkFolderShareApplied,
-// v2.53, así que si el dueño revoca el acceso desde su propio Drive, el
-// próximo pedido del invitado se corta solo, sin que nadie tenga que
-// actualizar ninguna tabla):
+// Autorización, en cada pedido:
 //   1. El JWT de sesión del invitado (td_session) prueba quién es de verdad
 //      (mismo mecanismo que el resto de las Cloud Functions).
-//   2. shared_album_owner (Supabase) dice de quién es folderDriveId.
-//   3. Se mintea un access_token de la DUEÑA con su refresh_token guardado.
+//   2. shared_album_owner (Supabase) dice de quién es folderDriveId — este
+//      lookup puntual nunca se cachea, es barato y casi nunca cambia.
+//   3. Se mintea un access_token de la DUEÑA con su refresh_token guardado
+//      — desde v2.65, CACHEADO por owner_google_sub (ver más abajo).
 //   4. Se listan los permisos REALES de folderDriveId con ese token — si el
-//      email del invitado no figura ahí (cualquier rol), 403.
+//      email del invitado no figura ahí (cualquier rol), 403 — desde
+//      v2.65, el resultado positivo se CACHEA por invitado+álbum (ver
+//      más abajo). Antes de v2.65 este chequeo se repetía sin caché en
+//      cada pedido (mismo patrón que checkFolderShareApplied, v2.53), así
+//      que un revoke del dueño se cortaba al instante en el próximo
+//      pedido — con la caché, revocar tarda hasta el TTL en surtir efecto
+//      (ver "Cachés" más abajo para el porqué de esta decisión).
 //   5. Recién ahí se despacha la acción pedida.
 //
 // Cada acción es un primitivo genérico y acotado (nunca una URL arbitraria
@@ -76,6 +86,38 @@ const SUPABASE_SERVICE_ROLE_KEY = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 // albums.json vive en la raíz del Drive de la dueña, no dentro de la
 // carpeta del álbum — la autorización sigue siendo folderDriveId en sí,
 // ya validado por guestRole(), y solo se devuelve la entrada de ESE álbum.
+//
+// v2.65 — Cachés en memoria para el "preámbulo" de autorización, a pedido
+// del usuario tras probar v2.61-v2.64 con la cuenta de su esposa: abrir un
+// álbum compartido se sentía notoriamente más lento que uno propio. Causa
+// real: cada UNA de las decenas de llamadas al proxy que dispara una sola
+// sesión de navegación (listar días, leer cada day.json, bajar cada foto)
+// repetía el preámbulo completo — 2 lookups a Supabase + 1 canje real con
+// Google + 1 chequeo de permisos contra Drive — sin ningún caché, aunque
+// esas llamadas ocurran todas en la misma sesión, segundos entre sí.
+// Decisión explícita del usuario, para este caso: "para una app familiar
+// no es necesario tanta rapidez en quitar permisos" — se acepta que
+// revocar un acceso tarde hasta un rato en surtir efecto, a cambio de
+// evitar pagar este costo en cada pedido individual. Dos cachés, con
+// alcances distintos:
+//   - `ownerTokenCache`: el access_token minteado de una DUEÑA, guardado
+//     por `owner_google_sub` (no por álbum — sirve para CUALQUIER álbum
+//     de esa misma dueña) durante el tiempo que Google dice que es válido
+//     de verdad (`expiresIn`, ~1h) menos un margen de seguridad.
+//   - `guestPermissionCache`: el ROL real de un invitado sobre UN álbum
+//     puntual, guardado por invitado+folderDriveId durante
+//     `GUEST_PERMISSION_TTL_MS` (15 min) — el permiso es específico de esa
+//     carpeta, así que esta caché no se comparte entre álbumes distintos
+//     aunque sean de la misma dueña. Solo se cachea un resultado
+//     POSITIVO (rol real encontrado) — un `null` (denegado, o un error de
+//     Drive tratado como denegado por el mismo criterio fail-closed de
+//     siempre) nunca se cachea, para no extender una falla transitoria de
+//     Drive en una ventana de 15 minutos de rechazo.
+// Ambas viven en memoria del proceso — best-effort, no una garantía dura:
+// una instancia nueva de la Cloud Function (cold start, escalado) arranca
+// sin nada cacheado y paga el precio completo una vez más, sin que esto
+// sea un bug ni necesite ninguna infraestructura de caché compartida
+// (Redis, etc.) para el volumen de tráfico real de esta app.
 exports.sharedAlbumProxy = onRequest(
   {
     region: 'southamerica-east1',
@@ -113,31 +155,26 @@ exports.sharedAlbumProxy = onRequest(
       if (ownerErr) { console.error('shared-album-proxy owner lookup error:', ownerErr); res.status(500).json({ error: 'owner_lookup_failed' }); return; }
       if (!ownerRow) { res.status(404).json({ error: 'not_shared' }); return; }
 
-      const { data: subRow, error: subErr } = await supabase
-        .from('subscriptions')
-        .select('drive_refresh_token')
-        .eq('google_sub', ownerRow.owner_google_sub)
-        .maybeSingle();
-      if (subErr) { console.error('shared-album-proxy refresh_token lookup error:', subErr); res.status(500).json({ error: 'owner_lookup_failed' }); return; }
-      if (!subRow || !subRow.drive_refresh_token) {
-        // La dueña nunca migró al flujo de refresh_token real (v1.91) o lo
-        // perdió (revocó el acceso, etc.) — sin esto no hay forma de leer
-        // en su nombre. Código de error específico para que el frontend
-        // pueda distinguir esto de "no tenés permiso" y mostrar un mensaje
-        // que apunte al motivo real.
-        res.status(409).json({ error: 'owner_not_migrated' });
-        return;
-      }
-
       try {
-        ({ accessToken: ownerAccessToken } = await mintAccessTokenFromRefreshToken(subRow.drive_refresh_token, GOOGLE_CLIENT_ID.value(), GOOGLE_CLIENT_SECRET.value()));
+        ownerAccessToken = await getOwnerAccessToken(supabase, ownerRow.owner_google_sub, GOOGLE_CLIENT_ID.value(), GOOGLE_CLIENT_SECRET.value());
       } catch (e) {
-        await supabase.from('subscriptions').update({ drive_refresh_token: null }).eq('google_sub', ownerRow.owner_google_sub);
-        res.status(409).json({ error: 'owner_token_invalid' });
+        if (e.code === 'owner_not_migrated') {
+          // La dueña nunca migró al flujo de refresh_token real (v1.91) o
+          // lo perdió (revocó el acceso, etc.) — sin esto no hay forma de
+          // leer en su nombre. Código de error específico para que el
+          // frontend pueda distinguir esto de "no tenés permiso" y mostrar
+          // un mensaje que apunte al motivo real.
+          res.status(409).json({ error: 'owner_not_migrated' });
+        } else if (e.code === 'owner_token_invalid') {
+          res.status(409).json({ error: 'owner_token_invalid' });
+        } else {
+          console.error('shared-album-proxy owner token error:', e);
+          res.status(500).json({ error: 'owner_lookup_failed' });
+        }
         return;
       }
 
-      const role = await guestRole(folderDriveId, session.email, ownerAccessToken);
+      const role = await getGuestRoleCached(folderDriveId, session.email, ownerAccessToken);
       if (!role) { res.status(403).json({ error: 'not_authorized' }); return; }
       if (WRITE_ACTIONS.has(action) && !EDITOR_ROLES.has(role)) { res.status(403).json({ error: 'read_only' }); return; }
 
@@ -148,6 +185,50 @@ exports.sharedAlbumProxy = onRequest(
     }
   }
 );
+
+// v2.65: mintea el access_token de la dueña solo si no hay uno cacheado
+// todavía vigente para su cuenta — ver "Cachés en memoria" arriba. Tira un
+// error con `.code` para que el caller decida el status HTTP correcto sin
+// duplicar esa lógica acá.
+async function getOwnerAccessToken(supabase, ownerGoogleSub, clientId, clientSecret) {
+  const cached = ownerTokenCache.get(ownerGoogleSub);
+  if (cached && cached.expiresAt > Date.now()) return cached.accessToken;
+
+  const { data: subRow, error: subErr } = await supabase
+    .from('subscriptions')
+    .select('drive_refresh_token')
+    .eq('google_sub', ownerGoogleSub)
+    .maybeSingle();
+  if (subErr) { console.error('shared-album-proxy refresh_token lookup error:', subErr); const e = new Error('owner_lookup_failed'); e.code = 'owner_lookup_failed'; throw e; }
+  if (!subRow || !subRow.drive_refresh_token) { const e = new Error('owner_not_migrated'); e.code = 'owner_not_migrated'; throw e; }
+
+  let accessToken, expiresIn;
+  try {
+    ({ accessToken, expiresIn } = await mintAccessTokenFromRefreshToken(subRow.drive_refresh_token, clientId, clientSecret));
+  } catch (e) {
+    await supabase.from('subscriptions').update({ drive_refresh_token: null }).eq('google_sub', ownerGoogleSub);
+    const err = new Error('owner_token_invalid'); err.code = 'owner_token_invalid'; throw err;
+  }
+  ownerTokenCache.set(ownerGoogleSub, { accessToken, expiresAt: Date.now() + expiresIn * 1000 - OWNER_TOKEN_SAFETY_BUFFER_MS });
+  return accessToken;
+}
+
+// v2.65: reusa el rol ya chequeado para este invitado+álbum si sigue
+// vigente — ver "Cachés en memoria" arriba. Solo cachea un resultado
+// POSITIVO; un `null` (denegado de verdad, o un error de Drive que
+// guestRole() ya trata como denegado por el mismo criterio fail-closed de
+// siempre) nunca se cachea, para no extender una falla transitoria en una
+// ventana de rechazo — y para que revocar el acceso real, una vez que la
+// caché expira y se vuelve a chequear, se refleje al toque.
+async function getGuestRoleCached(folderDriveId, guestEmail, ownerAccessToken) {
+  const key = `${guestEmail.toLowerCase()}:${folderDriveId}`;
+  const cached = guestPermissionCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.role;
+  const role = await guestRole(folderDriveId, guestEmail, ownerAccessToken);
+  if (role) guestPermissionCache.set(key, { role, expiresAt: Date.now() + GUEST_PERMISSION_TTL_MS });
+  else guestPermissionCache.delete(key);
+  return role;
+}
 
 async function driveFetch(url, accessToken) {
   return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
