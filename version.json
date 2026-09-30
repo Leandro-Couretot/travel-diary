@@ -1,4 +1,4 @@
 {
-  "version": "2.66",
-  "changelog": "Reproducir álbum y el slideshow ▶ ya funcionan en álbumes compartidos — antes fallaban en silencio para cualquier invitado."
+  "version": "2.67",
+  "changelog": "Álbumes compartidos: un invitado editor ya puede editar el álbum, invitar a más gente y cargar fotos masivas desde Home — el menú \"···\" de la card se adapta solo a su rol real."
 }

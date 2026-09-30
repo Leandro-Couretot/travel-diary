@@ -1343,6 +1343,33 @@ async function trashFileViaProxy(fileId, proxyAlbumId) {
   if (!res.ok) await _proxyWriteThrow(res, 'No se pudo mover el archivo a la papelera');
 }
 
+// v2.67: un invitado editor puede compartir el álbum con una persona más
+// — mismo límite de fondo que el resto de la escritura (drive.file nunca
+// alcanza para permissions.create sobre una carpeta que el invitado no
+// creó, aunque sea editor), así que pasa por el token de la dueña vía el
+// proxy. Sin contraparte "propia" (esa sigue siendo shareAlbumWithUser(),
+// que ya usa el dueño real directo con su propio token).
+async function shareSharedAlbumWithUser(folderDriveId, guestEmail, role) {
+  const res = await sharedAlbumProxyCall(folderDriveId, 'shareFolder', { guestEmail, role });
+  if (!res.ok) {
+    const body = await _proxyErrorBody(res);
+    const detailMsg = body?.detail?.message;
+    throw new Error(detailMsg || (body?.error ? _proxyErrorMessage(body.error) : 'No se pudo compartir el álbum'));
+  }
+  return true;
+}
+
+// v2.67: un invitado editor corrige nombre/fechas de un álbum compartido
+// — el servidor whitelistea los campos (nunca archived/coverFileId/
+// archivedByDowngrade). Sin contraparte "propia" por el mismo motivo de
+// arriba — updateAlbumMeta(albumId, patch) ya cubre el caso del dueño
+// escribiendo en SU PROPIO albums.json.
+async function updateSharedAlbumMeta(folderDriveId, patch) {
+  const res = await sharedAlbumProxyCall(folderDriveId, 'updateAlbumMeta', { patch });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo editar el álbum');
+  return (await res.json()).entry;
+}
+
 // Mismo criterio y misma forma que listDayFolders() (incluida la escritura
 // en _dayCache, así loadDayFromDriveViaProxy() no tiene que volver a
 // buscar el id de cada carpeta de día) — solo cambia que el pedido real
