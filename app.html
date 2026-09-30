@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.65';
+const APP_VERSION = '2.66';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -6264,12 +6264,19 @@ async function confirmBulkDiary() {
 
 // ─── Album overlay ────────────────────────────────────────
 let albumDays = [], albumIdx = 0, albumPhotoIdx = 0, albumSwipeX = 0;
+// v2.66: `albumFolderId`/`isSharedAlbum` son el estado de módulo del
+// diario ya vigente (esta función solo se llama desde adentro del diario,
+// vía toggleDiaryMenu()/toggleBookOptionsMenu()) — antes no se los pasaba
+// a listDayFolders()/loadDayFromDrive(), así que un álbum compartido
+// intentaba leer con el token del invitado y siempre fallaba en silencio
+// (ver CLAUDE.md → "El scope drive.file no da acceso al contenido de una
+// carpeta compartida").
 async function openAlbum() {
   let dates = [];
-  try { dates = await listDayFolders(albumFolderId); } catch(e) { alert('Error al cargar el álbum desde Drive'); return; }
+  try { dates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { alert('Error al cargar el álbum desde Drive'); return; }
   if (!dates.length) { alert('Todavía no hay días guardados.'); return; }
   const all = [];
-  for (const d of dates) { const day = await loadDayFromDrive(albumFolderId, d); all.push({ date: d, ...(day || emptyDay()) }); }
+  for (const d of dates) { const day = await loadDayFromDrive(albumFolderId, d, isSharedAlbum); all.push({ date: d, ...(day || emptyDay()) }); }
   albumDays = all; albumIdx = Math.max(0, albumDays.findIndex(d => d.date === currentDate)); albumPhotoIdx = 0;
   document.getElementById('album-overlay').classList.add('open'); renderAlbumPage();
 }
@@ -6288,7 +6295,7 @@ function renderAlbumPage() {
     const dots = images.length > 1 ? `<div class="album-dots">${images.map((_, i) => `<div class="album-dot${i === albumPhotoIdx ? ' active' : ''}"></div>`).join('')}</div>` : '';
     heroEl.innerHTML = `<img id="album-hero-img" alt=""><div class="album-photo-nav"><div class="album-photo-prev" onclick="albumPhotoNav(-1)"></div><div class="album-photo-next" onclick="albumPhotoNav(1)"></div></div>${caption}${dots}`;
     const heroImg = document.getElementById('album-hero-img');
-    if (photo.data) heroImg.src = photo.data; else if (photo.driveFileId) setAuthImg(heroImg, photo.driveFileId, 'w1200');
+    if (photo.data) heroImg.src = photo.data; else if (photo.driveFileId) setAuthImg(heroImg, photo.driveFileId, 'w1200', isSharedAlbum ? albumFolderId : null);
   } else { heroEl.innerHTML = `<div class="album-hero-empty">L</div>`; }
   document.getElementById('album-label').textContent = formatDate(day.date);
   const titleEl = document.getElementById('album-title'); titleEl.textContent = day.title || 'Sin título'; titleEl.className = 'album-title' + (day.title ? '' : ' no-title');
@@ -6297,7 +6304,7 @@ function renderAlbumPage() {
   if (images.length > 1) {
     strip.style.display = 'flex';
     strip.innerHTML = images.map((img, i) => `<img class="album-strip-thumb${i === albumPhotoIdx ? ' active' : ''}" id="strip-${i}" onclick="albumGoPhoto(${i})">`).join('');
-    images.forEach((img, i) => { const imgEl = document.getElementById(`strip-${i}`); if (!imgEl) return; if (img.data) imgEl.src = img.data; else if (img.driveFileId) setAuthImg(imgEl, img.driveFileId, 'w200'); });
+    images.forEach((img, i) => { const imgEl = document.getElementById(`strip-${i}`); if (!imgEl) return; if (img.data) imgEl.src = img.data; else if (img.driveFileId) setAuthImg(imgEl, img.driveFileId, 'w200', isSharedAlbum ? albumFolderId : null); });
   } else { strip.style.display = 'none'; }
 }
 
@@ -6445,6 +6452,12 @@ function initTouchReorder(grid) {
 // llegar el resto, se muestra el loader en vez de cerrar de golpe.
 const SLIDESHOW_BATCH_SIZE = 10;
 let ssItems = [], ssIdx = 0, ssPaused = false, ssTimer = null, ssLoadingMore = false;
+// v2.66: álbum compartido en curso (si lo hay) — necesario porque
+// showSsItem()/toggleSsPause() no reciben `album` como parámetro, dependen
+// de este estado de módulo para saber si las fotos/videos hay que
+// pedirlos vía el proxy (ver "El scope drive.file no da acceso al
+// contenido de una carpeta compartida" en CLAUDE.md).
+let ssIsShared = false, ssAlbumFolderId = null;
 
 function setSsLoaderVisible(visible, text) {
   document.getElementById('slideshow-loader').classList.toggle('open', visible);
@@ -6504,15 +6517,23 @@ async function startSlideshow(album) {
   ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = true;
   document.getElementById('slideshow-pause').innerHTML = icon('pause');
   setSsLoaderVisible(true, 'Preparando tus recuerdos...');
+  // v2.66: antes solo se usaba `album._shared` para resolver el folderId —
+  // nunca se lo pasaba a listDayFolders()/loadDayFromDrive(), así que un
+  // álbum compartido siempre intentaba leer con el token del INVITADO
+  // (falla siempre, ver CLAUDE.md) y el show terminaba mostrando "no tiene
+  // fotos ni videos aún" para cualquier álbum compartido, sin importar
+  // cuánto contenido tuviera de verdad.
+  ssIsShared = !!album._shared;
+  ssAlbumFolderId = ssIsShared ? album._folderId : null;
   try {
-    const albumFolderIdSS = album._shared ? album._folderId : await getAlbumFolderId(album.id);
-    const dates = await listDayFolders(albumFolderIdSS);
+    const albumFolderIdSS = ssIsShared ? album._folderId : await getAlbumFolderId(album.id);
+    const dates = await listDayFolders(albumFolderIdSS, ssIsShared);
     let started = false;
     for (let i = 0; i < dates.length; i += SLIDESHOW_BATCH_SIZE) {
       if (!overlay.classList.contains('open')) return; // el usuario cerró el slideshow mientras cargaba
       const batch = dates.slice(i, i + SLIDESHOW_BATCH_SIZE);
       const wasWaitingAt = ssItems.length; // hasta dónde había llegado el show antes de este lote
-      const results = await Promise.all(batch.map(async date => ({ date, day: await loadDayFromDrive(albumFolderIdSS, date) })));
+      const results = await Promise.all(batch.map(async date => ({ date, day: await loadDayFromDrive(albumFolderIdSS, date, ssIsShared) })));
       for (const { date, day } of results) {
         if (!day) continue;
         for (const m of (day.media || [])) { if (m.type === 'image' || m.type === 'video') ssItems.push({ ...m, date, dayTitle: day.title || '' }); }
@@ -6542,11 +6563,11 @@ function showSsItem() {
   bar.style.transition = 'none'; bar.style.width = '0%';
   if (item.type === 'image') {
     videoEl.style.display = 'none'; videoEl.src = ''; imgEl.style.display = 'block'; imgEl.style.opacity = '0';
-    if (item.data) { imgEl.src = item.data; } else if (item.driveFileId) { setAuthImg(imgEl, item.driveFileId, 'w2000'); }
+    if (item.data) { imgEl.src = item.data; } else if (item.driveFileId) { setAuthImg(imgEl, item.driveFileId, 'w2000', ssIsShared ? ssAlbumFolderId : null); }
     imgEl.onload = () => { imgEl.style.transition = 'opacity 0.5s'; imgEl.style.opacity = '1'; if (!ssPaused) startPhotoTimer(); };
   } else if (item.type === 'video') {
     imgEl.style.display = 'none'; videoEl.style.display = 'block'; videoEl.style.opacity = '0';
-    if (item.driveFileId) { fetchFileAsDataUrl(item.driveFileId).then(dataUrl => { videoEl.src = dataUrl; videoEl.style.transition = 'opacity 0.5s'; videoEl.style.opacity = '1'; if (!ssPaused) videoEl.play(); }).catch(() => { ssIdx++; showSsItem(); }); } else { videoEl.src = item.data || ''; videoEl.style.opacity = '1'; if (!ssPaused) videoEl.play(); }
+    if (item.driveFileId) { fetchFileAsDataUrl(item.driveFileId, ssIsShared ? ssAlbumFolderId : null).then(dataUrl => { videoEl.src = dataUrl; videoEl.style.transition = 'opacity 0.5s'; videoEl.style.opacity = '1'; if (!ssPaused) videoEl.play(); }).catch(() => { ssIdx++; showSsItem(); }); } else { videoEl.src = item.data || ''; videoEl.style.opacity = '1'; if (!ssPaused) videoEl.play(); }
     videoEl.onended = () => { if (!ssPaused) { ssIdx++; showSsItem(); } };
     videoEl.ontimeupdate = () => { if (videoEl.duration) { bar.style.transition = 'none'; bar.style.width = (videoEl.currentTime / videoEl.duration * 100) + '%'; } };
   }

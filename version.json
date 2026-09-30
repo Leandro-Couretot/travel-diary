@@ -1,4 +1,4 @@
 {
-  "version": "2.65",
-  "changelog": "Álbumes compartidos más rápidos: se cachea el permiso de cada invitado (~15 min) y el token de la dueña (~1h) en vez de re-chequearlos en cada foto."
+  "version": "2.66",
+  "changelog": "Reproducir álbum y el slideshow ▶ ya funcionan en álbumes compartidos — antes fallaban en silencio para cualquier invitado."
 }
