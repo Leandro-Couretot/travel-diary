@@ -1,4 +1,4 @@
 {
-  "version": "2.68",
-  "changelog": "Fotolibro personal en álbumes compartidos: cualquier invitado — editor o solo lector — puede armar su propio libro con las fotos del álbum, guardado en su propio Drive."
+  "version": "2.69",
+  "changelog": "Se arregla un error real que podía aparecer viendo el slideshow desde navegadores más restrictivos (como el de WhatsApp): un video que no podía reproducirse con sonido ya no rompe nada, se salta solo al siguiente."
 }

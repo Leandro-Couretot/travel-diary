@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.68';
+const APP_VERSION = '2.69';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -6730,14 +6730,26 @@ function showSsItem() {
     imgEl.onload = () => { imgEl.style.transition = 'opacity 0.5s'; imgEl.style.opacity = '1'; if (!ssPaused) startPhotoTimer(); };
   } else if (item.type === 'video') {
     imgEl.style.display = 'none'; videoEl.style.display = 'block'; videoEl.style.opacity = '0';
-    if (item.driveFileId) { fetchFileAsDataUrl(item.driveFileId, ssIsShared ? ssAlbumFolderId : null).then(dataUrl => { videoEl.src = dataUrl; videoEl.style.transition = 'opacity 0.5s'; videoEl.style.opacity = '1'; if (!ssPaused) videoEl.play(); }).catch(() => { ssIdx++; showSsItem(); }); } else { videoEl.src = item.data || ''; videoEl.style.opacity = '1'; if (!ssPaused) videoEl.play(); }
+    if (item.driveFileId) { fetchFileAsDataUrl(item.driveFileId, ssIsShared ? ssAlbumFolderId : null).then(dataUrl => { videoEl.src = dataUrl; videoEl.style.transition = 'opacity 0.5s'; videoEl.style.opacity = '1'; if (!ssPaused) playSsVideo(videoEl); }).catch(() => { ssIdx++; showSsItem(); }); } else { videoEl.src = item.data || ''; videoEl.style.opacity = '1'; if (!ssPaused) playSsVideo(videoEl); }
     videoEl.onended = () => { if (!ssPaused) { ssIdx++; showSsItem(); } };
     videoEl.ontimeupdate = () => { if (videoEl.duration) { bar.style.transition = 'none'; bar.style.width = (videoEl.currentTime / videoEl.duration * 100) + '%'; } };
   }
 }
+// `videoEl.play()` devuelve una promesa que puede rechazar con NotAllowedError
+// — navegadores embebidos (el in-app browser de WhatsApp/Instagram, más
+// restrictivos que Safari real) pueden bloquear el autoplay con sonido de
+// los videos del slideshow (sin `muted` desde v2.46, para que suenen). Sin
+// atrapar ese rechazo quedaba como una promesa sin manejar, mostrándose
+// como un error real en el overlay de debug aunque el resto de la app
+// siguiera funcionando — acá se salta al siguiente item, mismo criterio que
+// ya usa el catch de fetchFileAsDataUrl() unas líneas arriba.
+function playSsVideo(videoEl) {
+  const p = videoEl.play();
+  if (p && typeof p.catch === 'function') p.catch(() => { ssIdx++; showSsItem(); });
+}
 function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
-function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { videoEl.play(); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
+function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { playSsVideo(videoEl); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
 function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); exitSsFullscreen(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
 // ─── DIARY MENU ───────────────────────────────────────────
