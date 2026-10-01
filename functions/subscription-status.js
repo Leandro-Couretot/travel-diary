@@ -69,6 +69,12 @@ exports.subscriptionStatus = onRequest(
         // sesión (verifySession), el frontend solo lo usa para el toggle de
         // debug de la cuenta del dev — ver CLAUDE.md v1.60.
         email: session.email,
+        // sub (v2.74, rol Contribuidor Paso 5): el propio google_sub de
+        // la cuenta — el cliente lo necesita para comparar contra
+        // `uploadedBy` de cada foto y decidir si puede ofrecer borrarla
+        // (ver CLAUDE.md → "Rol Contribuidor"). No es sensible — es el
+        // mismo nivel que el email, la cuenta ya se identifica a sí misma.
+        sub: session.sub,
         // picture/name (v1.81): salen del mismo JWT, sin ninguna consulta
         // nueva a Google/Supabase — mismo motivo que ya llevó a sumar email
         // acá en v1.72 (esta es la rama de sesión restaurada, la que corre

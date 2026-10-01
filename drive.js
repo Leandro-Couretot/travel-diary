@@ -296,6 +296,17 @@ function invalidateDayCache(albumFolderId, dateStr) {
   delete _dayCache[_dayKey(albumFolderId, dateStr)];
 }
 
+// Rol Contribuidor (v2.74, Paso 5): la galería del Contribuidor necesita
+// el folderId REAL de cada día (para poder subir/borrar fotos ahí) sin
+// pedirlo de nuevo a Drive — listDayFolders()/loadDayFromDrive() ya lo
+// dejan cacheado acá como efecto secundario. `null` si todavía no se
+// cacheó nada para esa fecha (el caller decide qué hacer, ej. resolverlo
+// con getOrCreateFolder() recién si hace falta escribir).
+function getCachedDayFolderId(albumFolderId, dateStr) {
+  const cached = _dayCache[_dayKey(albumFolderId, dateStr)];
+  return (cached && cached.folderId) || null;
+}
+
 // v2.61: `viaProxy` opcional — cuando es `true` (álbum compartido, ver
 // "El scope drive.file no da acceso al contenido de una carpeta
 // compartida" en CLAUDE.md), delega en listDayFoldersViaProxy() en vez de
@@ -1066,7 +1077,13 @@ async function loadDayFromDrive(albumFolderId, dateStr, viaProxy = false) {
         media: dedupeMediaByDriveFileId((dayJson.media || []).map(m => ({
           type: m.type, name: m.name,
           driveFileId: m.driveFileId,
-          caption: m.caption || ''
+          caption: m.caption || '',
+          // uploadedBy (v2.74, rol Contribuidor Paso 5): solo lo escribe
+          // contributorAppendMedia() del proxy — en un álbum propio/de
+          // Lector/Co-propietario siempre queda undefined, sin ningún
+          // cambio de comportamiento ahí. Necesario para que la galería
+          // del Contribuidor sepa qué fotos puede borrar (las suyas).
+          uploadedBy: m.uploadedBy || null,
         })))
       };
     }
@@ -1362,6 +1379,52 @@ async function resolveSharedAlbumMeta(folderDriveId) {
   } catch { return null; }
 }
 
+// Rol Contribuidor (v2.74, Paso 5): a diferencia de Lector/Co-propietario
+// (cuyo rol real se podía resolver del lado del cliente con
+// canEditFolder(), consultando directo los permisos de la carpeta con el
+// propio token de Drive), un Contribuidor nunca tuvo ningún permiso real
+// de Drive que consultar — su acceso vive 100% en Supabase, del lado del
+// servidor. `whoAmI` (acción nueva del proxy) expone el mismo rol que el
+// servidor ya resuelve en cada pedido, sin tocar Drive de más. `null` ante
+// cualquier falla (sin red, no autorizado, etc.) — el caller cae al
+// camino de siempre (canEditFolder()) en vez de romper nada.
+async function resolveMyGuestRole(folderDriveId) {
+  try {
+    const res = await sharedAlbumProxyCall(folderDriveId, 'whoAmI', {});
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.role || null;
+  } catch { return null; }
+}
+
+// Contraparte client-side de las dos acciones de escritura acotadas del
+// Paso 2 (contributorAppendMedia/contributorTrashOwnMedia en
+// shared-album-proxy.js) — el servidor hace el merge con el day.json real,
+// el cliente nunca manda el contenido completo del día (a diferencia de
+// writeJsonFileMigratingViaProxy()/trashFileViaProxy(), reservadas a
+// Lector/Co-propietario). `newName`/`oldNames` siguen el mismo criterio de
+// nombre nuevo/viejo que ya usa el resto de la app (dayJsonName()/
+// dayJsonNameOld()/DAY_JSON_OLD_NAME_LEGACY).
+async function contributorAppendMediaToDay(albumFolderId, dayFolderId, dateStr, media) {
+  const res = await sharedAlbumProxyCall(albumFolderId, 'contributorAppendMedia', {
+    parentId: dayFolderId,
+    newName: dayJsonName(dateStr),
+    oldNames: [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY],
+    media,
+  });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo guardar la foto en el álbum');
+  return (await res.json()).id;
+}
+async function contributorTrashOwnMediaFromDay(albumFolderId, dayFolderId, dateStr, fileId) {
+  const res = await sharedAlbumProxyCall(albumFolderId, 'contributorTrashOwnMedia', {
+    fileId, parentId: dayFolderId,
+    newName: dayJsonName(dateStr),
+    oldNames: [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY],
+  });
+  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo borrar la foto');
+  return true;
+}
+
 // Portada elegida a mano por un invitado con rol de editor, guardada en
 // SU PROPIO shared-albums.json — nunca en el albums.json de la dueña,
 // que un invitado no tiene forma de escribir (mismo límite que ya
@@ -1571,7 +1634,8 @@ async function loadDayFromDriveViaProxy(albumFolderId, dateStr) {
         media: dedupeMediaByDriveFileId((dayJson.media || []).map(m => ({
           type: m.type, name: m.name,
           driveFileId: m.driveFileId,
-          caption: m.caption || ''
+          caption: m.caption || '',
+          uploadedBy: m.uploadedBy || null, // ver el mismo campo en loadDayFromDrive()
         })))
       };
     }

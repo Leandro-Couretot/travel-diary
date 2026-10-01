@@ -1,4 +1,4 @@
 {
-  "version": "2.73",
-  "changelog": "Invitar por link/QR a sumar fotos a un álbum, sin pedir mail, ya cierra el círculo completo (generar → unirse) — la experiencia final del invitado todavía se sigue puliendo."
+  "version": "2.74",
+  "changelog": "Invitar a sumar fotos por link/QR ya deja al invitado subir y borrar lo suyo, en una galería propia simple — sin pedirle nunca el mail."
 }

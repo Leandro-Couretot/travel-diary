@@ -471,6 +471,15 @@ audio { width: 100%; height: 32px; }
 .list-photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .list-photo-date { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.3rem 0.4rem 0.25rem; background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); color: white; font-size: 0.6rem; letter-spacing: 0.02em; pointer-events: none; }
 .list-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-muted); font-size: 0.875rem; }
+/* Rol Contribuidor (v2.74, Paso 5): solo visible sobre una foto que el
+   propio Contribuidor subió (uploadedBy === currentUserSub) — ver
+   renderContributorGallery(). */
+.contrib-photo-delete {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
+  border: none; background: rgba(26,26,24,0.6); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.contrib-photo-delete:hover { background: var(--red); }
 
 /* Calendar tab */
 .cal-wrap { padding: 1rem 1rem 4rem; }
@@ -1116,6 +1125,15 @@ audio { width: 100%; height: 32px; }
   <div class="tab-panel" id="tab-book">
     <div class="book-wrap" id="book-wrap"><div class="list-empty">Cargando libro...</div></div>
   </div>
+  <!-- Rol Contribuidor (v2.74, Paso 5): botón "+" propio, SEPARADO del
+       #fab-container de Home — ese solo se muestra/oculta desde
+       renderAlbums(), no tiene nada que ver con estar parado en un álbum.
+       Reusa las mismas clases .fab-container/.fab-btn (ver estilos arriba),
+       oculto por default. -->
+  <div class="fab-container" id="contrib-fab-container">
+    <button class="fab-btn" id="contrib-fab-btn" onclick="document.getElementById('contrib-file-input').click()" title="Agregar fotos">＋</button>
+  </div>
+  <input type="file" id="contrib-file-input" accept="image/*" multiple style="display:none;">
 </div>
 
 <!-- ─── GLOBAL OVERLAYS ─── -->
@@ -1513,7 +1531,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.73';
+const APP_VERSION = '2.74';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3897,6 +3915,12 @@ let albumCanEdit  = true;
 // Para un álbum propio sigue siendo lo mismo que albumCanEdit (que ahí
 // siempre es true).
 let bookCanEdit   = true;
+// Rol Contribuidor (v2.74, Paso 5): distinto de albumCanEdit — un
+// Contribuidor nunca tiene permiso real de Drive (canEditFolder() le
+// resolvería `true` por default fail-open, ver bootstrapDiaryPage()), así
+// que necesita su PROPIO flag para decidir qué vista mostrar. Solo puede
+// ser true en un álbum compartido.
+let isContributor = false;
 let currentDate   = localDateStr();
 let currentDay    = { title: '', notes: '', media: [] };
 let dirty         = false;
@@ -4097,6 +4121,20 @@ async function maybeReconcileAudioUsage() {
 async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
   allDates = []; calDayData = {}; bookPages = []; bookDrawer = []; bookPhotoByFileId = new Map();
+  isContributor = false;
+  // Rol Contribuidor (v2.74, Paso 5): #diary-tabs/#contrib-fab-container
+  // son markup ESTÁTICO (no se reconstruyen en cada navegación, a
+  // diferencia de #header-actions, que renderDiaryHeader() rearma de cero
+  // cada vez) — si una entrada anterior a este diario los dejó ocultos/
+  // reasignados (vista de Contribuidor), hay que devolverlos al estado
+  // normal acá, antes de saber si ESTA entrada también es de Contribuidor.
+  // Sin este reset, entrar a un álbum normal después de uno donde se era
+  // Contribuidor dejaría las tabs escondidas para siempre.
+  document.getElementById('diary-tabs').style.display = '';
+  document.getElementById('contrib-fab-container').style.display = 'none';
+  currentTab = 'day';
+  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'day'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-day'));
   try {
     if (!isSharedAlbum) {
       albumFolderId = await getAlbumFolderId(albumId);
@@ -4117,9 +4155,26 @@ async function bootstrapDiaryPage() {
         coverOverride = sharedData.sharedAlbums.find(a => a.folderDriveId === albumFolderId)?.coverOverrideFileId || null;
       } catch {}
       albumMeta = { name: null, dateFrom: sharedAlbumDateFrom, dateTo: sharedAlbumDateTo, coverFileId: coverOverride };
-      albumCanEdit = await canEditFolder(albumFolderId);
+      // Rol Contribuidor (v2.74, Paso 5): canEditFolder() consulta Drive
+      // con el TOKEN PROPIO del invitado — un Contribuidor nunca tuvo
+      // ningún permiso real ahí, así que ese pedido falla (sin acceso a
+      // ese objeto en absoluto) y, por el criterio fail-open de
+      // canEditFolder() ("ante la duda, no romper la UI de quien sí puede
+      // editar"), terminaba resolviendo `true` — un bug real que dejaba
+      // a cualquier Contribuidor viendo la UI completa de editor, aunque
+      // cualquier escritura real (notas, compartir, etc.) le fuera a
+      // fallar del lado del servidor. Se resuelve el rol real PRIMERO,
+      // contra Supabase (whoAmI, vía el proxy) — si es Contribuidor, se
+      // fuerza `albumCanEdit:false` y se salta canEditFolder() del todo.
+      const myRole = await resolveMyGuestRole(albumFolderId);
+      if (myRole === 'contributor') {
+        isContributor = true;
+        albumCanEdit = false;
+      } else {
+        albumCanEdit = await canEditFolder(albumFolderId);
+      }
     }
-    bookCanEdit = isSharedAlbum ? true : albumCanEdit;
+    bookCanEdit = isContributor ? false : (isSharedAlbum ? true : albumCanEdit);
     // Lectura rápida (un GET), sin importar el plan ni si el álbum es de
     // solo lectura: un usuario Pro no consulta el gate, pero igual
     // necesitamos que el contador esté al día para el día en que baje a
@@ -4134,6 +4189,7 @@ async function bootstrapDiaryPage() {
     // maybeReconcileAudioUsage() — y esa sí sigue acotada a álbumes editables.
     usageState = await loadUsage();
     if (albumCanEdit) maybeReconcileAudioUsage();
+    if (isContributor) { await renderContributorDiaryPage(); return; }
     // v2.22: si `navigateTo('diary', {targetDate})` pidió un día puntual
     // (ej. el último día de una carga masiva recién terminada), se respeta
     // ese día en vez de dejar que resolveStartDate() elija el suyo — se
@@ -4164,6 +4220,130 @@ async function resolveStartDate() {
 
   // Viaje en curso o sin fecha fin → hoy
   return today;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ─── ROL CONTRIBUIDOR: vista restringida (v2.74, Paso 5) ──
+// ═══════════════════════════════════════════════════════════
+// Sin tabs, sin menú "···", sin notas/título — un Contribuidor ve toda la
+// galería del álbum (solo fotos, por ahora — ver nota de alcance en
+// CLAUDE.md) y puede sumar más con el botón "+", borrando solo las que
+// subió él mismo. Reusa el contenedor YA EXISTENTE de la tab Galería
+// (#tab-list/#list-tab-content, con las mismas clases .list-photo-grid/
+// .list-photo-item que ya usan Lector/Co-propietario) en vez de inventar
+// un contenedor nuevo — acá es la ÚNICA vista posible, no una tab más.
+let contributorPhotos = []; // [{driveFileId, date, name, uploadedBy}] — armado por renderContributorGallery()
+
+async function renderContributorDiaryPage() {
+  document.getElementById('diary-tabs').style.display = 'none';
+  const menuBtn = document.getElementById('btn-diary-menu');
+  if (menuBtn) menuBtn.style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-list'));
+  document.getElementById('contrib-fab-container').style.display = 'block';
+  await renderContributorGallery();
+}
+
+async function renderContributorGallery() {
+  const wrap = document.getElementById('list-tab-content');
+  wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando fotos...</div>';
+  // Mismo cuidado de siempre (ver renderListTab()/loadDay()): si el
+  // usuario ya navegó a otro álbum mientras esto resolvía, no pisar nada.
+  const navFolderId = albumFolderId;
+  try { allDates = await listDayFolders(albumFolderId, true); }
+  catch (e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar las fotos</div>'; return; }
+  if (albumFolderId !== navFolderId) return;
+  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos — tocá "＋" para sumar la primera.</div>'; contributorPhotos = []; return; }
+
+  const perDay = await Promise.all(allDates.map(async date => {
+    const day = await loadDayFromDrive(albumFolderId, date, true).catch(() => null) || { media: [] };
+    return (day.media || [])
+      .filter(m => m.type === 'image' && m.driveFileId)
+      .map(m => ({ driveFileId: m.driveFileId, date, name: m.name, uploadedBy: m.uploadedBy || null }));
+  }));
+  if (albumFolderId !== navFolderId) return;
+  const allPhotos = perDay.flat().reverse(); // allDates viene ascendente — se invierte para mostrar el día más reciente primero
+  contributorPhotos = allPhotos;
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos — tocá "＋" para sumar la primera.</div>'; return; }
+
+  wrap.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'list-photo-grid';
+  // Se recrea en cada render — mismo cuidado que coverObserver/
+  // bookImgObserver/el propio galleryImgObserver de renderListTab() (solo
+  // una de las dos vistas está activa a la vez, así que reusarlo es seguro).
+  if (galleryImgObserver) galleryImgObserver.disconnect();
+  galleryImgObserver = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize, entry.target.dataset.galleryProxyFolderId || null);
+    });
+  }, { rootMargin: '300px 0px' });
+  allPhotos.forEach((p, i) => {
+    const isMine = !!(currentUserSub && p.uploadedBy === currentUserSub);
+    const item = document.createElement('div');
+    item.className = 'list-photo-item';
+    item.innerHTML = `<img class="list-photo-img" alt=""><div class="list-photo-date">${formatDate(p.date)}</div>` +
+      (isMine ? `<button class="contrib-photo-delete" data-idx="${i}" title="Borrar">${icon('trash', { size: '16px' })}</button>` : '');
+    if (isMine) item.querySelector('.contrib-photo-delete').addEventListener('click', e => { e.stopPropagation(); deleteContributorPhoto(i); });
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, albumFolderId);
+    grid.appendChild(item);
+  });
+  wrap.appendChild(grid);
+}
+
+async function deleteContributorPhoto(idx) {
+  const photo = contributorPhotos[idx];
+  if (!photo) return;
+  const ok = await customConfirm('Esta foto se va a borrar de Drive (recuperable 30 días desde la papelera).', { title: 'Borrar foto', confirmLabel: 'Borrar' });
+  if (!ok) return;
+  try {
+    const dayFolderId = getCachedDayFolderId(albumFolderId, photo.date) || await getOrCreateFolder(photo.date, albumFolderId, albumFolderId);
+    await contributorTrashOwnMediaFromDay(albumFolderId, dayFolderId, photo.date, photo.driveFileId);
+    invalidateDayCache(albumFolderId, photo.date);
+    await renderContributorGallery();
+  } catch (e) {
+    alert(e.message || 'No se pudo borrar la foto.');
+  }
+}
+
+// Alcance de esta primera entrega: solo fotos (`accept="image/*"` en
+// #contrib-file-input) — mismo límite ya aceptado para la tab Galería
+// desde v1.88 ("ni video ni audio tienen una miniatura real para
+// reconocer a simple vista"). Video/audio queda como mejora futura, ver
+// CLAUDE.md → "Rol Contribuidor" → Pasos siguientes.
+const CONTRIB_UPLOAD_CONCURRENCY = 3;
+async function uploadContributorMedia(fileListRaw) {
+  const files = Array.from(fileListRaw).filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  const btn = document.getElementById('contrib-fab-btn');
+  const prevLabel = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+
+  const dayFolderPromises = {};
+  function resolveDayFolder(date) {
+    if (!dayFolderPromises[date]) {
+      dayFolderPromises[date] = (async () => getCachedDayFolderId(albumFolderId, date) || await getOrCreateFolder(date, albumFolderId, albumFolderId))();
+    }
+    return dayFolderPromises[date];
+  }
+
+  const tasks = [];
+  for (const file of files) { const date = (await getFileDateStr(file)) || localDateStr(); tasks.push({ file, date }); }
+
+  const results = await runWithConcurrency(tasks, CONTRIB_UPLOAD_CONCURRENCY, async ({ file, date }) => {
+    const dataUrl = await compressImageFile(file);
+    const blob = base64ToBlob(dataUrl);
+    const dayFolderId = await resolveDayFolder(date);
+    const driveFileId = await uploadFile(blob, mediaFileName('image', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, albumFolderId);
+    await contributorAppendMediaToDay(albumFolderId, dayFolderId, date, { type: 'image', name: file.name, driveFileId });
+    invalidateDayCache(albumFolderId, date);
+  });
+
+  btn.disabled = false; btn.textContent = prevLabel;
+  await renderContributorGallery();
+  const failed = results.filter(r => r.status === 'rejected').length;
+  if (failed) alert(`${failed} de ${files.length} foto${files.length === 1 ? '' : 's'} no se ${failed === 1 ? 'pudo subir' : 'pudieron subir'}. Probá de nuevo.`);
 }
 
 function switchTab(tab) {
@@ -7384,6 +7564,8 @@ document.getElementById('bulk-diary-drop-zone').addEventListener('dragover', e =
 document.getElementById('bulk-diary-drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
 document.getElementById('bulk-diary-drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); processBulkDiaryFiles(e.dataTransfer.files); });
 document.getElementById('bulk-diary-file-input').addEventListener('change', e => { if (e.target.files.length) processBulkDiaryFiles(e.target.files); e.target.value = ''; });
+// Rol Contribuidor (v2.74, Paso 5): botón "+" propio de la vista restringida.
+document.getElementById('contrib-file-input').addEventListener('change', e => { if (e.target.files.length) uploadContributorMedia(e.target.files); e.target.value = ''; });
 
 document.addEventListener('keydown', e => {
   if (document.getElementById('lightbox').classList.contains('open')) { if (e.key === 'ArrowLeft') lbNav(-1); if (e.key === 'ArrowRight') lbNav(1); if (e.key === 'Escape') closeLightbox(); return; }

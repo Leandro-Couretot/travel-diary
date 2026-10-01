@@ -221,6 +221,10 @@ exports.authSession = onRequest(
         // debug de v1.52 a la cuenta del propio dev, nunca para nada de
         // negocio real (eso sigue siendo status==='authorized').
         email: userInfo.email,
+        // sub (v2.74, rol Contribuidor Paso 5): mismo motivo que en
+        // subscription-status.js — el cliente lo necesita para comparar
+        // contra `uploadedBy` de cada foto.
+        sub: userInfo.sub,
         // picture/name (v1.81): solo existen si la cuenta otorgó el scope
         // userinfo.profile — pueden venir undefined para una sesión vieja
         // que todavía no re-autenticó. Se usan únicamente para el avatar

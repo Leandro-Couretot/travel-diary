@@ -10,6 +10,7 @@ let subState = { plan: 'free', status: 'none' };
 let currentUserEmail = null; // se llena en establishSession(), viene ya validado por el servidor
 let currentUserPicture = null; // v1.81: avatar del header — mismo origen/validación que currentUserEmail
 let currentUserName = null; // v1.81: solo para el alt/title del avatar, no se usa en ningún otro lado
+let currentUserSub = null; // v2.74: el propio google_sub — lo necesita el rol Contribuidor para comparar contra `uploadedBy` de cada foto (ver CLAUDE.md)
 // Onboarding personalizado post-login (app.html → maybeShowPostLoginOnboarding()):
 // solo `true` en un signup genuino (isNewUser real de auth-session.js) —
 // una sesión restaurada nunca pasa por acá, así que su lectura por defecto
@@ -232,6 +233,7 @@ function applySessionResponse(data) {
   currentUserEmail = data.email || null;
   currentUserPicture = data.picture || null;
   currentUserName = data.name || null;
+  currentUserSub = data.sub || null;
   // Leído por app.html (maybeShowPostLoginOnboarding()) en los 3 puntos
   // donde una conexión nueva termina de resolver — mismo `isNewUser` real
   // que ya usa el bloque de CompleteRegistration de acá abajo.
@@ -291,6 +293,7 @@ async function refreshSubscriptionStatus() {
       currentUserEmail = data.email || currentUserEmail;
       currentUserPicture = data.picture || currentUserPicture;
       currentUserName = data.name || currentUserName;
+      currentUserSub = data.sub || currentUserSub;
     }
   } catch (e) {
     console.warn('No se pudo refrescar el estado de suscripción:', e);

@@ -208,6 +208,15 @@ exports.sharedAlbumProxy = onRequest(
       if (!role) role = await getGuestRoleCached(folderDriveId, session.email, ownerAccessToken);
       if (!role) { res.status(403).json({ error: 'not_authorized' }); return; }
 
+      // whoAmI (v2.74, rol Contribuidor Paso 5): el cliente necesita saber
+      // SU PROPIO rol real ANTES de decidir qué vista mostrar al entrar a
+      // un álbum compartido — hasta acá el rol solo se resolvía puertas
+      // adentro del servidor, en cada pedido, sin devolvérselo a nadie.
+      // Lectura pura, sin tocar Drive ni Supabase de más (el rol ya se
+      // resolvió arriba) — no pasa por dispatchAction() porque no encaja
+      // en el molde de una acción sobre un archivo/carpeta puntual.
+      if (action === 'whoAmI') { res.status(200).json({ ok: true, role }); return; }
+
       if (WRITE_ACTIONS.has(action)) {
         if (role === 'contributor') {
           if (!CONTRIBUTOR_WRITE_ACTIONS.has(action)) { res.status(403).json({ error: 'read_only' }); return; }
