@@ -700,8 +700,26 @@ async function countEditableAlbums() {
   const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
   const ownActiveCount = ownAlbums.filter(a => !a.archived).length;
   const sharedAlbums = sharedData.sharedAlbums || [];
-  const canEditFlags = await Promise.all(sharedAlbums.map(a => canEditFolder(a.folderDriveId)));
-  const sharedEditableCount = canEditFlags.filter(Boolean).length;
+  const editableFlags = await Promise.all(sharedAlbums.map(async a => {
+    const canEdit = await canEditFolder(a.folderDriveId);
+    if (!canEdit) return false;
+    // Rol Contribuidor (v2.75, Paso 6): canEditFolder() consulta Drive con
+    // el TOKEN PROPIO del invitado — un Contribuidor nunca tuvo ningún
+    // permiso real ahí, así que ese pedido falla siempre y, por el
+    // criterio fail-open de canEditFolder() ("ante la duda, no romper la
+    // UI de quien sí puede editar"), resuelve `true` igual — contaría de
+    // más contra el límite de 4 álbumes gratis, pese a que el acuerdo con
+    // el usuario es que un Contribuidor NUNCA cuenta (gratis sin límite,
+    // ver "Rol Contribuidor" en CLAUDE.md). Antes de confiar en un
+    // `true`, se confirma el rol real (whoAmI, vía el proxy) — solo para
+    // los álbumes que llegaron hasta acá (la minoría: la mayoría de
+    // álbumes compartidos de una cuenta son de solo lectura, donde
+    // canEditFolder() ya resuelve `false` de forma confiable y esto ni
+    // se llega a ejecutar).
+    const role = await resolveMyGuestRole(a.folderDriveId);
+    return role !== 'contributor';
+  }));
+  const sharedEditableCount = editableFlags.filter(Boolean).length;
   return ownActiveCount + sharedEditableCount;
 }
 

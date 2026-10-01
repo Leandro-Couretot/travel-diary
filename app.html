@@ -1531,7 +1531,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.74';
+const APP_VERSION = '2.75';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3157,8 +3157,20 @@ function toggleSharedAlbumMenu(event, album, wrapper) {
   _albumMenuEl = menu;
   setTimeout(() => document.addEventListener('click', _closeAlbumMenuOnOutside), 0);
 
-  canEditFolder(album.folderDriveId).then(canEdit => {
+  canEditFolder(album.folderDriveId).then(async canEdit => {
     if (!canEdit || _albumMenuEl !== menu || !menu.isConnected) return;
+    // Rol Contribuidor (v2.75, Paso 7): canEditFolder() usa el token
+    // PROPIO del invitado — un Contribuidor nunca tuvo ningún permiso
+    // real ahí, así que ese pedido falla siempre y cae al fail-open de
+    // canEditFolder() (`true`) igual, lo que hubiera ofrecido "Editar
+    // álbum"/"Carga masiva"/"Compartir álbum" a un Contribuidor — ninguna
+    // de las tres funciona para ese rol (el proxy las rechaza con
+    // read_only, solo están permitidas getOrCreateFolder/uploadMedia/
+    // contributorAppendMedia/contributorTrashOwnMedia, ver "Rol
+    // Contribuidor" en CLAUDE.md). Antes de confiar en el `true`, se
+    // confirma que no sea en realidad un Contribuidor.
+    const role = await resolveMyGuestRole(album.folderDriveId).catch(() => null);
+    if (role === 'contributor' || _albumMenuEl !== menu || !menu.isConnected) return;
     menu.innerHTML = sharedAlbumMenuItemsHtml(true);
   }).catch(() => {});
 }
