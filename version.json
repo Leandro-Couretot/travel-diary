@@ -1,4 +1,4 @@
 {
-  "version": "2.72",
-  "changelog": "Mejoras internas de infraestructura, sin cambios visibles todavía."
+  "version": "2.73",
+  "changelog": "Invitar por link/QR a sumar fotos a un álbum, sin pedir mail, ya cierra el círculo completo (generar → unirse) — la experiencia final del invitado todavía se sigue puliendo."
 }

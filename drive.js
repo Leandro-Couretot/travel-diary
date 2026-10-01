@@ -1217,6 +1217,36 @@ function generateContributorInviteLink(token, utmMedium) {
   return `${base}?${p.toString()}`;
 }
 
+// Rol Contribuidor (v2.73, Paso 4): contraparte de createContributorInvite()
+// del lado del invitado — manda el token a shared-album-invite-join.js, que
+// autentica por sesión (no por token de Drive, ver handleContributorJoin()
+// en app.html) y registra el alta en shared_album_members. Traduce cada
+// código de error real del servidor (ver el comentario grande en
+// shared-album-invite-join.js) a un mensaje en criollo — pedido explícito
+// del usuario para toda esta infraestructura ("indicándole al usuario si
+// algo falló y por qué").
+const CONTRIBUTOR_INVITE_JOIN_ERRORS = {
+  invalid_session: 'Tu sesión no se pudo validar — recargá la página y probá de nuevo.',
+  bad_request: 'Este link de invitación está incompleto.',
+  invite_not_found: 'Este link no existe o ya no es válido.',
+  invite_inactive: 'Quien te invitó dejó de aceptar nuevas fotos por este link.',
+  invite_expired: 'Este link ya venció.',
+  is_owner: 'Este es tu propio álbum — no hace falta que te unas.',
+};
+async function joinContributorInvite(token, via) {
+  const res = await fetch('/api/shared-album/invite/join', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    body: JSON.stringify({ token, via }),
+  });
+  if (!res.ok) {
+    let code = null;
+    try { code = (await res.json()).error; } catch {}
+    throw new Error(CONTRIBUTOR_INVITE_JOIN_ERRORS[code] || 'No se pudo unir al álbum. Probá de nuevo.');
+  }
+  return await res.json(); // { ok, folderDriveId, role }
+}
+
 async function loadSharedAlbums() {
   if (!isDriveConnected()) return { version: 1, sharedAlbums: [] };
   // Mismo camino rápido que loadAlbums() (v2.15) — ID cacheado de una carga
