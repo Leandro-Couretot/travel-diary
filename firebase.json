@@ -19,6 +19,9 @@
       { "source": "/api/drive/token/refresh", "function": "driveTokenRefresh" },
       { "source": "/api/shared-album/register", "function": "sharedAlbumRegister" },
       { "source": "/api/shared-album/proxy", "function": "sharedAlbumProxy" },
+      { "source": "/api/shared-album/invite/create", "function": "sharedAlbumInviteCreate" },
+      { "source": "/api/shared-album/invite/join", "function": "sharedAlbumInviteJoin" },
+      { "source": "/api/shared-album/invite/revoke", "function": "sharedAlbumInviteRevoke" },
       { "source": "/:slug", "function": "campaignLink" }
     ],
     "headers": [

@@ -1,4 +1,4 @@
 {
-  "version": "2.69",
-  "changelog": "Se arregla un error real que podía aparecer viendo el slideshow desde navegadores más restrictivos (como el de WhatsApp): un video que no podía reproducirse con sonido ya no rompe nada, se salta solo al siguiente."
+  "version": "2.70",
+  "changelog": "Mejoras internas de infraestructura, sin cambios visibles todavía."
 }

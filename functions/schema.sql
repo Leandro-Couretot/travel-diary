@@ -152,11 +152,48 @@ create table if not exists travel_diary.shared_album_owner (
   created_at       timestamptz not null default now()
 );
 
+-- Rol "Contribuidor" — álbumes compartidos sin pedir mail, por link/QR (ver
+-- CLAUDE.md → "Álbumes compartidos: rol Contribuidor (QR, sin mail)"). Un
+-- casamiento no tiene una lista cerrada de mails para pre-compartir de
+-- antemano como exige permissions.create de Drive — acá la dueña genera un
+-- token (no atado a ninguna cuenta puntual) y cualquiera que lo abre,
+-- logueado con Google, se une con el rol indicado. `active` (toggle manual
+-- de la dueña) + `expires_at` (automático) cortan NUEVAS uniones a partir de
+-- ese momento — ninguno de los dos revoca retroactivamente a quien ya se
+-- unió, son mecanismos independientes para el mismo corte.
+create table if not exists travel_diary.shared_album_invites (
+  token            text primary key,
+  folder_drive_id  text not null,
+  role             text not null check (role in ('contributor')),
+  owner_google_sub text not null references travel_diary.subscriptions(google_sub),
+  active           boolean not null default true,
+  expires_at       timestamptz,
+  created_at       timestamptz not null default now()
+);
+create index if not exists shared_album_invites_folder_idx on travel_diary.shared_album_invites (folder_drive_id);
+
+-- Quién tiene qué rol sobre qué álbum — reemplaza, para Contribuidor, la
+-- consulta en vivo a los permisos reales de Drive que usa
+-- shared-album-proxy.js para lector/editor (ver guestRole() ahí): un
+-- Contribuidor nunca tiene un permiso real de Drive, no hay nada que mirar
+-- ahí. `role` guardado (no un simple flag) para que lector/co-propietario
+-- puedan migrar acá el día de mañana sin cambiar el shape de la tabla.
+create table if not exists travel_diary.shared_album_members (
+  folder_drive_id  text not null,
+  guest_google_sub text not null references travel_diary.subscriptions(google_sub),
+  role             text not null check (role in ('contributor')),
+  joined_via       text not null default 'link' check (joined_via in ('link','qr')),
+  joined_at        timestamptz not null default now(),
+  primary key (folder_drive_id, guest_google_sub)
+);
+
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 alter table travel_diary.usage_events enable row level security;
 alter table travel_diary.campaign_links enable row level security;
 alter table travel_diary.shared_album_owner enable row level security;
+alter table travel_diary.shared_album_invites enable row level security;
+alter table travel_diary.shared_album_members enable row level security;
 -- Sin policies = solo la service_role key (usada por las Cloud Functions)
 -- puede leer/escribir. Igual que en cualquier otro cliente de la agencia.
 
