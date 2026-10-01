@@ -24,6 +24,20 @@ const guestPermissionCache = new Map(); // "email:folderDriveId" -> { role, expi
 const OWNER_TOKEN_SAFETY_BUFFER_MS = 5 * 60 * 1000;
 const GUEST_PERMISSION_TTL_MS = 15 * 60 * 1000;
 
+// v2.70 (Paso 2) — Rol "Contribuidor", ver CLAUDE.md → "Rol 'Contribuidor'".
+// A diferencia de Lector/Co-propietario (resueltos en vivo contra los
+// permisos reales de la carpeta, `guestRole()` más abajo), un Contribuidor
+// nunca tiene un permiso real de Drive — se une por link/QR, sin que la
+// dueña le haya compartido nada por mail. Su autorización vive 100% en
+// `shared_album_members` (Supabase), chequeada ANTES de intentar nada
+// contra Drive. Set acotado de acciones de escritura — nunca las genéricas
+// `writeJson`/`trashFile` (dejarían que un Contribuidor reescriba el
+// day.json entero, pisando título/notas/fotos ajenas) — en su lugar,
+// `contributorAppendMedia`/`contributorTrashOwnMedia`, que hacen el merge
+// del lado del servidor y nunca aceptan el contenido completo de un
+// archivo de parte del cliente.
+const CONTRIBUTOR_WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
+
 // v2.61 — Proxy de lectura para álbumes compartidos.
 //
 // Por qué existe: el scope `drive.file` de esta app nunca le da a un
@@ -185,11 +199,24 @@ exports.sharedAlbumProxy = onRequest(
         return;
       }
 
-      const role = await getGuestRoleCached(folderDriveId, session.email, ownerAccessToken);
+      // v2.70 (Paso 2): un Contribuidor nunca tiene permiso real de Drive —
+      // se chequea primero contra la tabla de acceso propia (barato, sin
+      // tocar Drive) y solo si no hay nada ahí se cae al chequeo de
+      // siempre contra los permisos reales de la carpeta (Lector/
+      // Co-propietario).
+      let role = await getContributorRole(supabase, folderDriveId, session.sub);
+      if (!role) role = await getGuestRoleCached(folderDriveId, session.email, ownerAccessToken);
       if (!role) { res.status(403).json({ error: 'not_authorized' }); return; }
-      if (WRITE_ACTIONS.has(action) && !EDITOR_ROLES.has(role)) { res.status(403).json({ error: 'read_only' }); return; }
 
-      await dispatchAction(action, params || {}, folderDriveId, ownerAccessToken, res);
+      if (WRITE_ACTIONS.has(action)) {
+        if (role === 'contributor') {
+          if (!CONTRIBUTOR_WRITE_ACTIONS.has(action)) { res.status(403).json({ error: 'read_only' }); return; }
+        } else if (!EDITOR_ROLES.has(role)) {
+          res.status(403).json({ error: 'read_only' }); return;
+        }
+      }
+
+      await dispatchAction(action, params || {}, folderDriveId, ownerAccessToken, res, session.sub);
     } catch (e) {
       console.error('shared-album-proxy error:', e);
       if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
@@ -241,6 +268,23 @@ async function getGuestRoleCached(folderDriveId, guestEmail, ownerAccessToken) {
   return role;
 }
 
+// v2.70 (Paso 2): resuelve el rol de un Contribuidor consultando
+// `shared_album_members` — nunca cacheado por ahora (una sola lectura
+// indexada, barata; se puede sumar al mismo esquema de caché de arriba
+// más adelante si hace falta, mismo criterio "paso a paso" de siempre).
+// Devuelve `null` si esta cuenta no es Contribuidor de este álbum — en ese
+// caso el caller cae al chequeo de permisos reales de Drive.
+async function getContributorRole(supabase, folderDriveId, guestGoogleSub) {
+  const { data, error } = await supabase
+    .from('shared_album_members')
+    .select('role')
+    .eq('folder_drive_id', folderDriveId)
+    .eq('guest_google_sub', guestGoogleSub)
+    .maybeSingle();
+  if (error) { console.error('shared-album-proxy contributor lookup error:', error); return null; }
+  return data ? data.role : null;
+}
+
 async function driveFetch(url, accessToken) {
   return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 }
@@ -250,8 +294,10 @@ async function driveFetch(url, accessToken) {
 // de EDITOR_ROLES (chequeado en el handler principal).
 const EDITOR_ROLES = new Set(['owner', 'organizer', 'fileOrganizer', 'writer']);
 // v2.67: shareFolder/updateAlbumMeta suman a la lista — ver el comentario
-// grande al principio del archivo, sección v2.67.
-const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'writeJson', 'trashFile', 'shareFolder', 'updateAlbumMeta']);
+// grande al principio del archivo, sección v2.67. v2.70: las dos acciones
+// nuevas de Contribuidor también pasan por este gate (aunque su propio
+// subconjunto permitido — CONTRIBUTOR_WRITE_ACTIONS — sea más chico).
+const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'writeJson', 'trashFile', 'shareFolder', 'updateAlbumMeta', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
 
 async function guestRole(folderDriveId, guestEmail, ownerAccessToken) {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=trashed,permissions(emailAddress,role)`, ownerAccessToken);
@@ -283,7 +329,7 @@ async function isDescendant(id, folderDriveId, ownerAccessToken, maxDepth = 5) {
   return false;
 }
 
-async function dispatchAction(action, params, folderDriveId, ownerAccessToken, res) {
+async function dispatchAction(action, params, folderDriveId, ownerAccessToken, res, guestGoogleSub) {
   if (action === 'listFolders') {
     const parentId = params.parentId;
     if (!parentId || !(await isDescendant(parentId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
@@ -536,6 +582,94 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     const ur = await driveUploadMultipart(albumsFileId, ALBUMS_JSON_NAME, rootId, null, buf, 'application/json', ownerAccessToken);
     if (!ur.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(ur) }); return; }
     res.status(200).json({ ok: true, entry: albumsList[idx] });
+    return;
+  }
+
+  // ── Contribuidor (v2.70, Paso 2 — ver el comentario grande al principio
+  // del archivo, sección "Rol Contribuidor") ──
+
+  // Agrega UNA entrada de media a day.json sin aceptar nunca el contenido
+  // completo del archivo de parte del cliente (a diferencia de `writeJson`,
+  // reservada a Lector/Co-propietario) — el servidor lee el day.json real
+  // (o arranca uno default si todavía no existe), le agrega la entrada
+  // marcada con `uploadedBy`, y recién ahí lo escribe. Así un Contribuidor
+  // nunca puede pisar el título/notas del día ni la caption de una foto
+  // ajena, mande lo que mande en el body.
+  if (action === 'contributorAppendMedia') {
+    const { parentId, newName, oldNames, media } = params;
+    if (!parentId || !newName || !media || !media.driveFileId || !media.type || !media.name) { res.status(400).json({ error: 'bad_request' }); return; }
+    if (!(await isDescendant(parentId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    if (!(await isDescendant(media.driveFileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+
+    let existingId = await driveFindByName(parentId, newName, ownerAccessToken);
+    if (!existingId) {
+      for (const oldName of (Array.isArray(oldNames) ? oldNames : (oldNames ? [oldNames] : []))) {
+        existingId = await driveFindByName(parentId, oldName, ownerAccessToken);
+        if (existingId) break;
+      }
+    }
+    let dayJson = null;
+    if (existingId) {
+      const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${existingId}?alt=media`, ownerAccessToken);
+      if (dr.ok) { try { dayJson = await dr.json(); } catch { dayJson = null; } }
+    }
+    if (!dayJson || typeof dayJson !== 'object') dayJson = { version: 2, title: '', notes: '', media: [] };
+    if (!Array.isArray(dayJson.media)) dayJson.media = [];
+    dayJson.media.push({
+      type: media.type,
+      name: media.name,
+      driveFileId: media.driveFileId,
+      caption: '',
+      uploadedBy: guestGoogleSub,
+    });
+
+    const buf = Buffer.from(JSON.stringify(dayJson, null, 2), 'utf8');
+    const ur = await driveUploadMultipart(existingId, newName, parentId, null, buf, 'application/json', ownerAccessToken);
+    if (!ur.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(ur) }); return; }
+    const file = await ur.json();
+    res.status(200).json({ id: file.id });
+    return;
+  }
+
+  // Borra una foto/video/audio SOLO si fue el propio Contribuidor quien la
+  // subió — valida contra el `uploadedBy` guardado en el day.json real
+  // antes de tocar nada (nunca confía en que el cliente le pida borrar
+  // "lo suyo" sin confirmarlo del lado del servidor).
+  if (action === 'contributorTrashOwnMedia') {
+    const { fileId, parentId, newName, oldNames } = params;
+    if (!fileId || !parentId || !newName) { res.status(400).json({ error: 'bad_request' }); return; }
+    if (!(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+
+    let existingId = await driveFindByName(parentId, newName, ownerAccessToken);
+    if (!existingId) {
+      for (const oldName of (Array.isArray(oldNames) ? oldNames : (oldNames ? [oldNames] : []))) {
+        existingId = await driveFindByName(parentId, oldName, ownerAccessToken);
+        if (existingId) break;
+      }
+    }
+    if (!existingId) { res.status(404).json({ error: 'day_not_found' }); return; }
+    const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${existingId}?alt=media`, ownerAccessToken);
+    if (!dr.ok) { res.status(404).json({ error: 'day_not_found' }); return; }
+    let dayJson;
+    try { dayJson = await dr.json(); } catch { res.status(502).json({ error: 'invalid_json' }); return; }
+    const media = Array.isArray(dayJson.media) ? dayJson.media : [];
+    const idx = media.findIndex(m => m.driveFileId === fileId);
+    if (idx === -1) { res.status(404).json({ error: 'media_not_found' }); return; }
+    if (media[idx].uploadedBy !== guestGoogleSub) { res.status(403).json({ error: 'not_own_upload' }); return; }
+
+    const pr = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${ownerAccessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed: true }),
+    });
+    if (!pr.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(pr) }); return; }
+
+    media.splice(idx, 1);
+    dayJson.media = media;
+    const buf = Buffer.from(JSON.stringify(dayJson, null, 2), 'utf8');
+    const ur = await driveUploadMultipart(existingId, newName, parentId, null, buf, 'application/json', ownerAccessToken);
+    if (!ur.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(ur) }); return; }
+    res.status(200).json({ ok: true });
     return;
   }
 
