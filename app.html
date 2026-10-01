@@ -1350,20 +1350,20 @@ audio { width: 100%; height: 32px; }
     <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
     <div class="modal-body">
       <div id="share-form-section">
-        <div class="form-field" id="share-email-field"><label class="form-label">Email de Google</label><input class="form-input" id="share-email" type="email" placeholder="lucia@gmail.com"></div>
         <div class="form-field">
-          <label class="form-label">Permiso</label>
+          <label class="form-label">Elegí el rol</label>
           <div class="role-toggle" id="share-role-toggle">
-            <button type="button" class="role-toggle-btn active" data-role="reader" onclick="setShareRole('reader')">Puede ver</button>
+            <button type="button" class="role-toggle-btn" data-role="reader" onclick="setShareRole('reader')">Puede ver</button>
             <button type="button" class="role-toggle-btn" data-role="writer" onclick="setShareRole('writer')">Puede editar</button>
             <button type="button" class="role-toggle-btn" data-role="contributor" id="share-role-contributor-btn" onclick="setShareRole('contributor')">Contribuidor</button>
           </div>
         </div>
-        <p id="share-contrib-hint" style="display:none;font-size:0.8rem;color:var(--ink-muted);line-height:1.4;margin:-0.5rem 0 1rem;">Cualquiera con el link (sin pedirle el mail) puede sumar fotos a la galería — no ve Día/Mes/Libro, no edita notas, no vuelve a compartir. Puede borrar solo lo que subió él mismo.</p>
+        <div id="share-role-explain" style="display:none;font-size:0.82rem;color:var(--ink-muted);line-height:1.5;background:var(--accent-light);border-radius:10px;padding:0.75rem 0.9rem;margin-bottom:1rem;"></div>
+        <div class="form-field" id="share-email-field" style="display:none;"><label class="form-label">Email de Google</label><input class="form-input" id="share-email" type="email" placeholder="lucia@gmail.com"></div>
         <div class="form-field" id="share-contrib-expires-field" style="display:none;"><label class="form-label">Vencimiento (opcional)</label><input class="form-input" id="share-contrib-expires" type="date"></div>
         <div id="share-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
         <div id="share-success" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;line-height:1.5;word-break:break-all;"></div>
-        <button class="btn btn-primary" style="width:100%;" id="share-submit-btn" onclick="submitShare()">Compartir y copiar link</button>
+        <button class="btn btn-primary" style="width:100%;display:none;" id="share-submit-btn" onclick="submitShare()">Compartir y copiar link</button>
       </div>
       <div id="share-contrib-result-section" style="display:none;">
         <p style="font-size:0.85rem;color:var(--ink-muted);line-height:1.4;margin-bottom:1rem;">Compartí este link — por WhatsApp, o mostrando el QR impreso — con quien quieras que sume fotos.</p>
@@ -1531,7 +1531,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.75';
+const APP_VERSION = '2.76';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3386,7 +3386,7 @@ async function submitNewAlbum() {
 }
 function showAlbumError(msg) { const el = document.getElementById('album-error'); el.textContent = msg; el.style.display = 'block'; }
 
-let shareRole = 'reader';
+let shareRole = null; // null hasta que el usuario elige un rol en el modal (v2.76)
 // Rol Contribuidor (v2.72, Paso 3 — ver "Rol Contribuidor" en CLAUDE.md):
 // estado del link recién generado en ESTA apertura del modal — se usa
 // para armar el link/QR y para el botón de revocar. Se resetea en
@@ -3394,18 +3394,31 @@ let shareRole = 'reader';
 let contributorInviteToken = null;
 let contributorInviteFolderId = null;
 
+// Texto explicativo por rol (v2.76) — se despliega recién al elegir el
+// rol en el modal de compartir, en vez de dar por sentado que el usuario
+// ya sabe qué significa cada uno. El de Contribuidor reemplaza al hint
+// fijo que vivía siempre visible solo para ese rol (share-contrib-hint).
+const SHARE_ROLE_EXPLAIN = {
+  reader: 'Puede ver todo el contenido del álbum — fotos, videos, notas — pero no puede subir nada, editar ni volver a compartirlo. Hace falta su email de Google para darle el permiso.',
+  writer: 'Puede hacer lo mismo que vos en este álbum: subir y borrar fotos, editar notas, archivarlo o eliminarlo, y compartirlo con alguien más. Hace falta su email de Google para darle el permiso.',
+  contributor: 'Cualquiera con el link (sin pedirle el mail) puede sumar fotos a la galería — no ve Día/Mes/Libro, no edita notas, no vuelve a compartir. Puede borrar solo lo que subió él mismo.',
+};
+
 function setShareRole(role) {
   shareRole = role;
   document.querySelectorAll('#share-role-toggle .role-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
   const isContrib = role === 'contributor';
+  document.getElementById('share-role-explain').textContent = SHARE_ROLE_EXPLAIN[role] || '';
+  document.getElementById('share-role-explain').style.display = 'block';
   document.getElementById('share-email-field').style.display = isContrib ? 'none' : '';
-  document.getElementById('share-contrib-hint').style.display = isContrib ? 'block' : 'none';
   document.getElementById('share-contrib-expires-field').style.display = isContrib ? '' : 'none';
   const btn = document.getElementById('share-submit-btn');
+  btn.style.display = '';
   btn.textContent = isContrib ? 'Generar link de invitación' : 'Compartir y copiar link';
   btn.onclick = isContrib ? submitContributorInvite : submitShare;
   document.getElementById('share-error').style.display = 'none';
   document.getElementById('share-success').style.display = 'none';
+  if (!isContrib) setTimeout(() => document.getElementById('share-email').focus(), 50);
 }
 
 function openShareModal(event, album) {
@@ -3428,9 +3441,17 @@ function openShareModal(event, album) {
   // no a este invitado, y el endpoint de creación no tiene ninguna forma
   // de distinguir "soy editor de este álbum ajeno" de "soy su dueña".
   document.getElementById('share-role-contributor-btn').style.display = album._shared ? 'none' : '';
-  setShareRole('reader');
+  // v2.76: arranca sin ningún rol elegido — ni explicación, ni campo de
+  // mail, ni botón — para que el usuario elija a conciencia antes de ver
+  // nada más (pedido explícito: "selecciona el rol... se abre una
+  // explicación... y después se genera el link").
+  shareRole = null;
+  document.querySelectorAll('#share-role-toggle .role-toggle-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('share-role-explain').style.display = 'none';
+  document.getElementById('share-email-field').style.display = 'none';
+  document.getElementById('share-contrib-expires-field').style.display = 'none';
+  document.getElementById('share-submit-btn').style.display = 'none';
   document.getElementById('modal-share-album').classList.add('open');
-  setTimeout(() => document.getElementById('share-email').focus(), 100);
 }
 function closeShareModal() {
   document.getElementById('modal-share-album').classList.remove('open');
