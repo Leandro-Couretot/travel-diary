@@ -1331,17 +1331,32 @@ audio { width: 100%; height: 32px; }
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
     <div class="modal-body">
-      <div class="form-field"><label class="form-label">Email de Google</label><input class="form-input" id="share-email" type="email" placeholder="lucia@gmail.com"></div>
-      <div class="form-field">
-        <label class="form-label">Permiso</label>
-        <div class="role-toggle" id="share-role-toggle">
-          <button type="button" class="role-toggle-btn active" data-role="reader" onclick="setShareRole('reader')">Puede ver</button>
-          <button type="button" class="role-toggle-btn" data-role="writer" onclick="setShareRole('writer')">Puede editar</button>
+      <div id="share-form-section">
+        <div class="form-field" id="share-email-field"><label class="form-label">Email de Google</label><input class="form-input" id="share-email" type="email" placeholder="lucia@gmail.com"></div>
+        <div class="form-field">
+          <label class="form-label">Permiso</label>
+          <div class="role-toggle" id="share-role-toggle">
+            <button type="button" class="role-toggle-btn active" data-role="reader" onclick="setShareRole('reader')">Puede ver</button>
+            <button type="button" class="role-toggle-btn" data-role="writer" onclick="setShareRole('writer')">Puede editar</button>
+            <button type="button" class="role-toggle-btn" data-role="contributor" id="share-role-contributor-btn" onclick="setShareRole('contributor')">Contribuidor</button>
+          </div>
         </div>
+        <p id="share-contrib-hint" style="display:none;font-size:0.8rem;color:var(--ink-muted);line-height:1.4;margin:-0.5rem 0 1rem;">Cualquiera con el link (sin pedirle el mail) puede sumar fotos a la galería — no ve Día/Mes/Libro, no edita notas, no vuelve a compartir. Puede borrar solo lo que subió él mismo.</p>
+        <div class="form-field" id="share-contrib-expires-field" style="display:none;"><label class="form-label">Vencimiento (opcional)</label><input class="form-input" id="share-contrib-expires" type="date"></div>
+        <div id="share-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
+        <div id="share-success" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;line-height:1.5;word-break:break-all;"></div>
+        <button class="btn btn-primary" style="width:100%;" id="share-submit-btn" onclick="submitShare()">Compartir y copiar link</button>
       </div>
-      <div id="share-error" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:1rem;"></div>
-      <div id="share-success" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;line-height:1.5;word-break:break-all;"></div>
-      <button class="btn btn-primary" style="width:100%;" onclick="submitShare()">Compartir y copiar link</button>
+      <div id="share-contrib-result-section" style="display:none;">
+        <p style="font-size:0.85rem;color:var(--ink-muted);line-height:1.4;margin-bottom:1rem;">Compartí este link — por WhatsApp, o mostrando el QR impreso — con quien quieras que sume fotos.</p>
+        <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
+          <button class="btn btn-secondary" style="flex:1;" onclick="copyContributorInviteLink()">Copiar link</button>
+          <button class="btn btn-secondary" style="flex:1;" onclick="toggleContributorInviteQr()">Ver QR</button>
+        </div>
+        <div id="share-contrib-qr" style="display:none;text-align:center;margin-bottom:1rem;"></div>
+        <div id="share-success-2" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;"></div>
+        <button class="btn" style="width:100%;color:var(--red);" onclick="revokeContributorInvite()">Dejar de compartir por este link</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1498,7 +1513,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.71';
+const APP_VERSION = '2.72';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3259,23 +3274,167 @@ async function submitNewAlbum() {
 function showAlbumError(msg) { const el = document.getElementById('album-error'); el.textContent = msg; el.style.display = 'block'; }
 
 let shareRole = 'reader';
+// Rol Contribuidor (v2.72, Paso 3 — ver "Rol Contribuidor" en CLAUDE.md):
+// estado del link recién generado en ESTA apertura del modal — se usa
+// para armar el link/QR y para el botón de revocar. Se resetea en
+// openShareModal()/closeShareModal(), nunca sobrevive a un cierre.
+let contributorInviteToken = null;
+let contributorInviteFolderId = null;
 
 function setShareRole(role) {
   shareRole = role;
   document.querySelectorAll('#share-role-toggle .role-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
+  const isContrib = role === 'contributor';
+  document.getElementById('share-email-field').style.display = isContrib ? 'none' : '';
+  document.getElementById('share-contrib-hint').style.display = isContrib ? 'block' : 'none';
+  document.getElementById('share-contrib-expires-field').style.display = isContrib ? '' : 'none';
+  const btn = document.getElementById('share-submit-btn');
+  btn.textContent = isContrib ? 'Generar link de invitación' : 'Compartir y copiar link';
+  btn.onclick = isContrib ? submitContributorInvite : submitShare;
+  document.getElementById('share-error').style.display = 'none';
+  document.getElementById('share-success').style.display = 'none';
 }
 
 function openShareModal(event, album) {
   event.preventDefault(); event.stopPropagation();
   shareTargetAlbum = album;
   document.getElementById('share-email').value = '';
+  document.getElementById('share-contrib-expires').value = '';
   document.getElementById('share-error').style.display = 'none';
   document.getElementById('share-success').style.display = 'none';
+  document.getElementById('share-success-2').style.display = 'none';
+  document.getElementById('share-contrib-qr').style.display = 'none';
+  document.getElementById('share-contrib-qr').innerHTML = '';
+  document.getElementById('share-form-section').style.display = '';
+  document.getElementById('share-contrib-result-section').style.display = 'none';
+  contributorInviteToken = null;
+  contributorInviteFolderId = null;
+  // Contribuidor es exclusivo de álbumes propios — un invitado editor que
+  // comparte un álbum ajeno (v2.67) no puede generar invitaciones de
+  // Contribuidor para él: shared_album_owner ya apunta a la dueña real,
+  // no a este invitado, y el endpoint de creación no tiene ninguna forma
+  // de distinguir "soy editor de este álbum ajeno" de "soy su dueña".
+  document.getElementById('share-role-contributor-btn').style.display = album._shared ? 'none' : '';
   setShareRole('reader');
   document.getElementById('modal-share-album').classList.add('open');
   setTimeout(() => document.getElementById('share-email').focus(), 100);
 }
-function closeShareModal() { document.getElementById('modal-share-album').classList.remove('open'); shareTargetAlbum = null; }
+function closeShareModal() {
+  document.getElementById('modal-share-album').classList.remove('open');
+  shareTargetAlbum = null;
+  contributorInviteToken = null;
+  contributorInviteFolderId = null;
+}
+
+// Rol Contribuidor (v2.72, Paso 3): a diferencia de submitShare() (que
+// llama a permissions.create de Drive con un mail concreto), esto nunca
+// toca Drive — genera un token en Supabase, sin pedir ningún mail. El
+// botón "Generar link de invitación" llama acá en vez de a submitShare()
+// mientras el toggle esté en "Contribuidor" (ver setShareRole()).
+async function submitContributorInvite() {
+  const errEl = document.getElementById('share-error');
+  const btn = document.getElementById('share-submit-btn');
+  errEl.style.display = 'none';
+  const expiresStr = document.getElementById('share-contrib-expires').value;
+  let expiresAtIso = null;
+  if (expiresStr) {
+    // input type=date da YYYY-MM-DD — se ancla a las 23:59 LOCAL del día
+    // elegido (no medianoche UTC), para que "hasta el 15" incluya todo el
+    // 15 sea cual sea el huso horario de la dueña (mismo criterio de
+    // localDateStr()/navigate() ya usado en el resto de la app, ver v2.13).
+    const d = new Date(expiresStr + 'T23:59:59');
+    if (isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+      errEl.textContent = 'La fecha de vencimiento tiene que ser una fecha futura';
+      errEl.style.display = 'block';
+      return;
+    }
+    expiresAtIso = d.toISOString();
+  }
+  btn.textContent = 'Generando...'; btn.disabled = true;
+  try {
+    const isSharedTarget = !!shareTargetAlbum._shared;
+    const folderId = isSharedTarget ? shareTargetAlbum.folderDriveId : await getAlbumFolderId(shareTargetAlbum.id);
+    const token = await createContributorInvite(folderId, expiresAtIso);
+    contributorInviteToken = token;
+    contributorInviteFolderId = folderId;
+    trackEvent('album_shared', { role: 'contributor' });
+    document.getElementById('share-form-section').style.display = 'none';
+    document.getElementById('share-contrib-result-section').style.display = '';
+    document.getElementById('share-contrib-qr').style.display = 'none';
+    document.getElementById('share-contrib-qr').innerHTML = '';
+    document.getElementById('share-success-2').style.display = 'none';
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+  btn.textContent = 'Generar link de invitación'; btn.disabled = false;
+}
+
+async function copyContributorInviteLink() {
+  const link = generateContributorInviteLink(contributorInviteToken, 'link');
+  const okEl = document.getElementById('share-success-2');
+  try {
+    await navigator.clipboard.writeText(link);
+    okEl.textContent = '✓ Link copiado al portapapeles.';
+  } catch {
+    okEl.textContent = `Link: ${link}`;
+  }
+  okEl.style.display = 'block';
+}
+
+// El QR y "Copiar link" son la MISMA URL (mismo token) — nunca dos
+// mecanismos de acceso distintos, ver CLAUDE.md → "Rol Contribuidor".
+// Cargado perezoso desde CDN, mismo patrón que ensureJsPdfLoaded() (v1.56)
+// para el export a PDF del fotolibro — nadie que no toque "Ver QR" se lo
+// descarga.
+let _qrLoadPromise = null;
+function ensureQrLoaded() {
+  if (window.QRCode) return Promise.resolve();
+  if (_qrLoadPromise) return _qrLoadPromise;
+  _qrLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { _qrLoadPromise = null; reject(new Error('No se pudo cargar el generador de QR. Revisá tu conexión.')); };
+    document.head.appendChild(script);
+  });
+  return _qrLoadPromise;
+}
+
+async function toggleContributorInviteQr() {
+  const qrEl = document.getElementById('share-contrib-qr');
+  const errEl = document.getElementById('share-error');
+  if (qrEl.style.display !== 'none' && qrEl.innerHTML) { qrEl.style.display = 'none'; return; }
+  errEl.style.display = 'none';
+  try {
+    await ensureQrLoaded();
+    qrEl.innerHTML = '';
+    // utm_medium:'qr' en vez de 'link' — mismo token, misma autorización,
+    // solo para medir aparte qué canal trajo más gente (ver CLAUDE.md).
+    new QRCode(qrEl, { text: generateContributorInviteLink(contributorInviteToken, 'qr'), width: 200, height: 200 });
+    qrEl.style.display = 'block';
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function revokeContributorInvite() {
+  const ok = await customConfirm(
+    'Nadie va a poder sumarse de nuevo con este link ni con el QR — los invitados que ya se unieron no pierden el acceso que ya tienen.',
+    { title: 'Dejar de compartir por este link', confirmLabel: 'Dejar de compartir' }
+  );
+  if (!ok) return;
+  const errEl = document.getElementById('share-error');
+  errEl.style.display = 'none';
+  try {
+    await revokeContributorInvites(contributorInviteFolderId);
+    closeShareModal();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
 
 async function submitShare() {
   const email = document.getElementById('share-email').value.trim();

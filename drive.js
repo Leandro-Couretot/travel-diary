@@ -1171,6 +1171,52 @@ function generateShareLink(folderId, name, dateFrom, dateTo) {
   return `${base}?${p.toString()}`;
 }
 
+// Rol Contribuidor (v2.72, Paso 3 — ver "Rol Contribuidor" en CLAUDE.md):
+// la dueña genera un token de invitación SIN pedir ningún mail — a
+// diferencia de shareAlbumWithUser()/shareSharedAlbumWithUser(), que
+// llaman a permissions.create de Drive con una cuenta puntual. No pasa
+// por el proxy ni por Drive en absoluto: es un endpoint directo,
+// autenticado por la sesión de la dueña, mismo patrón que
+// registerSharedAlbumOwner().
+async function createContributorInvite(folderDriveId, expiresAtIso) {
+  const res = await fetch('/api/shared-album/invite/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    body: JSON.stringify({ folderDriveId, role: 'contributor', expiresAt: expiresAtIso || null }),
+  });
+  if (!res.ok) {
+    let detail = null;
+    try { detail = (await res.json()).detail; } catch {}
+    throw new Error(detail === 'invalid_expires_at' ? 'La fecha de vencimiento tiene que ser una fecha futura' : 'No se pudo generar el link de invitación');
+  }
+  return (await res.json()).token;
+}
+
+// Apaga TODOS los links de Contribuidor activos de este álbum de una — el
+// toggle "dejar de compartir" acordado con el usuario. Nunca le saca el
+// acceso a quien ya se unió (eso vive en shared_album_members, acá no se
+// toca).
+async function revokeContributorInvites(folderDriveId) {
+  const res = await fetch('/api/shared-album/invite/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    body: JSON.stringify({ folderDriveId }),
+  });
+  if (!res.ok) throw new Error('No se pudo desactivar el link');
+}
+
+// El QR es la MISMA URL que el link — nunca un mecanismo de acceso
+// distinto (ver CLAUDE.md) — solo cambia `utm_medium` para poder medir
+// por separado qué canal trajo más gente, aunque autoricen exactamente lo
+// mismo. Deliberadamente apunta a index.html (no directo a app.html),
+// mismo criterio que generateShareLink() desde v2.44: el redirect
+// preserva location.search, así `?contrib=...` nunca se pierde.
+function generateContributorInviteLink(token, utmMedium) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, 'index.html');
+  const p = new URLSearchParams({ contrib: token, utm_source: 'shared_album_contributor', utm_medium: utmMedium || 'link' });
+  return `${base}?${p.toString()}`;
+}
+
 async function loadSharedAlbums() {
   if (!isDriveConnected()) return { version: 1, sharedAlbums: [] };
   // Mismo camino rápido que loadAlbums() (v2.15) — ID cacheado de una carga
