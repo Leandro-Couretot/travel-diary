@@ -1559,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.79';
+const APP_VERSION = '2.80';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3339,7 +3339,8 @@ function openNewAlbumModal() {
   editingAlbumId = null;
   editingSharedAlbumFolderId = null;
   document.getElementById('album-modal-title').textContent = 'Nuevo álbum';
-  document.querySelector('#modal-new-album .btn-primary').textContent = 'Crear álbum';
+  const newAlbumPrimaryBtn = document.querySelector('#modal-new-album .btn-primary');
+  newAlbumPrimaryBtn.textContent = 'Crear álbum'; newAlbumPrimaryBtn.disabled = false;
   document.getElementById('album-name').value = '';
   document.getElementById('album-from').value = '';
   document.getElementById('album-to').value = '';
@@ -3355,7 +3356,8 @@ function openEditAlbumModal(event, album) {
   editingAlbumId = album.id;
   editingSharedAlbumFolderId = null;
   document.getElementById('album-modal-title').textContent = 'Editar álbum';
-  document.querySelector('#modal-new-album .btn-primary').textContent = 'Guardar cambios';
+  const editAlbumPrimaryBtn = document.querySelector('#modal-new-album .btn-primary');
+  editAlbumPrimaryBtn.textContent = 'Guardar cambios'; editAlbumPrimaryBtn.disabled = false;
   document.getElementById('album-name').value = album.name || '';
   document.getElementById('album-from').value = album.dateFrom || '';
   document.getElementById('album-to').value = album.dateTo || '';
@@ -3376,7 +3378,8 @@ function openEditSharedAlbumModal(album) {
   editingAlbumId = null;
   editingSharedAlbumFolderId = album.folderDriveId;
   document.getElementById('album-modal-title').textContent = 'Editar álbum';
-  document.querySelector('#modal-new-album .btn-primary').textContent = 'Guardar cambios';
+  const editSharedAlbumPrimaryBtn = document.querySelector('#modal-new-album .btn-primary');
+  editSharedAlbumPrimaryBtn.textContent = 'Guardar cambios'; editSharedAlbumPrimaryBtn.disabled = false;
   document.getElementById('album-name').value = album.name || '';
   document.getElementById('album-from').value = album.dateFrom || '';
   document.getElementById('album-to').value = album.dateTo || '';

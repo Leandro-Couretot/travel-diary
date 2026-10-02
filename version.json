@@ -1,4 +1,4 @@
 {
-  "version": "2.79",
-  "changelog": "Se revisaron los textos de toda la app para que se lean más claros y naturales."
+  "version": "2.80",
+  "changelog": "Se corrigió un bug real: el botón de editar álbum podía quedar sin reaccionar al tocarlo una segunda vez en la misma sesión."
 }
