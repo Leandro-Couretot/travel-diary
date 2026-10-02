@@ -1,4 +1,4 @@
 {
-  "version": "2.80",
-  "changelog": "Se corrigió un bug real: el botón de editar álbum podía quedar sin reaccionar al tocarlo una segunda vez en la misma sesión."
+  "version": "2.81",
+  "changelog": "Se corrigió un bug: unirse a un álbum que ya era tuyo lo duplicaba en Home."
 }

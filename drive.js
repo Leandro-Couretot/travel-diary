@@ -1376,9 +1376,23 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
     );
     if (metaRes.ok) {
       const meta = await metaRes.json();
+      // v2.81: `owners[0].me` es un campo que Drive siempre agrega a cada
+      // owner, sin depender de comparar emails a mano ni de que
+      // currentUserEmail ya haya resuelto (puede no estar listo todavía en
+      // este punto del flujo de login) — si la cuenta que se está uniendo
+      // es la MISMA dueña real del álbum, no hay nada que unir. Bug real
+      // encontrado en producción: la dueña abrió su propio link de
+      // invitación (probando el feature de compartir) y terminó con una
+      // entrada self-referencial en su propio shared-albums.json —
+      // "Ama 1 año" se veía duplicado en Home, una vez como álbum propio
+      // y otra como "Compartido" por su propio email.
+      if (meta.owners?.[0]?.me) {
+        throw Object.assign(new Error('Este álbum ya es tuyo — no hace falta unirte, ya lo tenés en "Tus recuerdos".'), { code: 'is_own_album' });
+      }
       ownerEmail = meta.owners?.[0]?.emailAddress || null;
     }
   } catch (e) {
+    if (e.code === 'is_own_album') throw e;
     // best-effort — sin email de dueño, pero el join sigue.
   }
   stored.sharedAlbums.push({
