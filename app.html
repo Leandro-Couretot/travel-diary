@@ -1032,7 +1032,7 @@ audio { width: 100%; height: 32px; }
 <div id="book-stuck-banner" style="display:none;" class="update-banner book-stuck-banner">
   <div class="update-banner-text">
     <div class="update-banner-title">Algo falló cargando las fotos</div>
-    <div class="update-banner-sub">Puede ser la conexión — refrescá para reintentar.</div>
+    <div class="update-banner-sub">Puede ser la conexión. Refrescá para reintentar.</div>
   </div>
   <button class="update-banner-btn" id="book-stuck-banner-btn">Refrescar</button>
   <button class="update-banner-close" id="book-stuck-banner-close">✕</button>
@@ -1040,7 +1040,7 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── CONSENTIMIENTO DE COOKIES (GDPR) ─── -->
 <div id="consent-banner" style="display:none;" class="consent-banner">
-  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y entender qué anuncios funcionan. Podés elegir qué categorías aceptar — ver <a href="privacy.html" target="_blank">Política de Privacidad</a>.</div>
+  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y entender qué anuncios funcionan. Podés elegir qué categorías aceptar. Mirá la <a href="privacy.html" target="_blank">Política de Privacidad</a> para más detalle.</div>
   <div class="consent-banner-actions">
     <button type="button" class="consent-banner-link" id="consent-banner-customize">Personalizar</button>
     <button type="button" class="consent-banner-btn-ghost" id="consent-banner-reject">Rechazar</button>
@@ -1053,7 +1053,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-header"><div class="modal-title">Preferencias de cookies</div><button class="modal-close" onclick="closeConsentPrefsModal()">×</button></div>
     <div class="modal-body">
       <div class="consent-cat">
-        <div><div class="consent-cat-title">Necesarias</div><div class="consent-cat-desc">Tu sesión y la conexión con tu Google Drive. Siempre activas — la app no funciona sin esto.</div></div>
+        <div><div class="consent-cat-title">Necesarias</div><div class="consent-cat-desc">Tu sesión y la conexión con tu Google Drive. Siempre activas, porque la app no funciona sin esto.</div></div>
       </div>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-analytics">
@@ -1093,7 +1093,7 @@ audio { width: 100%; height: 32px; }
         <div>¡Listo! El ícono de Legado aparece en tu pantalla de inicio</div>
       </div>
       <p style="font-size:0.78rem;color:var(--ink-muted);margin-top:0.5rem;line-height:1.5;">
-        Asegurate de estar usando <strong>Safari</strong> — otros browsers en iPhone no soportan la instalación.
+        Asegurate de estar usando <strong>Safari</strong>, porque otros navegadores en iPhone no soportan la instalación.
       </p>
     </div>
   </div>
@@ -1130,7 +1130,7 @@ audio { width: 100%; height: 32px; }
   <div class="tab-panel active" id="tab-day">
     <div class="day-nav-bar">
       <button class="btn-nav" id="btn-prev">←</button>
-      <div class="date-display" id="date-display" title="Elegir fecha">—</div>
+      <div class="date-display" id="date-display" title="Elegir fecha"></div>
       <button class="btn-nav" id="btn-next">→</button>
     </div>
     <div id="day-editor"></div>
@@ -1264,7 +1264,7 @@ audio { width: 100%; height: 32px; }
         <span>Acepto los <a href="terms.html" target="_blank">Términos de Servicio</a> y la <a href="privacy.html" target="_blank">Política de Privacidad</a>.</span>
       </label>
       <button class="btn btn-primary" style="width:100%;margin-top:0.75rem;" id="btn-onboarding-google" disabled onclick="startOnboardingLogin()">Continuar con Google</button>
-      <div class="powered-by-drive"><span data-icon="cloud"></span> <span>Potenciado por <strong>Google Drive</strong> — tus fotos, en tu cuenta.</span></div>
+      <div class="powered-by-drive"><span data-icon="cloud"></span> <span>Potenciado por <strong>Google Drive</strong>, tus fotos siempre en tu cuenta.</span></div>
     </div>
   </div>
 </div>
@@ -1330,7 +1330,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-body">
       <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;">Tamaño de hoja: <strong id="export-page-size-label"></strong></div>
       <div class="form-field"><label class="form-label">Sangrado (mm)</label><input class="form-input" id="export-bleed" type="number" min="0" step="0.5" value="3"></div>
-      <div style="font-size:0.78rem;color:var(--ink-faint);margin-bottom:1rem;line-height:1.5;">El sangrado es el margen extra que se recorta al encuadernar — evita que quede un borde blanco si la imprenta corta unos milímetros de más. 3mm es lo habitual.</div>
+      <div style="font-size:0.78rem;color:var(--ink-faint);margin-bottom:1rem;line-height:1.5;">El sangrado es el margen extra que se recorta al encuadernar, así se evita que quede un borde blanco si la imprenta corta unos milímetros de más. 3mm es lo habitual.</div>
       <div id="export-warning" style="display:none;font-size:0.8rem;color:var(--red);margin-bottom:0.6rem;line-height:1.5;"></div>
       <div id="export-lowres-list" class="export-lowres-list" style="display:none;"></div>
       <div id="export-progress" style="display:none;font-size:0.85rem;color:var(--ink-muted);margin-bottom:1rem;"></div>
@@ -1385,7 +1385,7 @@ audio { width: 100%; height: 32px; }
         <button class="btn btn-primary" style="width:100%;display:none;" id="share-submit-btn" onclick="submitShare()">Compartir y copiar link</button>
       </div>
       <div id="share-contrib-result-section" style="display:none;">
-        <p style="font-size:0.85rem;color:var(--ink-muted);line-height:1.4;margin-bottom:1rem;">Compartí este link — por WhatsApp, o mostrando el QR impreso — con quien quieras que sume fotos.</p>
+        <p style="font-size:0.85rem;color:var(--ink-muted);line-height:1.4;margin-bottom:1rem;">Compartí este link por WhatsApp, o mostrá el QR impreso, con quien quieras que sume fotos.</p>
         <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
           <button class="btn btn-secondary" style="flex:1;" onclick="copyContributorInviteLink()">Copiar link</button>
           <button class="btn btn-secondary" style="flex:1;" onclick="toggleContributorInviteQr()">Ver QR</button>
@@ -1444,11 +1444,11 @@ audio { width: 100%; height: 32px; }
         <div class="plan-compare-row"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Borrar objetos (IA)</div><div class="plan-compare-soon">Próximamente</div><div class="plan-compare-soon">Próximamente</div></div>
       </div>
-      <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no — Pro es para no tener que archivar ni eliminar álbumes viejos cada vez que sumás uno nuevo.</p>
+      <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no. Pro es para no tener que archivar ni eliminar álbumes viejos cada vez que sumás uno nuevo.</p>
       <!-- Precios: mantener sincronizado con PRECIOS_ARS en functions/checkout-create.js -->
-      <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual — $14.000/mes</button>
+      <button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem;" onclick="startCheckout('monthly')">Mensual · $14.000/mes</button>
       <button class="btn btn-primary" style="width:100%;flex-direction:column;gap:0.2rem;padding-top:0.65rem;padding-bottom:0.65rem;" onclick="startCheckout('annual')">
-        <span>Anual — $11.200/mes</span>
+        <span>Anual · $11.200/mes</span>
         <span style="font-size:0.78em;font-weight:400;opacity:0.85;white-space:normal;text-align:center;line-height:1.3;">$134.400/año en un solo pago · 20% off</span>
       </button>
     </div>
@@ -1514,10 +1514,10 @@ audio { width: 100%; height: 32px; }
       <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
     </div>
     <div class="help-section"><div class="help-section-title"><span data-icon="book"></span> Fotolibro</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja — arrastrá la manija de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>El menú <strong>···</strong> del header suma <strong>Tamaño de hoja</strong>, <strong>Agregar página</strong> y <strong>Recrear libro</strong> (rearma todo al azar) — y un toggle para mostrar/ocultar la fecha y el texto de cada foto.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>El ícono de encuadre de cada foto abre un editor para encuadrarla — movela y acercala (pellizcar o la rueda del mouse) para elegir qué parte se ve, se aplica igual en pantalla y en el PDF.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas — avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño (encuadrar con mucho zoom también puede bajarla).</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja. Arrastrá la manija de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>El menú <strong>···</strong> del header suma <strong>Tamaño de hoja</strong>, <strong>Agregar página</strong> y <strong>Recrear libro</strong> (rearma todo al azar), más un toggle para mostrar/ocultar la fecha y el texto de cada foto.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>El ícono de encuadre de cada foto abre un editor para encuadrarla. Movela y acercala (pellizcar o la rueda del mouse) para elegir qué parte se ve, se aplica igual en pantalla y en el PDF.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas. Avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño (encuadrar con mucho zoom también puede bajarla).</span></div>
       <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
     <div class="help-section" id="debug-plan-section">
@@ -1528,7 +1528,7 @@ audio { width: 100%; height: 32px; }
         <button type="button" class="btn btn-secondary" style="flex:1;padding:0.4rem;font-size:0.78rem;" onclick="setDebugPlan('free')">Forzar Free</button>
         <button type="button" class="btn btn-secondary" style="flex:1;padding:0.4rem;font-size:0.78rem;" onclick="setDebugPlan('pro')">Forzar Pro</button>
       </div>
-      <div class="help-tip">Solo afecta este navegador — no toca tu suscripción real ni Mercado Pago.</div>
+      <div class="help-tip">Solo afecta este navegador, no toca tu suscripción real ni Mercado Pago.</div>
     </div>
     <div class="help-version">
       Versión <span id="app-version-label">1.77</span> ·
@@ -1559,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.78';
+const APP_VERSION = '2.79';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2062,10 +2062,10 @@ function showWelcomeModal() {
   showOnboardingInfoModal({
     title: '¡Bienvenido a Legado!',
     itemsHtml: `
-      <div class="help-item"><span class="help-item-dot">${icon('photo')}</span><span>Creá un álbum por viaje, cumpleaños, embarazo — lo que quieras guardar — y cargá fotos, videos, notas y audio día por día.</span></div>
+      <div class="help-item"><span class="help-item-dot">${icon('photo')}</span><span>Creá un álbum por viaje, cumpleaños, embarazo, lo que quieras guardar, y cargá fotos, videos, notas y audio día por día.</span></div>
       <div class="help-item"><span class="help-item-dot">${icon('share')}</span><span>Compartí el álbum con tu familia: como <strong>"Puede editar"</strong> (suma contenido) o <strong>"Puede ver"</strong> (solo mira).</span></div>
       <div class="help-item"><span class="help-item-dot">${icon('book')}</span><span>Armá un fotolibro con tus mejores fotos y exportalo en PDF, listo para imprimir.</span></div>
-      <div class="help-item"><span class="help-item-dot">${icon('cloud')}</span><span>Todo vive en tu propio Google Drive — vos sos dueño de tus recuerdos, siempre.</span></div>`,
+      <div class="help-item"><span class="help-item-dot">${icon('cloud')}</span><span>Todo vive en tu propio Google Drive. Vos sos dueño de tus recuerdos, siempre.</span></div>`,
     ctaLabel: 'Crear mi primer álbum',
     onCta: () => openNewAlbumModal(),
   });
@@ -2074,7 +2074,7 @@ function showFirstAlbumTipModal() {
   showOnboardingInfoModal({
     title: 'Creá tu primer álbum',
     itemsHtml: `
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Todavía no tenés ningún álbum — creá el primero para empezar a guardar tus recuerdos.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Todavía no tenés ningún álbum. Creá el primero para empezar a guardar tus recuerdos.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Después vas a poder compartirlo con quien quieras, con rol <strong>"Puede editar"</strong> (suma fotos) o <strong>"Puede ver"</strong> (solo mira).</span></div>`,
     ctaLabel: 'Crear álbum',
     onCta: () => openNewAlbumModal(),
@@ -2105,9 +2105,9 @@ function showAlbumsReconstructedNotice() {
   showOnboardingInfoModal({
     title: 'Detectamos algo raro',
     itemsHtml: `
-      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">El archivo <strong>[Legado] - Mis álbumes.json</strong> fue eliminado directamente desde tu Google Drive. Ya lo reconstruimos solo, a partir de tus carpetas y fotos — no perdiste ninguna foto ni video.</p>
+      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">El archivo <strong>[Legado] - Mis álbumes.json</strong> fue eliminado directamente desde tu Google Drive. Ya lo reconstruimos solo, a partir de tus carpetas y fotos. No perdiste ninguna foto ni video.</p>
       <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.9rem;">Lo único que se perdió son las fechas manuales de "Desde/Hasta" que habías cargado (las podés volver a completar editando cada álbum).</p>
-      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Por favor evitá borrar archivos de la app directamente desde Drive — mejor usar los botones de la propia app (Archivar/Eliminar álbum).</p>`,
+      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Por favor evitá borrar archivos de la app directamente desde Drive. Mejor usá los botones de la propia app (Archivar/Eliminar álbum).</p>`,
     ctaLabel: 'Entendido',
     onCta: null,
   });
@@ -2568,7 +2568,7 @@ function renderContributorJoinPending() {
   document.getElementById('home-main').innerHTML = `
     <div class="connect-state fade-up">
       <h2>Te invitaron a sumar fotos</h2>
-      <p>Conectá tu cuenta de Google para empezar a subir fotos a este álbum — no hace falta tener cuenta en la app de antes.</p>
+      <p>Conectá tu cuenta de Google para empezar a subir fotos a este álbum. No hace falta tener cuenta en la app de antes.</p>
       <button class="btn btn-primary" onclick="handleDriveBtn()">Conectar con Google Drive</button>
     </div>`;
 }
@@ -2749,7 +2749,7 @@ async function renderAlbums() {
         <div class="album-cover-wrap">${coverHtml}</div>
         <div class="album-info">
           <div class="album-name">${escHtml(album.name)}</div>
-          <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+          <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}</div>
           <div class="archived-actions">
             <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}">Abrir en Drive</a>
             <button class="btn btn-secondary btn-unarchive">Reactivar</button>
@@ -2765,7 +2765,7 @@ async function renderAlbums() {
           const currentOwnAlbums = await loadAlbums();
           if (!isFreeEligibleAlbum(currentOwnAlbums, album.id, FREE_ALBUM_LIMIT)) {
             btn.textContent = originalLabel; btn.disabled = false;
-            openSubscribeModal(`"${escHtml(album.name)}" quedó fuera de tu cupo gratis de ${FREE_ALBUM_LIMIT} — archivar otro álbum no le cede el lugar, hace falta eliminar alguno de tus primeros ${FREE_ALBUM_LIMIT}, o pasar a Pro para reactivarlo.`);
+            openSubscribeModal(`"${escHtml(album.name)}" quedó fuera de tu cupo gratis de ${FREE_ALBUM_LIMIT}. Archivar otro álbum no le cede el lugar, hace falta eliminar alguno de tus primeros ${FREE_ALBUM_LIMIT}, o pasar a Pro para reactivarlo.`);
             return;
           }
         }
@@ -2774,7 +2774,7 @@ async function renderAlbums() {
       });
       card.querySelector('.btn-delete-archived').addEventListener('click', async (e) => {
         const ok = await customConfirm(
-          'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+          'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive. Vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
           { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
         );
         if (!ok) return;
@@ -2804,8 +2804,8 @@ function buildOwnAlbumCard(album, idx, grid) {
     <div class="album-cover-wrap">${coverHtml}</div>
     <div class="album-info">
       <div class="album-name">${escHtml(album.name)}</div>
-      <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
-      <div class="album-meta"><div class="album-days-count" id="summary-${album.id}">—</div></div>
+      <div class="album-dates" id="dates-${escHtml(album.id)}">${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}</div>
+      <div class="album-meta"><div class="album-days-count" id="summary-${album.id}">...</div></div>
     </div>`;
   if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-${escHtml(album.id)}`), album.coverFileId, 'w1200', idx);
   card.addEventListener('click', e => {
@@ -2839,8 +2839,8 @@ function buildSharedAlbumCard(album, idx, grid) {
     <div class="album-info">
       <div class="album-shared-badge">Compartido</div>
       <div class="album-name" id="name-sh-${escHtml(album.folderDriveId)}">${escHtml(album.name)}</div>
-      <div class="album-dates" id="dates-sh-${escHtml(album.folderDriveId)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
-      <div class="album-days-count" id="summary-sh-${escHtml(album.folderDriveId)}">—</div>
+      <div class="album-dates" id="dates-sh-${escHtml(album.folderDriveId)}">${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}</div>
+      <div class="album-days-count" id="summary-sh-${escHtml(album.folderDriveId)}">...</div>
       <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
     </div>`;
   if (initialCoverId) {
@@ -2898,7 +2898,7 @@ async function refreshSharedAlbumCard(album, card) {
     const nameEl = card.querySelector(`#name-sh-${escHtml(album.folderDriveId)}`);
     if (nameEl) nameEl.textContent = album.name;
     const datesEl = card.querySelector(`#dates-sh-${escHtml(album.folderDriveId)}`);
-    if (datesEl) datesEl.textContent = `${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}`;
+    if (datesEl) datesEl.textContent = `${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}`;
   }
   const effectiveCover = album.coverOverrideFileId || (meta && meta.coverFileId) || album.coverFileId || null;
   if (effectiveCover && !card.querySelector('.album-cover')) {
@@ -2985,7 +2985,7 @@ async function verifySharedAlbumAccess(album) {
       // nada?" con otra causa.
       showOnboardingInfoModal({
         title: 'Acceso confirmado',
-        itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Ya podés ver este álbum — todavía no tiene ningún día con contenido cargado.</p>`,
+        itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Ya podés ver este álbum, pero todavía no tiene ningún día con contenido cargado.</p>`,
         ctaLabel: 'Entendido',
       });
     }
@@ -3177,7 +3177,7 @@ async function handleAlbumMenuAction(action, album) {
   }
   if (action === 'delete') {
     const ok = await customConfirm(
-      'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+      'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive. Vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
       { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
     );
     if (!ok) return;
@@ -3271,7 +3271,7 @@ async function handleSharedAlbumMenuAction(action, album) {
   }
   if (action === 'leave') {
     const ok = await customConfirm(
-      `Vas a dejar de ver "${album.name}" en tu Home. Esto no le saca el permiso a nadie más — si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
+      `Vas a dejar de ver "${album.name}" en tu Home. Esto no le saca el permiso a nadie más. Si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
       { title: 'Quitar acceso', confirmLabel: 'Quitar acceso' }
     );
     if (!ok) return;
@@ -3329,7 +3329,7 @@ function withTimeout(promise, ms, timeoutMessage) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 const ALBUM_MODAL_TIMEOUT_MS = 90000;
-const ALBUM_MODAL_TIMEOUT_MSG = 'Esto está tardando demasiado — probablemente sea tu conexión. Probá de nuevo en un rato.';
+const ALBUM_MODAL_TIMEOUT_MSG = 'Esto está tardando demasiado, probablemente por tu conexión. Probá de nuevo en un rato.';
 
 let editingAlbumId = null;
 let editingSharedAlbumFolderId = null; // v2.67: != null cuando se edita un álbum COMPARTIDO (editor), no uno propio
@@ -3390,7 +3390,7 @@ function openEditSharedAlbumModal(album) {
 async function deleteCurrentAlbum() {
   if (!editingAlbumId) return;
   const ok = await customConfirm(
-    'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive — vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
+    'Se va a mandar la carpeta completa (con todas las fotos, videos y notas) a la papelera de Drive. Vas a poder recuperarla desde ahí durante 30 días, pero no desde la app.',
     { title: 'Eliminar álbum', confirmLabel: 'Eliminar' }
   );
   if (!ok) return;
@@ -3504,9 +3504,9 @@ let contributorInviteFolderId = null;
 // ya sabe qué significa cada uno. El de Contribuidor reemplaza al hint
 // fijo que vivía siempre visible solo para ese rol (share-contrib-hint).
 const SHARE_ROLE_EXPLAIN = {
-  reader: 'Puede ver todo el contenido del álbum — fotos, videos, notas — pero no puede subir nada, editar ni volver a compartirlo. Hace falta su email de Google para darle el permiso.',
+  reader: 'Puede ver todo el contenido del álbum (fotos, videos, notas), pero no puede subir nada, editar ni volver a compartirlo. Hace falta su email de Google para darle el permiso.',
   writer: 'Puede hacer lo mismo que vos en este álbum: subir y borrar fotos, editar notas, archivarlo o eliminarlo, y compartirlo con alguien más. Hace falta su email de Google para darle el permiso.',
-  contributor: 'Cualquiera con el link (sin pedirle el mail) puede sumar fotos a la galería — no ve Día/Mes/Libro, no edita notas, no vuelve a compartir. Puede borrar solo lo que subió él mismo.',
+  contributor: 'Cualquiera con el link (sin pedirle el mail) puede sumar fotos a la galería. No ve Día/Mes/Libro, no edita notas, no vuelve a compartir. Puede borrar solo lo que subió él mismo.',
 };
 
 function setShareRole(role) {
@@ -3662,7 +3662,7 @@ async function revokeDriveAccessRow(folderId, permissionId) {
 
 async function revokeContribAccessRow(folderId, token) {
   const ok = await customConfirm(
-    'Nadie va a poder sumarse de nuevo con este link ni con el QR — los invitados que ya se unieron no pierden el acceso que ya tienen.',
+    'Nadie va a poder sumarse de nuevo con este link ni con el QR. Los invitados que ya se unieron no pierden el acceso que ya tienen.',
     { title: 'Revocar link', confirmLabel: 'Revocar' }
   );
   if (!ok) return;
@@ -3770,7 +3770,7 @@ async function toggleContributorInviteQr() {
 
 async function revokeContributorInvite() {
   const ok = await customConfirm(
-    'Nadie va a poder sumarse de nuevo con este link ni con el QR — los invitados que ya se unieron no pierden el acceso que ya tienen.',
+    'Nadie va a poder sumarse de nuevo con este link ni con el QR. Los invitados que ya se unieron no pierden el acceso que ya tienen.',
     { title: 'Dejar de compartir por este link', confirmLabel: 'Dejar de compartir' }
   );
   if (!ok) return;
@@ -3847,8 +3847,8 @@ async function submitShare() {
       const driveLink = `https://drive.google.com/file/d/${e.blockedFileId}/view`;
       const info = await findMediaByDriveFileId(folderId, e.blockedFileId);
       errEl.innerHTML = info
-        ? `No se pudo compartir: Drive bloqueó el permiso por un archivo de este álbum al que la app no tiene acceso de escritura — parece ser ${info.type === 'video' ? 'el video' : info.type === 'audio' ? 'el audio' : 'la foto'} "${escHtml(info.name)}" del día ${formatDate(info.date)}. Podés confirmarlo abriéndolo directo en tu Drive (<a href="${driveLink}" target="_blank" rel="noopener">ver archivo</a>) — sacalo de la carpeta del álbum o volvé a subirlo desde la app, y probá compartir de nuevo.`
-        : `No se pudo compartir: Drive bloqueó el permiso por un archivo de este álbum al que la app no tiene acceso de escritura — no aparece en ninguno de tus días, así que no podemos identificarlo solos. Abrilo directo en tu Drive para ver de qué se trata (<a href="${driveLink}" target="_blank" rel="noopener">ver archivo</a>) — si no debería estar en esa carpeta, sacalo de ahí y probá compartir de nuevo.`;
+        ? `No se pudo compartir: Drive bloqueó el permiso por un archivo de este álbum al que la app no tiene acceso de escritura. Parece ser ${info.type === 'video' ? 'el video' : info.type === 'audio' ? 'el audio' : 'la foto'} "${escHtml(info.name)}" del día ${formatDate(info.date)}. Podés confirmarlo abriéndolo directo en tu Drive (<a href="${driveLink}" target="_blank" rel="noopener">ver archivo</a>). Sacalo de la carpeta del álbum o volvé a subirlo desde la app, y probá compartir de nuevo.`
+        : `No se pudo compartir: Drive bloqueó el permiso por un archivo de este álbum al que la app no tiene acceso de escritura. No aparece en ninguno de tus días, así que no podemos identificarlo solos. Abrilo directo en tu Drive para ver de qué se trata (<a href="${driveLink}" target="_blank" rel="noopener">ver archivo</a>). Si no debería estar en esa carpeta, sacalo de ahí y probá compartir de nuevo.`;
     } else {
       errEl.textContent = e.message;
     }
@@ -3962,7 +3962,7 @@ function renderBulkReview() {
   undatedList.innerHTML = '';
   if (bulkGrouped.undated.length) {
     const header = document.createElement('div'); header.className = 'bulk-undated-label';
-    header.innerHTML = `${icon('warning')} ${bulkGrouped.undated.length} archivo${bulkGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
+    header.innerHTML = `${icon('warning')} ${bulkGrouped.undated.length} archivo${bulkGrouped.undated.length > 1 ? 's' : ''} sin fecha. Asigná un día:`;
     undatedList.appendChild(header);
     bulkGrouped.undated.forEach(file => {
       const row = document.createElement('div'); row.className = 'bulk-undated-file';
@@ -4034,7 +4034,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   if (failedTasks.length) {
     const okCount = total - failedTasks.length;
     const reasonMsg = quotaExceeded
-      ? 'Tu Google Drive se quedó sin espacio — liberá lugar o ampliá tu almacenamiento en Google.'
+      ? 'Tu Google Drive se quedó sin espacio. Liberá lugar o ampliá tu almacenamiento en Google.'
       : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
     progressEl.innerHTML = `${icon('warning')} ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
@@ -4075,7 +4075,7 @@ async function confirmBulkUpload() {
       if (kept.length) allGroups[date] = kept;
     });
     bulkGrouped.undated.forEach(file => { const date = bulkUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
-    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir — todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir. Todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
     // v2.22: al terminar, en vez de quedarse en Home, entra directo al
     // diario de ese álbum parado en el día MÁS RECIENTE de lo recién
     // subido — pensado para poder escribirle una nota ahí mismo sin tener
@@ -4316,7 +4316,7 @@ function remainingFreeAudioSlots() {
 // Pro con más de 4 audios puede tener bastantes más).
 function audioLimitMessage() {
   const total = liveAudioTotal();
-  return `Tenés ${total} audio${total === 1 ? '' : 's'} guardado${total === 1 ? '' : 's'} — el plan gratis permite hasta ${AUDIO_FREE_LIMIT}. Borrá alguno para agregar otro, o pasate a Pro para audios ilimitados.`;
+  return `Tenés ${total} audio${total === 1 ? '' : 's'} guardado${total === 1 ? '' : 's'}, y el plan gratis permite hasta ${AUDIO_FREE_LIMIT}. Borrá alguno para agregar otro, o pasate a Pro para audios ilimitados.`;
 }
 
 // Gate del fotolibro (v1.59, ver "Suscripciones" en CLAUDE.md): 1 PDF
@@ -4502,7 +4502,7 @@ async function renderContributorGallery() {
   try { allDates = await listDayFolders(albumFolderId, true); }
   catch (e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar las fotos</div>'; return; }
   if (albumFolderId !== navFolderId) return;
-  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos — tocá "＋" para sumar la primera.</div>'; contributorPhotos = []; return; }
+  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos. Tocá "＋" para sumar la primera.</div>'; contributorPhotos = []; return; }
 
   const perDay = await Promise.all(allDates.map(async date => {
     const day = await loadDayFromDrive(albumFolderId, date, true).catch(() => null) || { media: [] };
@@ -4513,7 +4513,7 @@ async function renderContributorGallery() {
   if (albumFolderId !== navFolderId) return;
   const allPhotos = perDay.flat().reverse(); // allDates viene ascendente — se invierte para mostrar el día más reciente primero
   contributorPhotos = allPhotos;
-  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos — tocá "＋" para sumar la primera.</div>'; return; }
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos. Tocá "＋" para sumar la primera.</div>'; return; }
 
   wrap.innerHTML = '';
   const grid = document.createElement('div');
@@ -4686,7 +4686,7 @@ async function loadDay(dateStr) {
   if (notesEl) { notesEl.value = currentDay.notes || ''; autoResize(notesEl); }
   renderMedia();
   if (currentDay._reconstructed) {
-    setStatus('unsaved', 'Día reconstruido desde archivos en Drive — no se encontró título ni notas guardados');
+    setStatus('unsaved', 'Día reconstruido desde archivos en Drive, no se encontró título ni notas guardados');
   } else {
     setStatus('', 'Sin cambios');
   }
@@ -4929,7 +4929,7 @@ function enforceAudioFreeLimit(audioFiles) {
   const kept = audioFiles.slice(0, allowedCount);
   const blockedCount = audioFiles.length - kept.length;
   openSubscribeModal(kept.length
-    ? `Se agregaron ${kept.length} audio${kept.length === 1 ? '' : 's'} — ${blockedCount} más no se subieron porque el plan gratis permite hasta ${AUDIO_FREE_LIMIT} audios en la cuenta. Pasate a Pro para subir el resto, o borrá alguno para hacer lugar.`
+    ? `Se agregaron ${kept.length} audio${kept.length === 1 ? '' : 's'}. ${blockedCount} más no se subieron porque el plan gratis permite hasta ${AUDIO_FREE_LIMIT} audios en la cuenta. Pasate a Pro para subir el resto, o borrá alguno para hacer lugar.`
     : audioLimitMessage());
   return kept;
 }
@@ -5469,7 +5469,7 @@ function renderBookReorderGrid() {
   // gateado por el botón que llevaba a él).
   drawerEl.style.display = bookCanEdit ? '' : 'none';
   if (bookCanEdit) {
-    drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' — arrastrá una foto acá para sacarla del libro'}</div>`;
+    drawerEl.innerHTML = `<div class="book-drawer-label">Sin ubicar${bookDrawer.length ? '' : ' (arrastrá una foto acá para sacarla del libro)'}</div>`;
     const drawerGrid = document.createElement('div'); drawerGrid.className = 'book-drawer-grid';
     bookDrawer.forEach((id, idx) => { const photo = bookPhotoByFileId.get(id); if (photo) drawerGrid.appendChild(buildBookDrawerCell(photo, idx)); });
     drawerEl.appendChild(drawerGrid);
@@ -5830,7 +5830,7 @@ async function deleteBookPage(idx) {
   if (!page) return;
   const realPhotos = page.images.filter(Boolean);
   const msg = realPhotos.length
-    ? `Esta página tiene ${realPhotos.length} foto${realPhotos.length > 1 ? 's' : ''} — al eliminarla, vuelven a "Sin ubicar". ¿Eliminar la página?`
+    ? `Esta página tiene ${realPhotos.length} foto${realPhotos.length > 1 ? 's' : ''}. Al eliminarla, vuelven a "Sin ubicar". ¿Eliminar la página?`
     : '¿Eliminar esta página vacía?';
   const ok = await customConfirm(msg, { title: 'Eliminar página', confirmLabel: 'Eliminar' });
   if (!ok) return;
@@ -5858,7 +5858,7 @@ async function recreateBookRandom() {
   const allIds = [...bookPages.flatMap(p => p.images.filter(Boolean)), ...bookDrawer];
   if (!allIds.length) return;
   const ok = await customConfirm(
-    `Se van a rearmar las ${allIds.length} foto${allIds.length > 1 ? 's' : ''} del libro en páginas nuevas, con cantidad de fotos y distribución al azar por página — se pierde cualquier acomodo manual que hayas hecho (páginas armadas a mano, layouts elegidos, fotos aisladas). ¿Recrear el libro?`,
+    `Se van a rearmar las ${allIds.length} foto${allIds.length > 1 ? 's' : ''} del libro en páginas nuevas, con cantidad de fotos y distribución al azar por página. Se pierde cualquier acomodo manual que hayas hecho (páginas armadas a mano, layouts elegidos, fotos aisladas). ¿Recrear el libro?`,
     { title: 'Recrear libro', confirmLabel: 'Recrear' }
   );
   if (!ok) return;
@@ -6151,7 +6151,7 @@ let _exportLowResConfirmed = false;
 
 function openBookExportModal() {
   if (remainingFreeBookExports() <= 0) {
-    openSubscribeModal('Ya usaste tu PDF gratis de este mes — pasate a Pro para exportar el fotolibro sin límite.');
+    openSubscribeModal('Ya usaste tu PDF gratis de este mes. Pasate a Pro para exportar el fotolibro sin límite.');
     return;
   }
   _exportLowResConfirmed = false;
@@ -6182,7 +6182,7 @@ function renderExportLowResList(lowRes) {
     <div class="export-lowres-item">
       <img class="export-lowres-thumb" id="export-lowres-thumb-${i}" alt="">
       <div class="export-lowres-info">
-        <div class="export-lowres-page">Página ${item.pageIdx + 1} — ${item.dpi} DPI</div>
+        <div class="export-lowres-page">Página ${item.pageIdx + 1} · ${item.dpi} DPI</div>
         <div class="export-lowres-detail">Tiene ~${item.actualPx.w}×${item.actualPx.h}px, necesitaría al menos ~${item.requiredPx.w}×${item.requiredPx.h}px para verse nítida (${EXPORT_MIN_DPI} DPI) a este tamaño.</div>
       </div>
     </div>`).join('');
@@ -7042,7 +7042,7 @@ function renderBulkDiaryReview() {
   renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped);
   const undatedList = document.getElementById('bulk-diary-undated-list'); undatedList.innerHTML = '';
   if (bulkDiaryGrouped.undated.length) {
-    const header = document.createElement('div'); header.className = 'bulk-undated-label'; header.innerHTML = `${icon('warning')} ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha — asigná un día:`;
+    const header = document.createElement('div'); header.className = 'bulk-undated-label'; header.innerHTML = `${icon('warning')} ${bulkDiaryGrouped.undated.length} archivo${bulkDiaryGrouped.undated.length > 1 ? 's' : ''} sin fecha. Asigná un día:`;
     undatedList.appendChild(header);
     bulkDiaryGrouped.undated.forEach(file => {
       const row = document.createElement('div'); row.className = 'bulk-undated-file'; const today = todayStr();
@@ -7067,7 +7067,7 @@ async function confirmBulkDiary() {
       if (kept.length) allGroups[date] = kept;
     });
     bulkDiaryGrouped.undated.forEach(file => { const date = bulkDiaryUndatedDates[file.name]; if (!date) return; if (!allGroups[date]) allGroups[date] = []; allGroups[date].push(file); });
-    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir — todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
+    if (!Object.keys(allGroups).length) { progress.textContent = 'No hay archivos para subir. Todos quedaron marcados como "Omitir estas". Tocá "Subir de todos modos" si querés subirlos igual.'; progress.className = 'bulk-progress error'; btn.disabled = false; return; }
     // v2.22: al terminar, va al día MÁS RECIENTE de lo recién subido (no
     // necesariamente el día que estaba abierto antes de la carga masiva) —
     // mismo criterio que confirmBulkUpload() en Home, para poder escribirle

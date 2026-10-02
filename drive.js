@@ -196,7 +196,7 @@ async function driveReq(method, url, body) {
       driveToken = null; rootFolderId = null;
       localStorage.removeItem('drive_token');
       clearDriveIdCache();
-      throw new Error('Token expirado — reconectá Drive');
+      throw new Error('Token expirado, reconectá Drive');
     }
     const isRetryable = res.status === 429 || res.status >= 500;
     if (!isRetryable || attempt >= DRIVE_MAX_RETRIES) return res;
@@ -480,15 +480,15 @@ async function writeJsonFileMigrating(obj, newName, oldNames, folderId, descript
 
 const ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Mis álbumes.json`;
 const ALBUMS_JSON_OLD_NAME = [`${APP_NAME_PREFIX_OLD} - Mis álbumes.json`, 'albums.json'];
-const ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — es el índice de todos tus álbumes. Borrarlo no borra tus fotos, pero hace que la app deje de encontrarlas hasta que se reconstruya solo.';
+const ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado, el índice de todos tus álbumes. Borrarlo no borra tus fotos, pero hace que la app deje de encontrarlas hasta que se reconstruya solo.';
 
 const SHARED_ALBUMS_JSON_NAME = `${APP_NAME_PREFIX} - Álbumes compartidos.json`;
 const SHARED_ALBUMS_JSON_OLD_NAME = [`${APP_NAME_PREFIX_OLD} - Álbumes compartidos.json`, 'shared-albums.json'];
-const SHARED_ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — es la lista de álbumes que otras personas compartieron con vos. Borrarlo no afecta tus propios álbumes.';
+const SHARED_ALBUMS_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado, la lista de álbumes que otras personas compartieron con vos. Borrarlo no afecta tus propios álbumes.';
 
 const BOOK_JSON_NAME = `${APP_NAME_PREFIX} - Fotolibro.json`;
 const BOOK_JSON_OLD_NAME = [`${APP_NAME_PREFIX_OLD} - Fotolibro.json`, 'book.json'];
-const BOOK_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — guarda el orden manual del fotolibro de este álbum. Borrarlo no borra ninguna foto, solo se pierde el orden elegido.';
+const BOOK_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado para guardar el orden manual del fotolibro de este álbum. Borrarlo no borra ninguna foto, solo se pierde el orden elegido.';
 
 function dayJsonName(dateStr) { return `${APP_NAME_PREFIX} - Día ${dateStr}.json`; }
 function dayJsonNameOld(dateStr) { return `${APP_NAME_PREFIX_OLD} - Día ${dateStr}.json`; }
@@ -532,7 +532,7 @@ const USAGE_JSON_OLD_NAME = `${APP_NAME_PREFIX_OLD} - Uso.json`; // usage.json n
 // sin importar el plan — así el conteo nunca queda desactualizado si la
 // cuenta pasa de Pro a Free más adelante (ver el flag `reconciled` abajo).
 const USAGE_JSON_NAME = `${APP_NAME_PREFIX} - Uso.json`;
-const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado — lleva la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
+const USAGE_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado para llevar la cuenta de cuántos audios tenés, para el límite del plan gratis. Borrarlo reinicia ese conteo; no borra ningún audio.';
 
 // Recorre los álbumes propios (activos Y archivados — el audio sigue ahí
 // igual) y cuenta los audios reales de cada day.json. Cara de correr (una
@@ -972,7 +972,7 @@ function dedupeMediaByDriveFileId(media) {
 // invitado (que nunca puede tocar un día que no creó él mismo). Sin este
 // parámetro, comportamiento 100% idéntico al de siempre.
 async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null, proxyAlbumId = null) {
-  if (!albumFolderId) throw new Error('albumFolderId no disponible — esperá a que Drive termine de cargar');
+  if (!albumFolderId) throw new Error('albumFolderId no disponible, esperá a que Drive termine de cargar');
   const dayFolderId = await getOrCreateFolder(dateStr, albumFolderId, proxyAlbumId);
   // Si un archivo falla (cuota excedida, se minimizó la app a mitad de
   // subida, etc.) no se aborta todo el guardado — se sigue con el resto
@@ -1033,7 +1033,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null, p
   if (failedItems.length) {
     const isQuota = failedItems.some(e => e instanceof DriveQuotaExceededError);
     const err = new Error(isQuota
-      ? 'Tu Google Drive se quedó sin espacio — se guardó lo que sí entró. Liberá lugar y tocá "Guardar" para reintentar el resto.'
+      ? 'Tu Google Drive se quedó sin espacio. Se guardó lo que sí entró. Liberá lugar y tocá "Guardar" para reintentar el resto.'
       : `Se guardó lo que se pudo, pero ${failedItems.length} archivo${failedItems.length > 1 ? 's' : ''} no se pudo${failedItems.length > 1 ? 'n' : ''} subir. Tocá "Guardar" para reintentar.`);
     err.driveSaveFailedCount = failedItems.length;
     throw err;
@@ -1309,12 +1309,12 @@ function generateContributorInviteLink(token, utmMedium) {
 // del usuario para toda esta infraestructura ("indicándole al usuario si
 // algo falló y por qué").
 const CONTRIBUTOR_INVITE_JOIN_ERRORS = {
-  invalid_session: 'Tu sesión no se pudo validar — recargá la página y probá de nuevo.',
+  invalid_session: 'Tu sesión no se pudo validar. Recargá la página y probá de nuevo.',
   bad_request: 'Este link de invitación está incompleto.',
   invite_not_found: 'Este link no existe o ya no es válido.',
   invite_inactive: 'Quien te invitó dejó de aceptar nuevas fotos por este link.',
   invite_expired: 'Este link ya venció.',
-  is_owner: 'Este es tu propio álbum — no hace falta que te unas.',
+  is_owner: 'Este es tu propio álbum, no hace falta que te unas.',
 };
 async function joinContributorInvite(token, via) {
   const res = await fetch('/api/shared-album/invite/join', {
@@ -1547,10 +1547,10 @@ async function _proxyErrorBody(res) {
 }
 function _proxyErrorMessage(code) {
   const map = {
-    not_authorized: 'Ya no tenés acceso a este álbum compartido — puede que te hayan sacado el permiso.',
-    read_only: 'No podés hacer cambios en este álbum — tu acceso ahí es solo de lectura.',
-    owner_not_migrated: 'Quien creó este álbum todavía no activó el acceso nuevo a Drive — pedile que vuelva a conectar Drive desde la app.',
-    owner_token_invalid: 'Quien creó este álbum le sacó el acceso a la app desde su cuenta de Google — pedile que reconecte Drive.',
+    not_authorized: 'Ya no tenés acceso a este álbum compartido. Puede que te hayan sacado el permiso.',
+    read_only: 'No podés hacer cambios en este álbum, tu acceso ahí es solo de lectura.',
+    owner_not_migrated: 'Quien creó este álbum todavía no activó el acceso nuevo a Drive. Pedile que vuelva a conectar Drive desde la app.',
+    owner_token_invalid: 'Quien creó este álbum le sacó el acceso a la app desde su cuenta de Google. Pedile que reconecte Drive.',
     not_shared: 'Este álbum ya no aparece como compartido.',
     drive_error: 'Drive no pudo completar la operación. Probá de nuevo.',
     bad_request: 'Pedido inválido.',

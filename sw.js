@@ -42,7 +42,7 @@ const SHELL_FILES = [
 
 const OFFLINE_FALLBACK = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Legado — Sin conexión</title>
+<title>Legado · Sin conexión</title>
 <style>
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
     background:#f7f5f0;color:#1a1a18;font-family:-apple-system,'DM Sans',sans-serif;
