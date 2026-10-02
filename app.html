@@ -1531,7 +1531,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.76';
+const APP_VERSION = '2.77';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1894,10 +1894,15 @@ function renderHomeGreetingName() {
 }
 
 // Subtítulo chico bajo el saludo: "N álbumes · M fotos y P videos" —
-// suma los mismos photoCount/videoCount que ya calcula loadAlbumDaysInfo()
-// por card (v1.75), sin pedir nada nuevo a Drive. Solo cuenta álbumes
-// propios activos (los que arma la grilla principal) — no incluye
-// compartidos ni archivados, mismo alcance que `albums`.
+// suma los mismos photoCount/videoCount que ya calcula loadAlbumDaysInfo()/
+// loadSharedAlbumDaysInfo() por card (v1.75/v2.77), sin pedir nada nuevo a
+// Drive más allá de lo que cada card ya pide para su propio resumen.
+// Hasta v2.77 solo contaba álbumes propios activos — el usuario reportó
+// que los compartidos con su esposa no sumaban acá, así que `albumCount`
+// y `dayInfoPromises` ahora incluyen también los álbumes compartidos
+// (editor o viewer, cualquier rol — mismo criterio que "cuántos álbumes
+// tiene" debería significar para quien lee este número). Los archivados
+// siguen sin contar, en ningún caso.
 async function renderHomeTotals(albumCount, dayInfoPromises) {
   const el = document.getElementById('home-totals');
   if (!el) return;
@@ -2676,16 +2681,20 @@ async function renderAlbums() {
     ...sharedAlbums.map(album => ({ type: 'shared', album })),
   ].sort((a, b) => (b.album.dateFrom || '').localeCompare(a.album.dateFrom || ''));
 
-  const dayInfoPromises = []; // se suman para el saludo con el total (v1.84) — solo álbumes propios
+  // v2.77: antes solo se sumaban acá los álbumes propios (ver el comentario
+  // viejo, "solo álbumes propios") — ahora se suman también los
+  // compartidos, con su propia función de conteo vía proxy.
+  const dayInfoPromises = []; // se suman para el saludo con el total (v1.84/v2.77)
   merged.forEach((entry, idx) => {
     if (entry.type === 'own') {
       buildOwnAlbumCard(entry.album, idx, grid);
       dayInfoPromises.push(loadAlbumDaysInfo(entry.album));
     } else {
       buildSharedAlbumCard(entry.album, idx, grid);
+      dayInfoPromises.push(loadSharedAlbumDaysInfo(entry.album));
     }
   });
-  renderHomeTotals(albums.length, dayInfoPromises);
+  renderHomeTotals(albums.length + sharedAlbums.length, dayInfoPromises);
 
   const newCard = document.createElement('button');
   newCard.className = 'album-card-new';
@@ -2803,6 +2812,7 @@ function buildSharedAlbumCard(album, idx, grid) {
       <div class="album-shared-badge">Compartido</div>
       <div class="album-name" id="name-sh-${escHtml(album.folderDriveId)}">${escHtml(album.name)}</div>
       <div class="album-dates" id="dates-sh-${escHtml(album.folderDriveId)}">${album.dateFrom ? formatDate(album.dateFrom) : '—'} — ${album.dateTo ? formatDate(album.dateTo) : '—'}</div>
+      <div class="album-days-count" id="summary-sh-${escHtml(album.folderDriveId)}">—</div>
       <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
     </div>`;
   if (initialCoverId) {
@@ -2991,6 +3001,42 @@ async function loadAlbumDaysInfo(album) {
     // resumen de fotos/videos (v1.75), que sí requiere leer cada
     // day.json.
     const dayJsons = await Promise.all(days.map(d => loadDayFromDrive(fid, d).catch(() => null)));
+    let photoCount = 0, videoCount = 0;
+    dayJsons.forEach(d => (d?.media || []).forEach(m => {
+      if (m.type === 'image') photoCount++;
+      else if (m.type === 'video') videoCount++;
+    }));
+    if (summaryEl && (photoCount || videoCount)) {
+      const parts = [`${photoCount} foto${photoCount === 1 ? '' : 's'}`];
+      if (videoCount > 0) parts.push(`${videoCount} video${videoCount === 1 ? '' : 's'}`);
+      summaryEl.textContent = parts.join(' y ');
+    }
+    return { photoCount, videoCount };
+  } catch { return { photoCount: 0, videoCount: 0 }; }
+}
+
+// v2.77: misma idea que loadAlbumDaysInfo(), para álbumes COMPARTIDOS —
+// hasta esta entrega, el total de "Hola, {nombre}" en Home solo contaba
+// álbumes propios (decisión explícita de v1.84), y la card de un álbum
+// compartido nunca mostraba ningún resumen de fotos/videos. El usuario
+// pidió sumar los compartidos al total — leer su contenido necesita el
+// proxy (viaProxy:true), nunca el token propio del invitado, mismo
+// criterio que ya usa el resto de la app para álbumes compartidos desde
+// v2.61. Más lento que un álbum propio (el mismo costo ya documentado y
+// aceptado para cualquier lectura de contenido compartido, ver CLAUDE.md
+// → "El scope drive.file no da acceso..." y "notoriamente más lentos") —
+// se cachea del lado del servidor (15 min) así que no es un costo nuevo
+// de fondo, solo un pedido más que ya se podía hacer.
+async function loadSharedAlbumDaysInfo(album) {
+  try {
+    const fid = album.folderDriveId;
+    const days = await listDayFolders(fid, true);
+    const summaryEl = document.getElementById(`summary-sh-${fid}`);
+    if (!days.length) {
+      if (summaryEl) summaryEl.textContent = 'Sin días aún';
+      return { photoCount: 0, videoCount: 0 };
+    }
+    const dayJsons = await Promise.all(days.map(d => loadDayFromDrive(fid, d, true).catch(() => null)));
     let photoCount = 0, videoCount = 0;
     dayJsons.forEach(d => (d?.media || []).forEach(m => {
       if (m.type === 'image') photoCount++;
@@ -3236,6 +3282,27 @@ function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar
 }
 
 // ─── Album modals ─────────────────────────────────────────
+// v2.77: red de seguridad extra para el modal de editar álbum — un usuario
+// reportó que "Guardar cambios" quedaba en gris para siempre, sin ningún
+// error visible (ni el overlay 🐛 de debug.js, que captura cualquier
+// excepción no atrapada — señal fuerte de que la promesa nunca llegó ni a
+// resolver ni a rechazar). driveReq() ya tiene su propio timeout (20s) +
+// hasta 3 reintentos con backoff — en el peor caso (varios 429/5xx
+// seguidos, o un Retry-After largo) una sola operación de álbum puede
+// legítimamente tardar bastante más que eso, así que este margen es mucho
+// más generoso (90s) — pensado solo para el caso de que algo quede
+// colgado DE VERDAD, no para acortar una espera normal. Si dispara, el
+// error se reporta igual que cualquier otro (ver trackEvent('error', ...)
+// en los call-sites de abajo) — así, si esto vuelve a pasar, queda un
+// registro real en vez de depender de que alguien lo note y lo cuente.
+function withTimeout(promise, ms, timeoutMessage) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(timeoutMessage)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+const ALBUM_MODAL_TIMEOUT_MS = 90000;
+const ALBUM_MODAL_TIMEOUT_MSG = 'Esto está tardando demasiado — probablemente sea tu conexión. Probá de nuevo en un rato.';
+
 let editingAlbumId = null;
 let editingSharedAlbumFolderId = null; // v2.67: != null cuando se edita un álbum COMPARTIDO (editor), no uno propio
 
@@ -3302,10 +3369,11 @@ async function deleteCurrentAlbum() {
   const btn = document.getElementById('btn-delete-album');
   btn.textContent = 'Eliminando...'; btn.disabled = true;
   try {
-    await deleteAlbum(editingAlbumId);
+    await withTimeout(deleteAlbum(editingAlbumId), ALBUM_MODAL_TIMEOUT_MS, ALBUM_MODAL_TIMEOUT_MSG);
     closeNewAlbumModal(); await renderAlbums();
   } catch(e) {
     showAlbumError(e.message);
+    trackEvent('error', { context: 'album_delete', message: e.message.slice(0, 200) });
     btn.textContent = 'Eliminar álbum'; btn.disabled = false;
   }
 }
@@ -3319,10 +3387,11 @@ async function archiveCurrentAlbum() {
   const btn = document.getElementById('btn-archive-album');
   btn.textContent = 'Archivando...'; btn.disabled = true;
   try {
-    await updateAlbumMeta(editingAlbumId, { archived: true });
+    await withTimeout(updateAlbumMeta(editingAlbumId, { archived: true }), ALBUM_MODAL_TIMEOUT_MS, ALBUM_MODAL_TIMEOUT_MSG);
     closeNewAlbumModal(); await renderAlbums();
   } catch(e) {
     showAlbumError(e.message);
+    trackEvent('error', { context: 'album_archive', message: e.message.slice(0, 200) });
     btn.textContent = 'Archivar álbum'; btn.disabled = false;
   }
 }
@@ -3338,7 +3407,7 @@ async function submitNewAlbum() {
   if (editingSharedAlbumFolderId) {
     btn.textContent = 'Guardando...'; btn.disabled = true;
     try {
-      await updateSharedAlbumMeta(editingSharedAlbumFolderId, { name, dateFrom, dateTo });
+      await withTimeout(updateSharedAlbumMeta(editingSharedAlbumFolderId, { name, dateFrom, dateTo }), ALBUM_MODAL_TIMEOUT_MS, ALBUM_MODAL_TIMEOUT_MSG);
       // Refleja el cambio ya mismo en el shared-albums.json PROPIO del
       // invitado (best-effort, mismo criterio que refreshSharedAlbumCard()
       // v2.64) — para que la próxima carga de Home arranque ya con el
@@ -3349,15 +3418,23 @@ async function submitNewAlbum() {
         if (entry) { entry.name = name; entry.dateFrom = dateFrom || null; entry.dateTo = dateTo || null; await saveSharedAlbums(stored); }
       } catch { /* no crítico — se vuelve a resolver en vivo la próxima carga */ }
       closeNewAlbumModal(); await renderAlbums();
-    } catch(e) { showAlbumError(e.message); btn.textContent = 'Guardar cambios'; btn.disabled = false; }
+    } catch(e) {
+      showAlbumError(e.message);
+      trackEvent('error', { context: 'album_edit_shared', message: e.message.slice(0, 200) });
+      btn.textContent = 'Guardar cambios'; btn.disabled = false;
+    }
     return;
   }
   if (editingAlbumId) {
     btn.textContent = 'Guardando...'; btn.disabled = true;
     try {
-      await updateAlbumMeta(editingAlbumId, { name, dateFrom, dateTo });
+      await withTimeout(updateAlbumMeta(editingAlbumId, { name, dateFrom, dateTo }), ALBUM_MODAL_TIMEOUT_MS, ALBUM_MODAL_TIMEOUT_MSG);
       closeNewAlbumModal(); await renderAlbums();
-    } catch(e) { showAlbumError(e.message); btn.textContent = 'Guardar cambios'; btn.disabled = false; }
+    } catch(e) {
+      showAlbumError(e.message);
+      trackEvent('error', { context: 'album_edit', message: e.message.slice(0, 200) });
+      btn.textContent = 'Guardar cambios'; btn.disabled = false;
+    }
     return;
   }
   const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
