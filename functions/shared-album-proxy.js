@@ -133,16 +133,14 @@ const CONTRIBUTOR_WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', '
 // sea un bug ni necesite ninguna infraestructura de caché compartida
 // (Redis, etc.) para el volumen de tráfico real de esta app.
 //
-// v2.67 — Acciones nuevas para que un invitado EDITOR tenga la misma
-// experiencia que en un álbum propio, salvo lo que es exclusivo de la
-// dueña real (archivar/eliminar el álbum en sí): `shareFolder` (invitar a
-// una persona más) y `updateAlbumMeta` (corregir nombre/fechas) — las dos
-// necesitan el token de la DUEÑA por el mismo límite de fondo de
-// drive.file que ya motivó todo este proxy (el token del invitado nunca
-// puede tocar algo que no creó él mismo, ni siquiera con rol de editor).
-// `updateAlbumMeta` whitelist estricto de campos — nunca
-// `archived`/`coverFileId`/`archivedByDowngrade`, eso sigue siendo
-// exclusivo de la dueña/el downgrade automático.
+// v2.67 — `shareFolder` (invitar a una persona más) para que un invitado
+// EDITOR tenga la misma experiencia que en un álbum propio, salvo lo que
+// sigue siendo exclusivo de la dueña real (archivar/eliminar el álbum,
+// y desde v2.82 también editar su nombre/fechas — ver "Ver en Drive +
+// 'Editar álbum' deja de ofrecerse a invitados" en CLAUDE.md). Necesita
+// el token de la DUEÑA por el mismo límite de fondo de drive.file que ya
+// motivó todo este proxy (el token del invitado nunca puede tocar algo
+// que no creó él mismo, ni siquiera con rol de editor).
 exports.sharedAlbumProxy = onRequest(
   {
     region: 'southamerica-east1',
@@ -302,11 +300,11 @@ async function driveFetch(url, accessToken) {
 // true/false — lectura sigue aceptando cualquier rol, escritura exige uno
 // de EDITOR_ROLES (chequeado en el handler principal).
 const EDITOR_ROLES = new Set(['owner', 'organizer', 'fileOrganizer', 'writer']);
-// v2.67: shareFolder/updateAlbumMeta suman a la lista — ver el comentario
-// grande al principio del archivo, sección v2.67. v2.70: las dos acciones
-// nuevas de Contribuidor también pasan por este gate (aunque su propio
-// subconjunto permitido — CONTRIBUTOR_WRITE_ACTIONS — sea más chico).
-const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'writeJson', 'trashFile', 'shareFolder', 'updateAlbumMeta', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
+// v2.67: shareFolder suma a la lista — ver el comentario grande al
+// principio del archivo, sección v2.67. v2.70: las dos acciones nuevas de
+// Contribuidor también pasan por este gate (aunque su propio subconjunto
+// permitido — CONTRIBUTOR_WRITE_ACTIONS — sea más chico).
+const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'writeJson', 'trashFile', 'shareFolder', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
 
 async function guestRole(folderDriveId, guestEmail, ownerAccessToken) {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=trashed,permissions(emailAddress,role)`, ownerAccessToken);
@@ -548,51 +546,11 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     return;
   }
 
-  // v2.67: un invitado EDITOR corrige nombre/fechas de un álbum compartido
-  // — reusa la misma resolución de nombre de carpeta → carpeta raíz →
-  // albums.json real que ya usa getAlbumMeta (lectura), pero acá además
-  // escribe. Whitelist estricto de campos (`name`/`dateFrom`/`dateTo`) —
-  // nunca `archived`/`coverFileId`/`archivedByDowngrade`, que siguen
-  // siendo exclusivos de la dueña real y del downgrade automático; un
-  // invitado editor no tiene ninguna vía para tocarlos, sea lo que sea lo
-  // que mande en `patch`.
-  if (action === 'updateAlbumMeta') {
-    const patch = params.patch || {};
-    const safePatch = {};
-    for (const k of ['name', 'dateFrom', 'dateTo']) if (k in patch) safePatch[k] = patch[k];
-    if (!Object.keys(safePatch).length) { res.status(400).json({ error: 'bad_request' }); return; }
-    if (safePatch.name !== undefined && !String(safePatch.name).trim()) { res.status(400).json({ error: 'bad_request' }); return; }
-
-    const fr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=id,name,parents`, ownerAccessToken);
-    if (!fr.ok) { res.status(502).json({ error: 'drive_error' }); return; }
-    const folder = await fr.json();
-    const rootId = (folder.parents || [])[0];
-    if (!rootId) { res.status(404).json({ error: 'album_not_found' }); return; }
-    let albumsFileId = await driveFindByName(rootId, ALBUMS_JSON_NAME, ownerAccessToken);
-    if (!albumsFileId) {
-      for (const oldName of ALBUMS_JSON_OLD_NAMES) {
-        albumsFileId = await driveFindByName(rootId, oldName, ownerAccessToken);
-        if (albumsFileId) break;
-      }
-    }
-    if (!albumsFileId) { res.status(404).json({ error: 'album_not_found' }); return; }
-    const ar = await driveFetch(`https://www.googleapis.com/drive/v3/files/${albumsFileId}?alt=media`, ownerAccessToken);
-    if (!ar.ok) { res.status(502).json({ error: 'drive_error' }); return; }
-    let albumsJson;
-    try { albumsJson = await ar.json(); } catch { res.status(502).json({ error: 'invalid_json' }); return; }
-    const albumsList = albumsJson.albums || [];
-    const idx = albumsList.findIndex(a => a.id === folder.name);
-    if (idx === -1) { res.status(404).json({ error: 'album_not_found' }); return; }
-    albumsList[idx] = { ...albumsList[idx], ...safePatch };
-    // Se renombra al nombre actual de una — mismo criterio de migración
-    // lazy que writeJson: si el archivo todavía estaba con un nombre
-    // viejo, esta escritura lo pone al día sin ningún paso aparte.
-    const buf = Buffer.from(JSON.stringify({ ...albumsJson, albums: albumsList }, null, 2), 'utf8');
-    const ur = await driveUploadMultipart(albumsFileId, ALBUMS_JSON_NAME, rootId, null, buf, 'application/json', ownerAccessToken);
-    if (!ur.ok) { res.status(502).json({ error: 'drive_error', detail: await driveErrorDetail(ur) }); return; }
-    res.status(200).json({ ok: true, entry: albumsList[idx] });
-    return;
-  }
+  // v2.82: "updateAlbumMeta" (un invitado editor corrigiendo nombre/fechas
+  // del álbum) se sacó — el usuario decidió que renombrar/cambiar fechas
+  // quede exclusivo de la dueña real, igual que archivar/eliminar. Ver
+  // "Ver en Drive + 'Editar álbum' deja de ofrecerse a invitados" en
+  // CLAUDE.md.
 
   // ── Contribuidor (v2.70, Paso 2 — ver el comentario grande al principio
   // del archivo, sección "Rol Contribuidor") ──

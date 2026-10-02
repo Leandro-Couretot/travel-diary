@@ -1,4 +1,4 @@
 {
-  "version": "2.81",
-  "changelog": "Se corrigió un bug: unirse a un álbum que ya era tuyo lo duplicaba en Home."
+  "version": "2.82",
+  "changelog": "Álbumes compartidos: se agregó \"Ver en Drive\" para lector y editor, y se corrigió la posición del resumen de fotos/videos en la tarjeta."
 }

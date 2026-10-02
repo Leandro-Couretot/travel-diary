@@ -1632,17 +1632,6 @@ async function shareSharedAlbumWithUser(folderDriveId, guestEmail, role) {
   return true;
 }
 
-// v2.67: un invitado editor corrige nombre/fechas de un álbum compartido
-// — el servidor whitelistea los campos (nunca archived/coverFileId/
-// archivedByDowngrade). Sin contraparte "propia" por el mismo motivo de
-// arriba — updateAlbumMeta(albumId, patch) ya cubre el caso del dueño
-// escribiendo en SU PROPIO albums.json.
-async function updateSharedAlbumMeta(folderDriveId, patch) {
-  const res = await sharedAlbumProxyCall(folderDriveId, 'updateAlbumMeta', { patch });
-  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo editar el álbum');
-  return (await res.json()).entry;
-}
-
 // Mismo criterio y misma forma que listDayFolders() (incluida la escritura
 // en _dayCache, así loadDayFromDriveViaProxy() no tiene que volver a
 // buscar el id de cada carpeta de día) — solo cambia que el pedido real

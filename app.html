@@ -1559,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.81';
+const APP_VERSION = '2.82';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2840,8 +2840,13 @@ function buildSharedAlbumCard(album, idx, grid) {
       <div class="album-shared-badge">Compartido</div>
       <div class="album-name" id="name-sh-${escHtml(album.folderDriveId)}">${escHtml(album.name)}</div>
       <div class="album-dates" id="dates-sh-${escHtml(album.folderDriveId)}">${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}</div>
-      <div class="album-days-count" id="summary-sh-${escHtml(album.folderDriveId)}">...</div>
-      <div class="album-meta"><div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div><div class="album-arrow">→</div></div>
+      <div class="album-meta">
+        <div class="album-days-count" id="summary-sh-${escHtml(album.folderDriveId)}">...</div>
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div>
+          <div class="album-arrow">→</div>
+        </div>
+      </div>
     </div>`;
   if (initialCoverId) {
     // v2.63: la portada de un álbum compartido vive en Drive bajo el
@@ -3200,12 +3205,22 @@ async function handleAlbumMenuAction(action, album) {
 // (Reproducir, Quitar acceso) y agrega las de edición en el lugar, sin
 // re-renderizar nada más, si la verificación confirma un rol editor.
 function sharedAlbumMenuItemsHtml(isEditor) {
+  // v2.82: "Ver en Drive" pasa a ofrecerse a CUALQUIER invitado (lector o
+  // editor), no solo al dueño — un invitado editor tiene un permiso REAL
+  // de Drive sobre la carpeta (se la compartieron de verdad), así que
+  // abrirla en drive.google.com funciona igual de bien para él, sin
+  // depender del límite de scope que sí afecta las llamadas internas de
+  // la app (ver "El scope drive.file no da acceso al contenido..." en
+  // CLAUDE.md — eso es sobre la API de la app, no sobre la UI nativa de
+  // Drive). "Editar álbum" (nombre/fechas) deja de ofrecerse del todo —
+  // el usuario decidió que renombrar/cambiar fechas quede exclusivo de la
+  // dueña real, igual que archivar/eliminar.
   const editorItems = isEditor ? `
-    <button class="diary-menu-item" data-action="edit"><span class="diary-menu-item-icon">${icon('edit')}</span> Editar álbum</button>
     <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Carga masiva</button>
     <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">${icon('share')}</span> Compartir álbum</button>` : '';
   return `
     <button class="diary-menu-item" data-action="play"><span class="diary-menu-item-icon">${icon('play')}</span> Reproducir</button>
+    <button class="diary-menu-item" data-action="drive"><span class="diary-menu-item-icon">${icon('drive')}</span> Ver en Drive</button>
     ${editorItems}
     <button class="diary-menu-item danger" data-action="leave"><span class="diary-menu-item-icon">${icon('close')}</span> Quitar acceso</button>`;
 }
@@ -3236,10 +3251,10 @@ function toggleSharedAlbumMenu(event, album, wrapper) {
     // Rol Contribuidor (v2.75, Paso 7): canEditFolder() usa el token
     // PROPIO del invitado — un Contribuidor nunca tuvo ningún permiso
     // real ahí, así que ese pedido falla siempre y cae al fail-open de
-    // canEditFolder() (`true`) igual, lo que hubiera ofrecido "Editar
-    // álbum"/"Carga masiva"/"Compartir álbum" a un Contribuidor — ninguna
-    // de las tres funciona para ese rol (el proxy las rechaza con
-    // read_only, solo están permitidas getOrCreateFolder/uploadMedia/
+    // canEditFolder() (`true`) igual, lo que hubiera ofrecido "Carga
+    // masiva"/"Compartir álbum" a un Contribuidor — ninguna de las dos
+    // funciona para ese rol (el proxy las rechaza con read_only, solo
+    // están permitidas getOrCreateFolder/uploadMedia/
     // contributorAppendMedia/contributorTrashOwnMedia, ver "Rol
     // Contribuidor" en CLAUDE.md). Antes de confiar en el `true`, se
     // confirma que no sea en realidad un Contribuidor.
@@ -3251,7 +3266,13 @@ function toggleSharedAlbumMenu(event, album, wrapper) {
 
 async function handleSharedAlbumMenuAction(action, album) {
   if (action === 'play') { startSlideshow({ ...album, _folderId: album.folderDriveId, _shared: true }); return; }
-  if (action === 'edit') { openEditSharedAlbumModal(album); return; }
+  if (action === 'drive') {
+    // A diferencia del camino del dueño (handleAlbumMenuAction), folderDriveId
+    // ya es el id real de la carpeta — no hace falta resolverlo con
+    // getAlbumFolderId(), eso solo aplica al propio albums.json del dueño.
+    window.open(`https://drive.google.com/drive/folders/${encodeURIComponent(album.folderDriveId)}`, '_blank', 'noopener');
+    return;
+  }
   if (action === 'bulk') {
     // Reusa 100% el mecanismo de "Carga masiva" que ya funciona bien
     // dentro del diario (openBulkDiary(), gateado por albumCanEdit — ver
@@ -3332,12 +3353,10 @@ const ALBUM_MODAL_TIMEOUT_MS = 90000;
 const ALBUM_MODAL_TIMEOUT_MSG = 'Esto está tardando demasiado, probablemente por tu conexión. Probá de nuevo en un rato.';
 
 let editingAlbumId = null;
-let editingSharedAlbumFolderId = null; // v2.67: != null cuando se edita un álbum COMPARTIDO (editor), no uno propio
 
 function openNewAlbumModal() {
   if (!isDriveConnected()) { handleDriveBtn(); return; }
   editingAlbumId = null;
-  editingSharedAlbumFolderId = null;
   document.getElementById('album-modal-title').textContent = 'Nuevo álbum';
   const newAlbumPrimaryBtn = document.querySelector('#modal-new-album .btn-primary');
   newAlbumPrimaryBtn.textContent = 'Crear álbum'; newAlbumPrimaryBtn.disabled = false;
@@ -3354,7 +3373,6 @@ function openNewAlbumModal() {
 function openEditAlbumModal(event, album) {
   event.preventDefault(); event.stopPropagation();
   editingAlbumId = album.id;
-  editingSharedAlbumFolderId = null;
   document.getElementById('album-modal-title').textContent = 'Editar álbum';
   const editAlbumPrimaryBtn = document.querySelector('#modal-new-album .btn-primary');
   editAlbumPrimaryBtn.textContent = 'Guardar cambios'; editAlbumPrimaryBtn.disabled = false;
@@ -3367,26 +3385,6 @@ function openEditAlbumModal(event, album) {
   archiveBtn.style.display = 'block'; archiveBtn.textContent = 'Archivar álbum'; archiveBtn.disabled = false;
   const deleteBtn = document.getElementById('btn-delete-album');
   deleteBtn.style.display = 'block'; deleteBtn.textContent = 'Eliminar álbum'; deleteBtn.disabled = false;
-  document.getElementById('modal-new-album').classList.add('open');
-  setTimeout(() => document.getElementById('album-name').focus(), 100);
-}
-// v2.67: mismo modal, para un invitado EDITOR corrigiendo nombre/fechas de
-// un álbum COMPARTIDO — nunca ofrece Archivar/Eliminar (eso sigue siendo
-// exclusivo de la dueña real; un invitado editor solo puede "Quitar
-// acceso", desde el menú de la card, nunca desde acá).
-function openEditSharedAlbumModal(album) {
-  editingAlbumId = null;
-  editingSharedAlbumFolderId = album.folderDriveId;
-  document.getElementById('album-modal-title').textContent = 'Editar álbum';
-  const editSharedAlbumPrimaryBtn = document.querySelector('#modal-new-album .btn-primary');
-  editSharedAlbumPrimaryBtn.textContent = 'Guardar cambios'; editSharedAlbumPrimaryBtn.disabled = false;
-  document.getElementById('album-name').value = album.name || '';
-  document.getElementById('album-from').value = album.dateFrom || '';
-  document.getElementById('album-to').value = album.dateTo || '';
-  document.getElementById('album-error').style.display = 'none';
-  document.getElementById('migrate-notice').style.display = 'none';
-  document.getElementById('btn-archive-album').style.display = 'none';
-  document.getElementById('btn-delete-album').style.display = 'none';
   document.getElementById('modal-new-album').classList.add('open');
   setTimeout(() => document.getElementById('album-name').focus(), 100);
 }
@@ -3426,7 +3424,7 @@ async function archiveCurrentAlbum() {
     btn.textContent = 'Archivar álbum'; btn.disabled = false;
   }
 }
-function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); editingAlbumId = null; editingSharedAlbumFolderId = null; }
+function closeNewAlbumModal() { document.getElementById('modal-new-album').classList.remove('open'); editingAlbumId = null; }
 
 async function submitNewAlbum() {
   const name = document.getElementById('album-name').value.trim();
@@ -3435,27 +3433,6 @@ async function submitNewAlbum() {
   if (!name) { showAlbumError('El nombre es obligatorio'); return; }
   document.getElementById('album-error').style.display = 'none';
   const btn = document.querySelector('#modal-new-album .btn-primary');
-  if (editingSharedAlbumFolderId) {
-    btn.textContent = 'Guardando...'; btn.disabled = true;
-    try {
-      await withTimeout(updateSharedAlbumMeta(editingSharedAlbumFolderId, { name, dateFrom, dateTo }), ALBUM_MODAL_TIMEOUT_MS, ALBUM_MODAL_TIMEOUT_MSG);
-      // Refleja el cambio ya mismo en el shared-albums.json PROPIO del
-      // invitado (best-effort, mismo criterio que refreshSharedAlbumCard()
-      // v2.64) — para que la próxima carga de Home arranque ya con el
-      // valor correcto, sin esperar a que se vuelva a resolver en vivo.
-      try {
-        const stored = await loadSharedAlbums();
-        const entry = stored.sharedAlbums.find(a => a.folderDriveId === editingSharedAlbumFolderId);
-        if (entry) { entry.name = name; entry.dateFrom = dateFrom || null; entry.dateTo = dateTo || null; await saveSharedAlbums(stored); }
-      } catch { /* no crítico — se vuelve a resolver en vivo la próxima carga */ }
-      closeNewAlbumModal(); await renderAlbums();
-    } catch(e) {
-      showAlbumError(e.message);
-      trackEvent('error', { context: 'album_edit_shared', message: e.message.slice(0, 200) });
-      btn.textContent = 'Guardar cambios'; btn.disabled = false;
-    }
-    return;
-  }
   if (editingAlbumId) {
     btn.textContent = 'Guardando...'; btn.disabled = true;
     try {
