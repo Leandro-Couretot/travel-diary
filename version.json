@@ -1,4 +1,4 @@
 {
-  "version": "2.77",
-  "changelog": "Home: el total de fotos/videos ya suma los álbumes compartidos + red de seguridad en Editar álbum."
+  "version": "2.78",
+  "changelog": "Compartir álbum: nueva sección \"Control de accesos\" para ver y quitar quién tiene permiso."
 }

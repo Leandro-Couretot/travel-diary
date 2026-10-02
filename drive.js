@@ -1227,17 +1227,65 @@ async function createContributorInvite(folderDriveId, expiresAtIso) {
   return (await res.json()).token;
 }
 
-// Apaga TODOS los links de Contribuidor activos de este álbum de una — el
-// toggle "dejar de compartir" acordado con el usuario. Nunca le saca el
+// Revoca un único link/QR de Contribuidor por su token (v2.78, "Control de
+// accesos") — a diferencia de apagar TODOS los de un álbum de una (lo que
+// hacía esta misma función hasta v2.72), acá la dueña apaga un link puntual
+// sin afectar otros que siga queriendo mantener activos. Nunca le saca el
 // acceso a quien ya se unió (eso vive en shared_album_members, acá no se
 // toca).
-async function revokeContributorInvites(folderDriveId) {
+async function revokeContributorInviteByToken(token) {
   const res = await fetch('/api/shared-album/invite/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) throw new Error('No se pudo revocar el link');
+}
+
+// "Control de accesos" (v2.78): lista los permisos reales de Drive
+// (Lector/Editor) sobre la carpeta del álbum — mismo tipo de pedido que ya
+// hace checkFolderShareApplied() (v2.53), generalizado para devolver TODOS
+// los permisos de tipo 'user' (nunca el propio 'owner') en vez de buscar uno
+// puntual. Si el pedido falla (red, permiso insuficiente) devuelve un array
+// vacío en vez de tirar; el caller decide qué hacer con eso.
+async function listFolderGuestPermissions(albumFolderId) {
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${albumFolderId}?fields=permissions(id,emailAddress,role,type)`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  const perms = data.permissions || [];
+  return perms
+    .filter(p => p.type === 'user' && p.role !== 'owner' && p.emailAddress)
+    .map(p => ({ id: p.id, email: p.emailAddress, role: p.role }));
+}
+
+// Quita un permiso puntual de Drive (Lector o Editor) — mismo mecanismo que
+// usaría cualquiera entrando a "Compartir" desde la UI nativa de Drive, ahora
+// disponible sin salir de la app (v2.78).
+async function revokeFolderGuestPermission(albumFolderId, permissionId) {
+  const res = await driveReq('DELETE', `https://www.googleapis.com/drive/v3/files/${albumFolderId}/permissions/${permissionId}`);
+  if (!res.ok) {
+    let msg = 'No se pudo quitar el acceso';
+    try { msg = (await res.json()).error?.message || msg; } catch {}
+    throw new Error(msg);
+  }
+}
+
+// "Control de accesos" (v2.78): trae los links de Contribuidor activos de
+// este álbum más cuántas personas ya se unieron en total (agregado, no por
+// link puntual — decisión explícita con el usuario para no sumar una
+// migración de schema que trackee la unión de cada contribuidor contra el
+// link específico que usó). Pega contra shared-album-invite-list.js, el
+// mismo backend que ya resuelve shared_album_invites/shared_album_members
+// para el resto de este mecanismo (ver CLAUDE.md → "Rol Contribuidor").
+async function getContributorAccessSummary(folderDriveId) {
+  const res = await fetch('/api/shared-album/invite/list', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
     body: JSON.stringify({ folderDriveId }),
   });
-  if (!res.ok) throw new Error('No se pudo desactivar el link');
+  if (!res.ok) throw new Error('No se pudo listar los links de invitación');
+  const data = await res.json();
+  return { invites: data.invites || [], joinedCount: data.joinedCount || 0 };
 }
 
 // El QR es la MISMA URL que el link — nunca un mecanismo de acceso

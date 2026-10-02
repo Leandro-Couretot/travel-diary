@@ -715,6 +715,25 @@ audio { width: 100%; height: 32px; }
 .plan-compare-free { text-align: center; color: var(--ink-muted); }
 .plan-compare-pro { text-align: center; color: var(--accent); font-weight: 700; }
 .plan-compare-soon { text-align: center; color: var(--ink-faint); font-style: italic; font-size: 0.76rem; }
+
+/* "Control de accesos" (v2.78) — sección nueva dentro de "Compartir
+   álbum" que lista quién tiene acceso real (Lector/Editor de Drive +
+   links/QR de Contribuidor activos), con un botón de revocar por fila.
+   Reemplaza la experiencia vieja de "Dejar de compartir por este link",
+   que solo aparecía después de generar un link en esa misma apertura del
+   modal y apagaba TODOS los links de una, sin mostrar nada de lo ya
+   compartido por email. */
+.share-access-section { margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--ink-faint); }
+.share-access-heading { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.6rem; }
+.share-access-group-label { font-size: 0.68rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; margin: 0.6rem 0 0.4rem; }
+.share-access-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0; border-bottom: 1px solid var(--ink-faint); }
+.share-access-row:last-child { border-bottom: none; }
+.share-access-row-info { display: flex; flex-direction: column; font-size: 0.78rem; color: var(--ink); overflow: hidden; min-width: 0; }
+.share-access-row-info span:first-child { word-break: break-all; }
+.share-access-row-role { font-size: 0.68rem; color: var(--ink-muted); }
+.share-access-revoke-btn { flex-shrink: 0; background: none; border: none; color: var(--red); font-size: 0.74rem; cursor: pointer; padding: 0.2rem 0.4rem; }
+.share-access-empty { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 0.5rem; }
+.share-access-joined-note { font-size: 0.78rem; color: var(--ink-muted); margin-top: 0.4rem; }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
 .bulk-drop-icon { font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.4; }
@@ -1375,6 +1394,15 @@ audio { width: 100%; height: 32px; }
         <div id="share-success-2" style="display:none;font-size:0.8rem;color:var(--green);margin-bottom:1rem;"></div>
         <button class="btn" style="width:100%;color:var(--red);" onclick="revokeContributorInvite()">Dejar de compartir por este link</button>
       </div>
+      <!-- "Control de accesos" (v2.78): solo para álbumes propios (ver
+           loadShareAccessControl) — un invitado editor de un álbum ajeno
+           no tiene forma de listar/revocar nada acá, ni falta que hace. -->
+      <div id="share-access-section" class="share-access-section" style="display:none;">
+        <div class="share-access-heading">Control de accesos</div>
+        <div id="share-access-loading" style="font-size:0.78rem;color:var(--ink-muted);">Cargando accesos...</div>
+        <div id="share-access-drive-list" style="display:none;"></div>
+        <div id="share-access-contrib-list" style="display:none;"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1531,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.77';
+const APP_VERSION = '2.78';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3529,12 +3557,121 @@ function openShareModal(event, album) {
   document.getElementById('share-contrib-expires-field').style.display = 'none';
   document.getElementById('share-submit-btn').style.display = 'none';
   document.getElementById('modal-share-album').classList.add('open');
+  loadShareAccessControl(album);
 }
 function closeShareModal() {
   document.getElementById('modal-share-album').classList.remove('open');
   shareTargetAlbum = null;
   contributorInviteToken = null;
   contributorInviteFolderId = null;
+}
+
+// "Control de accesos" (v2.78): el usuario reportó que "Dejar de
+// compartir por este link" quedó difícil de entender — solo aparecía
+// después de generar un link en esa misma apertura del modal, y apagaba
+// TODOS los links de una, sin mostrar nunca nada de lo ya compartido por
+// email. Esta sección nueva resuelve las dos cosas juntas: lista los
+// permisos reales de Drive (Lector/Editor) + los links/QR de Contribuidor
+// activos, cada uno con su propio botón de revocar — y de paso un total
+// agregado de cuántas personas ya se unieron como contribuidor (decisión
+// explícita con el usuario: no vale la pena la migración de schema que
+// haría falta para desglosarlo por link puntual).
+//
+// Solo tiene sentido para álbumes PROPIOS — un invitado editor de un
+// álbum ajeno no es la dueña real en `shared_album_owner`, así que ni
+// podría listar los links de Contribuidor de ese álbum (el backend
+// rechaza con un conteo en 0, nunca filtra datos de otra cuenta) ni tiene
+// forma de revocar un permiso de Drive que no le pertenece gestionar
+// acá. Fire-and-forget, igual que refreshSharedAlbumCard() — no bloquea
+// la apertura del modal mientras esto resuelve.
+async function loadShareAccessControl(album) {
+  const section = document.getElementById('share-access-section');
+  const loadingEl = document.getElementById('share-access-loading');
+  const driveListEl = document.getElementById('share-access-drive-list');
+  const contribListEl = document.getElementById('share-access-contrib-list');
+  if (album._shared) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  loadingEl.style.display = ''; loadingEl.textContent = 'Cargando accesos...';
+  driveListEl.style.display = 'none'; driveListEl.innerHTML = '';
+  contribListEl.style.display = 'none'; contribListEl.innerHTML = '';
+  try {
+    const folderId = await getAlbumFolderId(album.id);
+    if (shareTargetAlbum !== album) return; // el usuario ya cerró el modal o cambió de álbum mientras esto resolvía
+    const [perms, contrib] = await Promise.all([
+      listFolderGuestPermissions(folderId).catch(() => []),
+      getContributorAccessSummary(folderId).catch(() => ({ invites: [], joinedCount: 0 })),
+    ]);
+    if (shareTargetAlbum !== album) return;
+    loadingEl.style.display = 'none';
+    renderShareAccessDriveList(perms, folderId);
+    renderShareAccessContribList(contrib, folderId);
+  } catch (e) {
+    if (shareTargetAlbum !== album) return;
+    loadingEl.textContent = 'No se pudo cargar el control de accesos.';
+  }
+}
+
+function renderShareAccessDriveList(perms, folderId) {
+  const el = document.getElementById('share-access-drive-list');
+  const roleLabel = r => r === 'writer' ? 'Editor' : (r === 'reader' ? 'Lector' : r);
+  const rowsHtml = perms.length
+    ? perms.map(p => `
+      <div class="share-access-row">
+        <div class="share-access-row-info"><span>${escHtml(p.email)}</span><span class="share-access-row-role">${roleLabel(p.role)}</span></div>
+        <button class="share-access-revoke-btn" data-perm-id="${escHtml(p.id)}">Quitar</button>
+      </div>`).join('')
+    : '<div class="share-access-empty">Nadie más tiene acceso de Lector/Editor todavía.</div>';
+  el.innerHTML = `<div class="share-access-group-label">Lector / Editor</div>${rowsHtml}`;
+  el.style.display = '';
+  el.querySelectorAll('.share-access-revoke-btn[data-perm-id]').forEach(btn => {
+    btn.addEventListener('click', () => revokeDriveAccessRow(folderId, btn.dataset.permId));
+  });
+}
+
+function renderShareAccessContribList(contrib, folderId) {
+  const el = document.getElementById('share-access-contrib-list');
+  const invitesHtml = contrib.invites.length
+    ? contrib.invites.map(inv => `
+      <div class="share-access-row">
+        <div class="share-access-row-info"><span>Link activo${inv.expiresAt ? ` · vence el ${formatDate(inv.expiresAt.slice(0, 10))}` : ''}</span></div>
+        <button class="share-access-revoke-btn" data-token="${escHtml(inv.token)}">Revocar</button>
+      </div>`).join('')
+    : '<div class="share-access-empty">No hay ningún link de Contribuidor activo.</div>';
+  const n = contrib.joinedCount;
+  const joinedHtml = `<div class="share-access-joined-note">${n} persona${n === 1 ? '' : 's'} se uni${n === 1 ? 'ó' : 'eron'} como contribuidor hasta ahora.</div>`;
+  el.innerHTML = `<div class="share-access-group-label">Links de Contribuidor</div>${invitesHtml}${joinedHtml}`;
+  el.style.display = '';
+  el.querySelectorAll('.share-access-revoke-btn[data-token]').forEach(btn => {
+    btn.addEventListener('click', () => revokeContribAccessRow(folderId, btn.dataset.token));
+  });
+}
+
+async function revokeDriveAccessRow(folderId, permissionId) {
+  const ok = await customConfirm(
+    'Esta persona va a perder el acceso real de Google Drive a la carpeta del álbum, tanto desde la app como entrando directo a Drive.',
+    { title: 'Quitar acceso', confirmLabel: 'Quitar acceso' }
+  );
+  if (!ok) return;
+  try {
+    await revokeFolderGuestPermission(folderId, permissionId);
+    if (shareTargetAlbum) loadShareAccessControl(shareTargetAlbum);
+  } catch (e) {
+    alert('No se pudo quitar el acceso: ' + e.message);
+  }
+}
+
+async function revokeContribAccessRow(folderId, token) {
+  const ok = await customConfirm(
+    'Nadie va a poder sumarse de nuevo con este link ni con el QR — los invitados que ya se unieron no pierden el acceso que ya tienen.',
+    { title: 'Revocar link', confirmLabel: 'Revocar' }
+  );
+  if (!ok) return;
+  try {
+    await revokeContributorInviteByToken(token);
+    if (shareTargetAlbum) loadShareAccessControl(shareTargetAlbum);
+  } catch (e) {
+    alert('No se pudo revocar el link: ' + e.message);
+  }
 }
 
 // Rol Contribuidor (v2.72, Paso 3): a diferencia de submitShare() (que
@@ -3574,6 +3711,7 @@ async function submitContributorInvite() {
     document.getElementById('share-contrib-qr').style.display = 'none';
     document.getElementById('share-contrib-qr').innerHTML = '';
     document.getElementById('share-success-2').style.display = 'none';
+    if (!isSharedTarget && shareTargetAlbum) loadShareAccessControl(shareTargetAlbum);
   } catch(e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
@@ -3639,7 +3777,7 @@ async function revokeContributorInvite() {
   const errEl = document.getElementById('share-error');
   errEl.style.display = 'none';
   try {
-    await revokeContributorInvites(contributorInviteFolderId);
+    await revokeContributorInviteByToken(contributorInviteToken);
     closeShareModal();
   } catch(e) {
     errEl.textContent = e.message;
@@ -3678,6 +3816,7 @@ async function submitShare() {
     try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
     catch { okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link: ${link}`; }
     okEl.style.display = 'block';
+    if (!isSharedTarget && shareTargetAlbum) loadShareAccessControl(shareTargetAlbum);
   } catch(e) {
     if (!isSharedTarget && e.name === 'DriveChildAccessError' && folderId) {
       // v2.53: el error de Drive no siempre significa que el permiso de la
@@ -3694,6 +3833,7 @@ async function submitShare() {
         try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
         catch { okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link: ${link}`; }
         okEl.style.display = 'block';
+        if (shareTargetAlbum) loadShareAccessControl(shareTargetAlbum);
         btn.textContent = 'Compartir y copiar link'; btn.disabled = false;
         return;
       }

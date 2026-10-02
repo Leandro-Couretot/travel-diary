@@ -20,3 +20,4 @@ exports.sharedAlbumProxy = require('./shared-album-proxy').sharedAlbumProxy;
 exports.sharedAlbumInviteCreate = require('./shared-album-invite-create').sharedAlbumInviteCreate;
 exports.sharedAlbumInviteJoin = require('./shared-album-invite-join').sharedAlbumInviteJoin;
 exports.sharedAlbumInviteRevoke = require('./shared-album-invite-revoke').sharedAlbumInviteRevoke;
+exports.sharedAlbumInviteList = require('./shared-album-invite-list').sharedAlbumInviteList;
