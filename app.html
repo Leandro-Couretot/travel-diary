@@ -1559,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.83';
+const APP_VERSION = '2.84';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2545,12 +2545,24 @@ async function handleJoin(folderId, albumName, dateFrom, dateTo) {
   const main = document.getElementById('home-main');
   main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Procesando invitación...</div>`;
   try {
-    const result = await joinSharedAlbum(folderId, albumName, dateFrom, dateTo);
+    const result = await joinSharedAlbum(folderId, albumName, dateFrom, dateTo, isPaidUser(), FREE_ALBUM_LIMIT);
+    history.replaceState({}, '', location.pathname);
+    if (!result.alreadyJoined && result.archivedByQuota) {
+      // v2.84: el join-time quota gate — el álbum entró, pero ya estaba en
+      // el cupo gratis (propios + compartidos), así que joinSharedAlbum()
+      // lo archivó solo. Nunca se "pierde" nada (vive en Archivados, con
+      // Reactivar ahí) — pero a diferencia del camino feliz, acá SÍ hace
+      // falta explicarlo (nunca sorprender en silencio) y nunca auto-avanzar
+      // como el caso normal (sin el botón, `renderAlbums()` lo pisaría al
+      // toque, sin que nadie llegue a leerlo).
+      main.innerHTML = `<div class="connect-state fade-up"><h2>Álbum agregado, pero archivado</h2><p>Ya llegaste al cupo gratis de ${FREE_ALBUM_LIMIT} álbumes, así que <em>${escHtml(albumName)}</em> quedó en "Archivados" — no se pierde nada. Para activarlo, archivá/eliminá uno propio, salí de un compartido, o pasate a Pro.</p><button class="btn btn-primary" id="join-archived-ok">Ir a mis recuerdos</button></div>`;
+      document.getElementById('join-archived-ok').addEventListener('click', async () => { await renderAlbums(); await checkMigratable(); });
+      return;
+    }
     if (!result.alreadyJoined) {
       main.innerHTML = `<div class="connect-state fade-up"><h2>Álbum agregado</h2><p>Ya podés ver <em>${escHtml(albumName)}</em> en tus álbumes compartidos.</p></div>`;
       await new Promise(r => setTimeout(r, 1400));
     }
-    history.replaceState({}, '', location.pathname);
     await renderAlbums(); await checkMigratable();
   } catch(e) {
     main.innerHTML = `<div class="connect-state fade-up"><h2>No se pudo unir al álbum</h2><p>${escHtml(e.message)}</p><button class="btn btn-primary" onclick="navigateTo('home')">Ir a mis recuerdos</button></div>`;
@@ -2619,7 +2631,10 @@ async function handleContributorJoin(token, via) {
     // rol real nunca se cachea acá, se resuelve en vivo). Es justo lo que
     // deja a este álbum apareciendo en Home "igual a cualquier álbum
     // compartido" sin que el Paso 7 tenga que sumar nada nuevo.
-    await joinSharedAlbum(result.folderDriveId, meta?.name || 'Álbum compartido', meta?.dateFrom || null, meta?.dateTo || null);
+    // v2.84: un Contributor nunca cuenta contra el cupo gratis (gratis sin
+    // límite, decisión de negocio desde v2.70) — countsTowardQuota:false
+    // salta el gate de cupo por completo, nunca lo archiva al unirse.
+    await joinSharedAlbum(result.folderDriveId, meta?.name || 'Álbum compartido', meta?.dateFrom || null, meta?.dateTo || null, isPaidUser(), FREE_ALBUM_LIMIT, false);
     history.replaceState({}, '', location.pathname);
     main.innerHTML = `<div class="connect-state fade-up"><h2>¡Listo!</h2><p>Ya podés sumar fotos a <em>${escHtml(meta?.name || 'este álbum')}</em>.</p></div>`;
     await new Promise(r => setTimeout(r, 1400));
@@ -2651,7 +2666,12 @@ async function renderAlbums() {
   const wasReconstructed = ownAlbums.some(a => a._reconstructed);
   const archivedOwnAlbums = ownAlbums.filter(a => a.archived);
   albums = sortAlbumsByTripDateDesc(ownAlbums.filter(a => !a.archived));
-  const sharedAlbums = sortAlbumsByTripDateDesc(sharedData.sharedAlbums || []);
+  // v2.84: un compartido puede llegar ya archivado (joinSharedAlbum(), si al
+  // unirse ya se estaba en el cupo gratis) — se separa de la grilla
+  // principal igual que un álbum propio archivado, mismo criterio.
+  const allSharedAlbums = sharedData.sharedAlbums || [];
+  const archivedSharedAlbums = allSharedAlbums.filter(a => a.archived);
+  const sharedAlbums = sortAlbumsByTripDateDesc(allSharedAlbums.filter(a => !a.archived));
 
   // `albums` ya refleja la cuenta actual — si el onboarding post-login
   // (ver maybeShowPostLoginOnboarding()) estaba esperando este dato para
@@ -2680,14 +2700,14 @@ async function renderAlbums() {
   // clase y nunca llegaba a mostrarse. Hace falta un valor explícito.
   document.getElementById('fab-container').style.display = albums.length ? 'block' : 'none';
 
-  if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length) {
+  if (!albums.length && !sharedAlbums.length && !archivedOwnAlbums.length && !archivedSharedAlbums.length) {
     main.innerHTML = `
       <div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><p>Creá tu primer álbum para empezar.</p></div>
       <div class="albums-grid"><button class="album-card-new" onclick="openNewAlbumModal()"><div class="album-card-new-icon">${icon('plus')}</div><div class="album-card-new-label">Nuevo álbum</div></button></div>`;
     return;
   }
 
-  main.innerHTML = `<div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><div class="home-totals" id="home-totals"></div></div><div id="section-albums"></div>${archivedOwnAlbums.length ? '<div id="section-archived"></div>' : ''}`;
+  main.innerHTML = `<div class="home-intro fade-up"><h1 id="home-greeting">${homeGreetingHtml()}</h1><div class="home-totals" id="home-totals"></div></div><div id="section-albums"></div>${(archivedOwnAlbums.length || archivedSharedAlbums.length) ? '<div id="section-archived"></div>' : ''}`;
   if (wasReconstructed) showAlbumsReconstructedNotice();
 
   // v2.64: álbumes propios y compartidos van en una sola grilla, ordenada
@@ -2731,7 +2751,7 @@ async function renderAlbums() {
   newCard.onclick = openNewAlbumModal;
   grid.appendChild(newCard);
 
-  if (archivedOwnAlbums.length) {
+  if (archivedOwnAlbums.length || archivedSharedAlbums.length) {
     const archivedSection = document.getElementById('section-archived');
     archivedSection.innerHTML = `<h2 class="section-heading">Archivados</h2>`;
     const archivedGrid = document.createElement('div');
@@ -2781,6 +2801,56 @@ async function renderAlbums() {
         const btn = e.target;
         btn.textContent = 'Eliminando...'; btn.disabled = true;
         await deleteAlbum(album.id);
+        await renderAlbums();
+      });
+      archivedGrid.appendChild(card);
+    });
+
+    // v2.84: álbumes compartidos archivados al unirse estando sobre el
+    // cupo gratis (ver joinSharedAlbum()) — tarjeta simplificada, sin
+    // "Eliminar álbum" (no es dueño de este álbum): Abrir en Drive +
+    // Reactivar + Quitar acceso (mismo que ya ofrece la card compartida
+    // activa, reusando leaveSharedAlbum()).
+    archivedSharedAlbums.forEach((album, i) => {
+      const card = document.createElement('div');
+      card.className = 'album-card archived';
+      const coverHtml = album.coverFileId
+        ? `<img class="album-cover" id="cover-arch-sh-${escHtml(album.folderDriveId)}" alt="${escHtml(album.name)}" loading="lazy">`
+        : `<div class="album-cover-empty">L</div>`;
+      card.innerHTML = `
+        <div class="album-cover-wrap">${coverHtml}</div>
+        <div class="album-info">
+          <div class="album-name">${escHtml(album.name)}</div>
+          <div class="album-dates">${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}</div>
+          <div class="archived-actions">
+            <a class="btn btn-secondary" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${encodeURIComponent(album.folderDriveId)}">Abrir en Drive</a>
+            <button class="btn btn-secondary btn-unarchive">Reactivar</button>
+          </div>
+          <button class="btn-delete-album btn-leave-archived">Quitar acceso</button>
+        </div>`;
+      if (album.coverFileId) scheduleCoverLoad(card.querySelector(`#cover-arch-sh-${escHtml(album.folderDriveId)}`), album.coverFileId, 'w1200', merged.length + archivedOwnAlbums.length + i, album.folderDriveId);
+      card.querySelector('.btn-unarchive').addEventListener('click', async (e) => {
+        const btn = e.target;
+        const originalLabel = btn.textContent;
+        btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span>';
+        if (!isPaidUser()) {
+          const quotaCount = await countQuotaAlbums();
+          if (quotaCount >= FREE_ALBUM_LIMIT) {
+            btn.textContent = originalLabel; btn.disabled = false;
+            openSubscribeModal(`"${escHtml(album.name)}" quedó fuera de tu cupo gratis de ${FREE_ALBUM_LIMIT}. Archivá/eliminá uno propio, salí de otro compartido, o pasate a Pro para reactivarlo.`);
+            return;
+          }
+        }
+        await unarchiveSharedAlbum(album.folderDriveId);
+        await renderAlbums();
+      });
+      card.querySelector('.btn-leave-archived').addEventListener('click', async (e) => {
+        const ok = await customConfirm(
+          `Vas a dejar de ver "${escHtml(album.name)}" en tu Home. Esto no le saca el permiso a nadie más. Si el dueño te compartió el álbum de nuevo o querés volver a verlo, pedile el link para unirte otra vez.`,
+          { title: 'Quitar acceso', confirmLabel: 'Quitar acceso' }
+        );
+        if (!ok) return;
+        await leaveSharedAlbum(album.folderDriveId);
         await renderAlbums();
       });
       archivedGrid.appendChild(card);

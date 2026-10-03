@@ -715,7 +715,10 @@ async function getAlbumFolderId(albumId) {
 async function countQuotaAlbums() {
   const [ownAlbums, sharedData] = await Promise.all([loadAlbums(), loadSharedAlbums()]);
   const ownActiveCount = ownAlbums.filter(a => !a.archived).length;
-  const sharedAlbums = sharedData.sharedAlbums || [];
+  // v2.84: un compartido archivado (automáticamente al unirse estando sobre
+  // el cupo, ver joinSharedAlbum()) no cuenta — mismo criterio que un álbum
+  // propio archivado, para que archivarlo de verdad libere el lugar.
+  const sharedAlbums = (sharedData.sharedAlbums || []).filter(a => !a.archived);
   const roles = await Promise.all(sharedAlbums.map(a => resolveMyGuestRole(a.folderDriveId)));
   const sharedCountableCount = roles.filter(role => role && role !== 'contributor').length;
   return ownActiveCount + sharedCountableCount;
@@ -761,6 +764,20 @@ async function enforceAlbumLimit(isPaid, freeLimit) {
     });
   }
   if (changed) await saveAlbums(albums);
+
+  // v2.84: álbumes compartidos archivados automáticamente al unirse estando
+  // sobre el cupo (joinSharedAlbum()) se desarchivan solos al volver a ser
+  // Pro — mismo criterio que archivedByDowngrade arriba. Nunca al revés:
+  // esta función nunca archiva un compartido ya activo — eso solo puede
+  // pasar en el momento de unirse (ver joinSharedAlbum()), nunca después.
+  if (isPaid) {
+    const sharedData = await loadSharedAlbums();
+    let sharedChanged = false;
+    (sharedData.sharedAlbums || []).forEach(a => {
+      if (a.archivedByQuota) { a.archived = false; a.archivedByQuota = false; sharedChanged = true; }
+    });
+    if (sharedChanged) { await saveSharedAlbums(sharedData); changed = true; }
+  }
   return changed;
 }
 
@@ -788,6 +805,19 @@ async function deleteAlbum(albumId) {
 async function leaveSharedAlbum(folderDriveId) {
   const stored = await loadSharedAlbums();
   stored.sharedAlbums = stored.sharedAlbums.filter(a => a.folderDriveId !== folderDriveId);
+  await saveSharedAlbums(stored);
+}
+
+// v2.84: reactiva un álbum compartido que quedó archivado al unirse (ver
+// joinSharedAlbum()) — el caller ya validó que hay cupo o que es Pro antes
+// de llamar, acá solo se persiste. No-op silencioso si la entrada ya no
+// está en shared-albums.json (se salió entretanto, por ejemplo).
+async function unarchiveSharedAlbum(folderDriveId) {
+  const stored = await loadSharedAlbums();
+  const entry = (stored.sharedAlbums || []).find(a => a.folderDriveId === folderDriveId);
+  if (!entry) return;
+  entry.archived = false;
+  entry.archivedByQuota = false;
   await saveSharedAlbums(stored);
 }
 
@@ -1352,10 +1382,28 @@ async function saveSharedAlbums(data) {
   await writeJsonFileMigrating(data, SHARED_ALBUMS_JSON_NAME, SHARED_ALBUMS_JSON_OLD_NAME, rootFolderId, SHARED_ALBUMS_JSON_DESCRIPTION);
 }
 
-async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
+// v2.84: "join-time quota gate" — un álbum compartido recién aceptado puede
+// llegar a una cuenta que ya está en el cupo gratis (propios + compartidos
+// que ya cuentan, ver countQuotaAlbums()). Nunca se bloquea el "unirse" en
+// sí (mismo principio de siempre) — en cambio, el álbum entra directo
+// ARCHIVADO (mismo mecanismo que el downgrade automático de álbumes
+// propios, v1.41, extendido acá a compartidos) si al momento de unirse ya
+// no hay lugar. `isPaid`/`freeLimit` llegan como parámetros (igual que
+// `enforceAlbumLimit()`) — este archivo nunca llama a isPaidUser() directo,
+// esa decisión la toma siempre el caller en app.html.
+// `countsTowardQuota=false` (usado por el join de Contribuidor) salta el
+// chequeo entero — un Contribuidor nunca cuenta contra el cupo (ver "Rol
+// Contribuidor" en CLAUDE.md, "gratis sin límite"), así que no tiene
+// sentido archivarlo nunca por esta vía.
+async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo, isPaid, freeLimit, countsTowardQuota = true) {
   const stored = await loadSharedAlbums();
   if (stored.sharedAlbums.some(a => a.folderDriveId === folderDriveId)) {
     return { alreadyJoined: true };
+  }
+  let archivedByQuota = false;
+  if (countsTowardQuota && !isPaid) {
+    const quotaCount = await countQuotaAlbums();
+    if (quotaCount >= freeLimit) archivedByQuota = true;
   }
   // v2.55: el v2.54 reveló el motivo real de un fallo real en producción —
   // "File not found" en un GET directo por ID, la firma típica de Drive
@@ -1395,10 +1443,11 @@ async function joinSharedAlbum(folderDriveId, albumName, dateFrom, dateTo) {
   }
   stored.sharedAlbums.push({
     folderDriveId, name: albumName, ownerEmail,
-    dateFrom: dateFrom || null, dateTo: dateTo || null, coverFileId: null
+    dateFrom: dateFrom || null, dateTo: dateTo || null, coverFileId: null,
+    archived: archivedByQuota, archivedByQuota
   });
   await saveSharedAlbums(stored);
-  return { alreadyJoined: false };
+  return { alreadyJoined: false, archivedByQuota };
 }
 
 // v2.57: a diferencia de un álbum propio (donde saveCurrentDay() setea
