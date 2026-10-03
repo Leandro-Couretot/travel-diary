@@ -1559,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.84';
+const APP_VERSION = '2.85';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3521,11 +3521,16 @@ async function submitNewAlbum() {
     if (!isPaidUser()) {
       const quotaCount = await countQuotaAlbums();
       if (quotaCount >= FREE_ALBUM_LIMIT) {
-        // v2.83: el mensaje ya no dice "editables" — desde esta versión un
-        // compartido como lector también cuenta, así que "editables" sería
-        // inexacto (ver countQuotaAlbums() en drive.js).
-        showAlbumError(`Llegaste al límite de ${FREE_ALBUM_LIMIT} álbumes del plan gratis (cuentan los propios y los que te comparten, sea como lector o editor). Archivá/eliminá alguno propio, salí de un compartido, o pasate a Pro para álbumes ilimitados.`);
-        btn.textContent = 'Crear álbum'; btn.disabled = false;
+        // v2.85: en vez de un error inline que deja reintentar en el mismo
+        // modal (v2.83), se cierra el modal de creación y se abre directo
+        // el paywall con la tabla Free/Pro — archivar no libera nada acá
+        // (countQuotaAlbums() solo baja temporalmente; enforceAlbumLimit()
+        // re-archiva en la próxima carga de Home cualquier propio fuera de
+        // los primeros FREE_ALBUM_LIMIT), así que no tiene sentido dejar
+        // "reintentar crear" como camino — la única salida real es liberar
+        // un lugar de verdad (eliminar/salir) o pasar a Pro.
+        closeNewAlbumModal();
+        openSubscribeModal(`Llegaste al límite de ${FREE_ALBUM_LIMIT} álbumes del plan gratis (cuentan los propios y los que te comparten, sea como lector o editor). Archivá/eliminá alguno propio, salí de un compartido, o pasate a Pro para álbumes ilimitados.`);
         return;
       }
     }

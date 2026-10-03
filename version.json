@@ -1,4 +1,4 @@
 {
-  "version": "2.84",
-  "changelog": "Si te invitan a un álbum compartido y ya llegaste al cupo gratis de 4, el álbum se agrega archivado (nunca se pierde) — reactivalo liberando espacio o pasándote a Pro."
+  "version": "2.85",
+  "changelog": "Si ya llegaste al límite de 4 álbumes gratis y querés crear uno nuevo, ahora se abre directo el paywall con la comparación Free/Pro, en vez de un error para reintentar."
 }
