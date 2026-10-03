@@ -1559,7 +1559,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.82';
+const APP_VERSION = '2.83';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1984,7 +1984,7 @@ let coverObserver = null;
 const EAGER_COVER_COUNT = 6; // portadas que se piden ya mismo; el resto espera a entrar en pantalla
 let galleryImgObserver = null;
 const EAGER_GALLERY_COUNT = 24; // fotos de Galería que se piden ya mismo; el resto espera a entrar en pantalla — ver renderListTab()
-const FREE_ALBUM_LIMIT = 4; // álbumes editables gratis (propios activos + compartidos-editor) — ver CLAUDE.md → "Suscripciones"
+const FREE_ALBUM_LIMIT = 4; // álbumes gratis (propios activos + CUALQUIER compartido con acceso vigente, lector o editor — v2.83) — ver CLAUDE.md → "Suscripciones"
 
 // ─── Downgrade automático (Paso 4 del límite de álbumes) ──────────
 // establishSession()/refreshSubscriptionStatus() corren "en paralelo,
@@ -3449,9 +3449,12 @@ async function submitNewAlbum() {
   btn.textContent = 'Verificando...'; btn.disabled = true;
   try {
     if (!isPaidUser()) {
-      const editableCount = await countEditableAlbums();
-      if (editableCount >= FREE_ALBUM_LIMIT) {
-        showAlbumError(`Llegaste al límite de ${FREE_ALBUM_LIMIT} álbumes editables del plan gratis. Archivá, eliminá o salí de alguno para liberar lugar, o pasate a Pro para álbumes ilimitados.`);
+      const quotaCount = await countQuotaAlbums();
+      if (quotaCount >= FREE_ALBUM_LIMIT) {
+        // v2.83: el mensaje ya no dice "editables" — desde esta versión un
+        // compartido como lector también cuenta, así que "editables" sería
+        // inexacto (ver countQuotaAlbums() en drive.js).
+        showAlbumError(`Llegaste al límite de ${FREE_ALBUM_LIMIT} álbumes del plan gratis (cuentan los propios y los que te comparten, sea como lector o editor). Archivá/eliminá alguno propio, salí de un compartido, o pasate a Pro para álbumes ilimitados.`);
         btn.textContent = 'Crear álbum'; btn.disabled = false;
         return;
       }

@@ -1,4 +1,4 @@
 {
-  "version": "2.82",
-  "changelog": "Álbumes compartidos: se agregó \"Ver en Drive\" para lector y editor, y se corrigió la posición del resumen de fotos/videos en la tarjeta."
+  "version": "2.83",
+  "changelog": "Un álbum compartido como lector también cuenta contra el cupo gratis de 4 álbumes (antes solo contaban los que podías editar)."
 }
