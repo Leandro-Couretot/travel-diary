@@ -499,18 +499,12 @@ audio { width: 100%; height: 32px; }
 .cal-cell.empty { background: none; cursor: default; }
 
 /* Book tab */
+/* v2.88: el botón "Opciones" propio del Libro (y la barra que lo
+   contenía, .book-header-bar) se eliminó — sus acciones se mudaron al
+   FAB unificado del diario (ver #diary-fab-container/openDiaryFabSheet()
+   en app.html). .book-reorder-area pasa a ser el único hijo flex de
+   .book-wrap, ocupando el 100% sin necesitar ningún ajuste de altura. */
 .book-wrap { height: calc(100vh - 130px); overflow: hidden; position: relative; background: #e8e4dc; display: flex; flex-direction: column; }
-/* v2.17: reemplaza .book-controls (flotaba absoluto sobre la grilla, solo
-   con "Exportar") — ahora es una barra fija arriba, en flujo normal, con
-   un único botón "Opciones" que abre TODAS las acciones del fotolibro
-   (antes repartidas entre esta pastilla y el "···" genérico del header,
-   ver toggleBookOptionsMenu()). El nombre de la sección ya lo dice la
-   tab "Fotolibro" (ver .diary-tab en el HTML) — un título repetido acá
-   abajo era redundante, se sacó a pedido del usuario. */
-.book-header-bar { display: flex; align-items: center; justify-content: flex-end; padding: 0.75rem 1rem; flex: 0 0 auto; }
-.book-btn { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.1); border-radius: 20px; padding: 0.35rem 0.75rem; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; cursor: pointer; color: var(--ink); transition: all 0.15s; }
-.book-btn:hover { background: white; }
-.book-btn.active { background: var(--ink); color: white; }
 .book-layout-grid { display: grid; gap: 2px; }
 .bp { overflow: hidden; position: relative; background: #f0ece4; }
 .bp img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
@@ -1169,6 +1163,16 @@ audio { width: 100%; height: 32px; }
   <div class="tab-panel" id="tab-book">
     <div class="book-wrap" id="book-wrap"><div class="list-empty">Cargando libro...</div></div>
   </div>
+  <!-- FAB unificado del diario (v2.88): reemplaza el "···" de Día/Mes/
+       Galería y el "Opciones" de Libro — la esquina superior derecha
+       queda solo con "?", todas las demás acciones viven acá, con el
+       contenido de la hoja armado por diaryFabSheetRowsHtml() según
+       currentTab. Se oculta en la vista de Contribuidor (tiene su propio
+       "+", ver #contrib-fab-container más abajo) y durante el modo
+       selección (lo tapa la barra de abajo). -->
+  <div class="fab-container" id="diary-fab-container">
+    <button class="fab-btn" id="diary-fab-btn" onclick="openDiaryFabSheet()" title="Opciones"></button>
+  </div>
   <!-- Rol Contribuidor (v2.74, Paso 5): botón "+" propio, SEPARADO del
        #fab-container de Home — ese solo se muestra/oculta desde
        renderAlbums(), no tiene nada que ver con estar parado en un álbum.
@@ -1457,6 +1461,17 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<!-- FAB unificado del diario (v2.88, ver #diary-fab-container más arriba)
+     — a diferencia de la hoja de Home (fija, 2 opciones siempre iguales),
+     las filas de ésta se arman en el momento por diaryFabSheetRowsHtml()
+     según currentTab/albumCanEdit/bookCanEdit, nunca markup estático. -->
+<div class="sheet-overlay" id="modal-diary-fab-sheet">
+  <div class="bottom-sheet" id="diary-fab-sheet-content">
+    <div class="bottom-sheet-handle"></div>
+    <div id="diary-fab-sheet-rows"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-subscribe">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Pasar a Pro</div><button class="modal-close" onclick="closeSubscribeModal()">×</button></div>
@@ -1586,7 +1601,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.87';
+const APP_VERSION = '2.88';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1658,6 +1673,7 @@ function icon(name, opts = {}) {
 // El botón redondo del FAB es markup estático (no puede llamar a icon()
 // desde HTML) — se rellena acá, una sola vez, apenas existe icon().
 document.getElementById('fab-btn').innerHTML = icon('plus', { size: 22, strokeWidth: 2 });
+document.getElementById('diary-fab-btn').innerHTML = icon('plus', { size: 22, strokeWidth: 2 });
 // Mismo problema para cualquier otro ícono que viva en HTML estático del
 // <body> (modales de onboarding/ayuda, drop-zones) en vez de armarse por
 // JS — se resuelven todos acá, leyendo `data-icon="nombre"` (ver
@@ -1995,9 +2011,13 @@ function openSubscribeModal(context) {
 }
 function closeSubscribeModal() { document.getElementById('modal-subscribe').classList.remove('open'); }
 
+// v2.88: la esquina superior derecha del diario queda solo con "?" — el
+// "···" de siempre (Día/Mes/Galería) y el "Opciones" de Libro se
+// consolidaron en el FAB unificado (#diary-fab-container, ver
+// openDiaryFabSheet()). Mismo botón que usa Home (renderHomeHeader()).
 function renderDiaryHeader() {
   document.getElementById('header-actions').innerHTML = `
-    <button class="btn-nav" id="btn-diary-menu" onclick="toggleDiaryMenu()" title="Menú">···</button>`;
+    <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3185,8 +3205,10 @@ async function loadSharedAlbumDaysInfo(album) {
 // ─── Menú "⋯" de la card de álbum (v1.75) ──────────────────
 // Reemplaza los íconos flotantes de editar/compartir + el ▶ de
 // slideshow, todos consolidados en un único punto de entrada — mismo
-// patrón de menú desplegable que ya usa el diario (toggleDiaryMenu),
-// pero anclado a la card en vez de al header.
+// patrón de menú desplegable (.diary-menu-dropdown/.diary-menu-item)
+// que usaba el "···" del diario hasta v2.88 (reemplazado ahí por el FAB
+// unificado, ver diaryFabSheetRowsHtml()), anclado a la card en vez de
+// al header.
 let _albumMenuEl = null;
 
 function toggleAlbumMenu(event, album, wrapper) {
@@ -3374,7 +3396,7 @@ async function handleSharedAlbumMenuAction(action, album) {
   if (action === 'bulk') {
     // Reusa 100% el mecanismo de "Carga masiva" que ya funciona bien
     // dentro del diario (openBulkDiary(), gateado por albumCanEdit — ver
-    // toggleDiaryMenu()) en vez de construir un camino paralelo desde
+    // diaryFabSheetRowsHtml()) en vez de construir un camino paralelo desde
     // Home: navigateToSharedAlbum() ya deja isSharedAlbum/albumFolderId
     // (variables de módulo) seteados de forma SÍNCRONA antes de resolver
     // nada más (mismo criterio documentado en el fix de v2.63), así que
@@ -4557,15 +4579,17 @@ async function bootstrapDiaryPage() {
   document.getElementById('day-editor').innerHTML = `<div class="page-loading"><div class="spinner"></div> Cargando...</div>`;
   allDates = []; calDayData = {}; bookPages = []; bookDrawer = []; bookPhotoByFileId = new Map();
   isContributor = false;
-  // Rol Contribuidor (v2.74, Paso 5): #diary-tabs/#contrib-fab-container
-  // son markup ESTÁTICO (no se reconstruyen en cada navegación, a
-  // diferencia de #header-actions, que renderDiaryHeader() rearma de cero
-  // cada vez) — si una entrada anterior a este diario los dejó ocultos/
-  // reasignados (vista de Contribuidor), hay que devolverlos al estado
-  // normal acá, antes de saber si ESTA entrada también es de Contribuidor.
-  // Sin este reset, entrar a un álbum normal después de uno donde se era
-  // Contribuidor dejaría las tabs escondidas para siempre.
+  // Rol Contribuidor (v2.74, Paso 5): #diary-tabs/#diary-fab-container/
+  // #contrib-fab-container son markup ESTÁTICO (no se reconstruyen en
+  // cada navegación, a diferencia de #header-actions, que
+  // renderDiaryHeader() rearma de cero cada vez) — si una entrada
+  // anterior a este diario los dejó ocultos/reasignados (vista de
+  // Contribuidor), hay que devolverlos al estado normal acá, antes de
+  // saber si ESTA entrada también es de Contribuidor. Sin este reset,
+  // entrar a un álbum normal después de uno donde se era Contribuidor
+  // dejaría las tabs escondidas para siempre.
   document.getElementById('diary-tabs').style.display = '';
+  document.getElementById('diary-fab-container').style.display = 'block';
   document.getElementById('contrib-fab-container').style.display = 'none';
   // v2.87: entrar a un álbum aterriza en Galería, no en Día — lo más común
   // es entrar a VER/compartir fotos, no a editar el título/notas de un día
@@ -4680,8 +4704,7 @@ let contributorPhotos = []; // [{driveFileId, date, name, uploadedBy}] — armad
 
 async function renderContributorDiaryPage() {
   document.getElementById('diary-tabs').style.display = 'none';
-  const menuBtn = document.getElementById('btn-diary-menu');
-  if (menuBtn) menuBtn.style.display = 'none';
+  document.getElementById('diary-fab-container').style.display = 'none';
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-list'));
   document.getElementById('contrib-fab-container').style.display = 'block';
   await renderContributorGallery();
@@ -4791,17 +4814,11 @@ async function uploadContributorMedia(fileListRaw) {
 }
 
 function switchTab(tab) {
-  closeDiaryMenu();
-  closeBookOptionsMenu();
+  closeDiaryFabSheet();
   if (selectionMode) exitSelectionMode();
   currentTab = tab;
   document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
-  // v2.17: en Libro, todas las acciones (incluidas Reproducir álbum/Ayuda)
-  // se consolidan en el botón "Opciones" propio de esa tab — el "···" del
-  // header queda redundante ahí, así que se oculta solo en Libro.
-  const menuBtn = document.getElementById('btn-diary-menu');
-  if (menuBtn) menuBtn.style.display = tab === 'book' ? 'none' : '';
   if (tab === 'list')  renderListTab();
   if (tab === 'month') renderCalendar();
   if (tab === 'book')  renderBook();
@@ -5490,7 +5507,7 @@ async function renderBook() {
   // libro impreso" (cada tile ya respeta la proporción real de hoja
   // elegida, ver "sensación de libro" v1.57). La grilla queda como la
   // única forma de ver/editar el Libro, sin ningún toggle.
-  wrap.innerHTML = `<div class="book-header-bar"><button class="book-btn" id="book-options-btn" onclick="toggleBookOptionsMenu()">Opciones</button></div><div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
+  wrap.innerHTML = `<div class="book-reorder-area" id="book-reorder-area"><div class="book-reorder-grid" id="book-reorder-container"></div><div class="book-drawer" id="book-drawer-container"></div></div>`;
   renderBookReorderGrid();
 }
 
@@ -6127,14 +6144,12 @@ function closeBookPageSizeModal() {
   document.getElementById('modal-book-page-size').classList.remove('open');
 }
 
-// El botón que dispara esto vive ahora dentro del menú "Opciones" del
-// Libro (ver toggleBookOptionsMenu(), v2.17 — antes fue el "···" del
-// header, v2.02), que se destruye del DOM apenas se elige una opción — a
-// diferencia del viejo "book-text-btn" fijo en `.book-controls`, acá no
-// hay ningún elemento persistente al que pisarle una clase; el estado
-// (`bookShowText`) y su efecto real (applyBookTextVisibility) alcanzan
-// solos, y la próxima vez que se abra el menú su label ya refleja el
-// estado actual.
+// El botón que dispara esto vive en el FAB unificado del diario (v2.88,
+// ver diaryFabSheetRowsHtml()), que se reconstruye cada vez que se abre
+// — no hay ningún elemento persistente al que pisarle una clase; el
+// estado (`bookShowText`) y su efecto real (applyBookTextVisibility)
+// alcanzan solos, y la próxima vez que se abra la hoja su label ya
+// refleja el estado actual.
 function toggleBookText() {
   bookShowText = !bookShowText;
   applyBookTextVisibility();
@@ -7297,8 +7312,8 @@ async function confirmBulkDiary() {
 let albumDays = [], albumIdx = 0, albumPhotoIdx = 0, albumSwipeX = 0;
 // v2.66: `albumFolderId`/`isSharedAlbum` son el estado de módulo del
 // diario ya vigente (esta función solo se llama desde adentro del diario,
-// vía toggleDiaryMenu()/toggleBookOptionsMenu()) — antes no se los pasaba
-// a listDayFolders()/loadDayFromDrive(), así que un álbum compartido
+// vía el FAB unificado — ver diaryFabSheetRowsHtml()) — antes no se los
+// pasaba a listDayFolders()/loadDayFromDrive(), así que un álbum compartido
 // intentaba leer con el token del invitado y siempre fallaba en silencio
 // (ver CLAUDE.md → "El scope drive.file no da acceso al contenido de una
 // carpeta compartida").
@@ -7620,112 +7635,71 @@ function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null;
 function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { playSsVideo(videoEl); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
 function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); exitSsFullscreen(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
 
-// ─── DIARY MENU ───────────────────────────────────────────
-let diaryMenuOpen = false;
-
-function toggleDiaryMenu() {
-  if (diaryMenuOpen) { closeDiaryMenu(); return; }
-  diaryMenuOpen = true;
-
+// ─── FAB UNIFICADO DEL DIARIO (v2.88) ──────────────────────
+// Reemplaza dos menús que hasta acá convivían por separado — el "···"
+// genérico del header (Día/Mes/Galería) y el "Opciones" propio de Libro
+// (v2.17) — por un único botón "+" flotante (#diary-fab-container, ver
+// el HTML), mismo patrón de hoja inferior que ya usa Home desde v1.86.
+// Pedido explícito del usuario: la esquina superior derecha del diario
+// queda solo con "?" — por eso "Ayuda" se saca de la lista, vive
+// únicamente detrás de ese botón, nunca duplicada acá.
+function diaryFabSheetRowsHtml() {
+  if (currentTab === 'book') {
+    return `
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookExportModal,50)">
+        <span class="bottom-sheet-icon">${icon('download')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Exportar</span></span>
+      </button>
+      ${albumCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBulkDiary,50)">
+        <span class="bottom-sheet-icon">${icon('upload')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos</span></span>
+      </button>` : ''}
+      ${bookCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookPageSizeModal,50)">
+        <span class="bottom-sheet-icon">${icon('size')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Tamaño de hoja</span></span>
+      </button>
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookAddPageModal,50)">
+        <span class="bottom-sheet-icon">${icon('plus')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar página</span></span>
+      </button>
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(recreateBookRandom,50)">
+        <span class="bottom-sheet-icon">${icon('shuffle')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Recrear libro</span></span>
+      </button>` : ''}
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(toggleBookText,50)">
+        <span class="bottom-sheet-icon">Aa</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">${bookShowText ? 'Ocultar' : 'Mostrar'} texto</span></span>
+      </button>
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openAlbum,50)">
+        <span class="bottom-sheet-icon">${icon('play')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Reproducir álbum</span></span>
+      </button>`;
+  }
   // "Seleccionar fotos" solo tiene sentido en Día (currentDay.media) y
   // Galería (galleryPhotos) — Mes no tiene una grilla plana de fotos
-  // individuales a la que aplicarle este modo, y Libro ya no pasa por acá
-  // en absoluto (ver más abajo).
+  // individuales a la que aplicarle este modo.
   const canSelect = currentTab === 'day' || currentTab === 'list';
-  const menu = document.createElement('div');
-  menu.className = 'diary-menu-dropdown';
-  menu.id = 'diary-menu-dropdown';
-  menu.innerHTML = `
-    ${canSelect ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(enterSelectionMode,50)">
-      <span class="diary-menu-item-icon">${icon('select')}</span> Seleccionar fotos
+  return `
+    ${canSelect ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(enterSelectionMode,50)">
+      <span class="bottom-sheet-icon">${icon('select')}</span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Seleccionar fotos</span></span>
     </button>` : ''}
-    ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openBulkDiary,50)">
-      <span class="diary-menu-item-icon">${icon('upload')}</span> Carga masiva
+    ${albumCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBulkDiary,50)">
+      <span class="bottom-sheet-icon">${icon('upload')}</span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Carga masiva</span></span>
     </button>` : ''}
-    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openAlbum,50)">
-      <span class="diary-menu-item-icon">${icon('play')}</span> Reproducir álbum
-    </button>
-    <button class="diary-menu-item" onclick="closeDiaryMenu();setTimeout(openHelp,50)">
-      <span class="diary-menu-item-icon">?</span> Ayuda
+    <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openAlbum,50)">
+      <span class="bottom-sheet-icon">${icon('play')}</span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Reproducir álbum</span></span>
     </button>`;
-  document.getElementById('app-header').appendChild(menu);
-
-  // Close on outside click using document listener
-  setTimeout(() => {
-    document.addEventListener('click', _closeDiaryMenuOnOutside);
-  }, 0);
 }
 
-function _closeDiaryMenuOnOutside(e) {
-  const menu = document.getElementById('diary-menu-dropdown');
-  if (menu && !menu.contains(e.target)) {
-    closeDiaryMenu();
-  }
+function openDiaryFabSheet() {
+  document.getElementById('diary-fab-sheet-rows').innerHTML = diaryFabSheetRowsHtml();
+  document.getElementById('modal-diary-fab-sheet').classList.add('open');
 }
-
-function closeDiaryMenu() {
-  diaryMenuOpen = false;
-  document.getElementById('diary-menu-dropdown')?.remove();
-  document.removeEventListener('click', _closeDiaryMenuOnOutside);
-}
-
-// ─── LIBRO: MENÚ "OPCIONES" ────────────────────────────────
-// v2.17 (ver CLAUDE.md → "Fotolibro"): el "···" del header queda oculto
-// en la tab Libro (ver switchTab()) — todas sus acciones, más las que ya
-// vivían en la pastilla "Exportar", se consolidan acá en un único botón
-// "Opciones" propio de esta tab. Mismo patrón de abrir/cerrar que
-// toggleDiaryMenu(), solo que se ancla al book-wrap en vez de al header.
-let bookOptionsMenuOpen = false;
-
-function toggleBookOptionsMenu() {
-  if (bookOptionsMenuOpen) { closeBookOptionsMenu(); return; }
-  bookOptionsMenuOpen = true;
-  const menu = document.createElement('div');
-  menu.className = 'diary-menu-dropdown';
-  menu.id = 'book-options-dropdown';
-  menu.innerHTML = `
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookExportModal,50)">
-      <span class="diary-menu-item-icon">${icon('download')}</span> Exportar
-    </button>
-    ${albumCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBulkDiary,50)">
-      <span class="diary-menu-item-icon">${icon('upload')}</span> Agregar fotos
-    </button>` : ''}
-    ${bookCanEdit ? `<button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookPageSizeModal,50)">
-      <span class="diary-menu-item-icon">${icon('size')}</span> Tamaño de hoja
-    </button>
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openBookAddPageModal,50)">
-      <span class="diary-menu-item-icon">${icon('plus')}</span> Agregar página
-    </button>
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(recreateBookRandom,50)">
-      <span class="diary-menu-item-icon">${icon('shuffle')}</span> Recrear libro
-    </button>` : ''}
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(toggleBookText,50)">
-      <span class="diary-menu-item-icon">Aa</span> ${bookShowText ? 'Ocultar' : 'Mostrar'} texto
-    </button>
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openAlbum,50)">
-      <span class="diary-menu-item-icon">${icon('play')}</span> Reproducir álbum
-    </button>
-    <button class="diary-menu-item" onclick="closeBookOptionsMenu();setTimeout(openHelp,50)">
-      <span class="diary-menu-item-icon">?</span> Ayuda
-    </button>`;
-  document.getElementById('book-wrap').appendChild(menu);
-
-  setTimeout(() => {
-    document.addEventListener('click', _closeBookOptionsMenuOnOutside);
-  }, 0);
-}
-
-function _closeBookOptionsMenuOnOutside(e) {
-  const menu = document.getElementById('book-options-dropdown');
-  if (menu && !menu.contains(e.target)) {
-    closeBookOptionsMenu();
-  }
-}
-
-function closeBookOptionsMenu() {
-  bookOptionsMenuOpen = false;
-  document.getElementById('book-options-dropdown')?.remove();
-  document.removeEventListener('click', _closeBookOptionsMenuOnOutside);
+function closeDiaryFabSheet() {
+  document.getElementById('modal-diary-fab-sheet').classList.remove('open');
 }
 
 // ─── SELECTION MODE ───────────────────────────────────────
@@ -7736,6 +7710,10 @@ function enterSelectionMode() {
   selectionMode = true;
   selectedIdxs.clear();
   document.getElementById('selection-bar').classList.add('active');
+  // La barra de selección (fija, full-width, bottom:0) queda tapada por
+  // el FAB unificado del diario (fijo, bottom-right, z-index más alto) —
+  // se oculta mientras dure el modo selección, ver exitSelectionMode().
+  document.getElementById('diary-fab-container').style.display = 'none';
   document.getElementById('selection-btn-delete').style.display = albumCanEdit ? '' : 'none';
   updateSelectionBar();
 
@@ -7773,6 +7751,7 @@ function exitSelectionMode() {
   selectionMode = false;
   selectedIdxs.clear();
   document.getElementById('selection-bar').classList.remove('active');
+  document.getElementById('diary-fab-container').style.display = 'block';
   if (currentTab === 'list') renderListTab(); else renderMedia(); // re-render to restore normal state
 }
 
@@ -7995,6 +7974,7 @@ document.getElementById('modal-book-frame').addEventListener('click', e => { if 
 document.getElementById('modal-subscribe').addEventListener('click', e => { if (e.target === e.currentTarget) closeSubscribeModal(); });
 document.getElementById('modal-bulk-upload').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkUpload(); });
 document.getElementById('modal-fab-sheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeFabSheet(); });
+document.getElementById('modal-diary-fab-sheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeDiaryFabSheet(); });
 document.getElementById('modal-bulk-diary').addEventListener('click', e => { if (e.target === e.currentTarget) closeBulkDiary(); });
 document.getElementById('modal-help').addEventListener('click', e => { if (e.target === e.currentTarget) closeHelp(); });
 document.getElementById('modal-onboarding').addEventListener('click', e => { if (e.target === e.currentTarget) closeOnboardingModal(); });

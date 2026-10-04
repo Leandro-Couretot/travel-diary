@@ -1,4 +1,4 @@
 {
-  "version": "2.87",
-  "changelog": "Entrar a un álbum ahora te lleva directo a la Galería (movida al inicio de las tabs) — lo más normal es entrar a ver o compartir fotos, no a editar el día."
+  "version": "2.88",
+  "changelog": "La esquina superior derecha del diario (y del Libro) queda solo con '?' — todas las demás acciones se mudaron a un único botón '+' flotante."
 }
