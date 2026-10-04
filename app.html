@@ -769,6 +769,31 @@ audio { width: 100%; height: 32px; }
 .bulk-dupe-btn.active { border-color: var(--accent); color: var(--ink); background: var(--accent-light); font-weight: 500; }
 .bulk-upload-hint { margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
+/* Lista con progreso real por archivo durante la subida (v2.86) — antes
+   solo había un texto "Subiendo X/N", que no distinguía "se está subiendo
+   el archivo 5" de "se quedó pegado en el 5" (reporte real del usuario).
+   El donut se llena con el % real de bytes subidos (xhr.upload.onprogress,
+   ver driveUploadWithProgress() en drive.js) — si no se mueve, el usuario
+   lo ve con sus propios ojos, no tiene que adivinar. Queda visible al
+   terminar (✓ o ✕ por archivo) para poder identificar por NOMBRE cuáles
+   no se subieron, en vez de solo un conteo. */
+.bulk-upload-list { max-height: 260px; overflow-y: auto; margin-top: 0.75rem; border: 1px solid var(--ink-faint); border-radius: var(--radius); }
+.bulk-upload-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--ink-faint); font-size: 0.78rem; }
+.bulk-upload-item:last-child { border-bottom: none; }
+.bulk-upload-item.failed .bulk-upload-name { color: var(--red); }
+.bulk-upload-donut {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(var(--ink-faint) 0%, var(--ink-faint) 0%);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  transition: background 0.2s linear;
+}
+.bulk-upload-donut svg { width: 11px; height: 11px; }
+.bulk-upload-donut.done { background: var(--accent); }
+.bulk-upload-donut.failed { background: var(--red); }
+.bulk-upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-upload-pct { color: var(--ink-muted); font-size: 0.72rem; flex-shrink: 0; min-width: 3.4em; text-align: right; }
+.bulk-upload-stall-note { margin-top: 0.5rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
+
 /* Aviso de resolución al exportar el fotolibro (v2.43) — lista una por una
    las fotos que van a quedar por debajo del piso de DPI, con miniatura +
    página + la resolución real que necesitarían vs. la que tienen, en vez
@@ -1468,6 +1493,7 @@ audio { width: 100%; height: 32px; }
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-dated-list"></div><div id="bulk-undated-list"></div></div>
         <button class="btn btn-primary" style="width:100%;" id="bulk-confirm-btn" onclick="confirmBulkUpload()">Guardar todo en Drive</button>
         <div class="bulk-upload-hint" id="bulk-upload-hint" style="display:none;">💡 No minimices la app ni bloquees el celular hasta que termine de subir.</div>
+        <div class="bulk-upload-list" id="bulk-upload-list" style="display:none;"></div>
         <div class="bulk-progress" id="bulk-progress"></div>
       </div>
     </div>
@@ -1486,6 +1512,7 @@ audio { width: 100%; height: 32px; }
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-diary-dated-list"></div><div id="bulk-diary-undated-list"></div></div>
         <button class="btn btn-primary" style="width:100%;" id="bulk-diary-confirm-btn" onclick="confirmBulkDiary()">Guardar en este álbum</button>
         <div class="bulk-upload-hint" id="bulk-diary-upload-hint" style="display:none;">💡 No minimices la app ni bloquees el celular hasta que termine de subir.</div>
+        <div class="bulk-upload-list" id="bulk-diary-upload-list" style="display:none;"></div>
         <div class="bulk-progress" id="bulk-diary-progress"></div>
       </div>
     </div>
@@ -1559,7 +1586,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.85';
+const APP_VERSION = '2.86';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1617,6 +1644,7 @@ const ICON_PATHS = {
   download:'<path d="M12 4v11.5M7 11l5 5 5-5"/><path d="M4 20h16"/>',
   size:    '<rect x="3" y="7" width="18" height="12" rx="1.5"/><path d="M8 3v4M16 3v4"/>',
   shuffle: '<path d="M4 6h3.5l9 12H20M4 18h3.5l3-4"/><path d="M16.5 6H20M17.5 4l2.5 2-2.5 2M17.5 18H20M17.5 16l2.5 2-2.5 2"/>',
+  check:   '<path d="M5 12l5 5L19 7"/>',
 };
 
 function icon(name, opts = {}) {
@@ -3923,6 +3951,13 @@ function openBulkUpload() {
   document.getElementById('bulk-step-drop').style.display = '';
   document.getElementById('bulk-step-review').style.display = 'none';
   document.getElementById('bulk-progress').textContent = '';
+  // v2.86: sin esto, la lista con el progreso de la corrida ANTERIOR
+  // (con sus ✓/✕ ya resueltos) quedaba con display:'' de la última vez —
+  // al reabrir el modal y llegar a la revisión de una carga nueva, antes
+  // de tocar "Guardar", esa lista vieja se volvía a ver (colgando debajo
+  // del botón) porque solo su contenedor padre estaba oculto, no ella.
+  const listEl = document.getElementById('bulk-upload-list');
+  listEl.style.display = 'none'; listEl.innerHTML = '';
   document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-upload').classList.add('open');
 }
@@ -4054,6 +4089,12 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   // celular puede cortarla a mitad de camino (ver ERROR_HANDLING_PLAN.md).
   const hintEl = document.getElementById(progressEl.id.replace('-progress', '-upload-hint'));
   if (hintEl) hintEl.style.display = '';
+  const listEl = document.getElementById(progressEl.id.replace('-progress', '-upload-list'));
+  // Nota de "esto viene lento" de una corrida anterior — se saca antes de
+  // arrancar una nueva (tanto en un reintento como si el modal se reabrió).
+  const prevStallNote = listEl && document.getElementById(`${listEl.id}-stall`);
+  if (prevStallNote) prevStallNote.remove();
+
   const dates = Object.keys(groupsByDate).sort();
   const dayFolderIds = {};
   for (const date of dates) dayFolderIds[date] = await getOrCreateFolder(date, albumFolderId, proxyAlbumId);
@@ -4068,15 +4109,78 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   // así que quedaba en blanco todo lo que tarda comprimir+subir el primero.
   progressEl.textContent = `Subiendo... ${done}/${total}`;
 
-  const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }) => {
+  // v2.86: lista con progreso real de bytes por archivo, en vez de solo el
+  // conteo de arriba — reporte real del usuario: una carga se quedó
+  // mostrando "5/11" sin que hubiera forma de saber si seguía viva o se
+  // había colgado, y sin saber qué 6 archivos faltaban. Cada fila tiene su
+  // propio "donut" que se llena con el % real de bytes subidos (ver
+  // driveUploadWithProgress() en drive.js — fetch() no expone progreso de
+  // subida, hace falta XMLHttpRequest para esto) y queda con un ✓/✕ al
+  // terminar, identificando por NOMBRE cuáles no llegaron a subirse.
+  if (listEl) {
+    listEl.style.display = '';
+    listEl.innerHTML = tasks.map((t, i) => `
+      <div class="bulk-upload-item" id="${listEl.id}-item-${i}">
+        <div class="bulk-upload-donut" id="${listEl.id}-donut-${i}"></div>
+        <div class="bulk-upload-name">${escHtml(t.file.name)}</div>
+        <div class="bulk-upload-pct" id="${listEl.id}-pct-${i}">esperando</div>
+      </div>`).join('');
+  }
+  const setItemState = (i, state, pct) => {
+    if (!listEl) return;
+    const donut = document.getElementById(`${listEl.id}-donut-${i}`);
+    const pctEl = document.getElementById(`${listEl.id}-pct-${i}`);
+    const itemEl = document.getElementById(`${listEl.id}-item-${i}`);
+    if (!donut || !pctEl) return;
+    if (state === 'uploading') {
+      donut.className = 'bulk-upload-donut';
+      donut.style.background = `conic-gradient(var(--accent) ${pct}%, var(--ink-faint) 0)`;
+      donut.innerHTML = '';
+      pctEl.textContent = `${pct}%`;
+    } else if (state === 'done') {
+      donut.className = 'bulk-upload-donut done';
+      donut.style.background = '';
+      donut.innerHTML = icon('check');
+      pctEl.textContent = '✓';
+      if (itemEl) itemEl.classList.remove('failed');
+    } else if (state === 'failed') {
+      donut.className = 'bulk-upload-donut failed';
+      donut.style.background = '';
+      donut.innerHTML = icon('close');
+      pctEl.textContent = 'falló';
+      if (itemEl) itemEl.classList.add('failed');
+    }
+  };
+  // Las subidas ya tienen su propio timeout+reintento (driveUploadWithProgress,
+  // igual que driveReq) — esto no fuerza ningún corte, es puramente
+  // informativo: si pasó un rato sin que NINGÚN archivo termine, se lo
+  // decimos al usuario en vez de dejarlo adivinando si algo se colgó.
+  let lastCompletedAt = Date.now();
+  const stallTimer = listEl ? setInterval(() => {
+    if (done >= total || document.getElementById(`${listEl.id}-stall`)) return;
+    if (Date.now() - lastCompletedAt > 20000) {
+      const note = document.createElement('div');
+      note.id = `${listEl.id}-stall`; note.className = 'bulk-upload-stall-note';
+      note.textContent = 'Está tardando más de lo normal. Si ves algún círculo sin moverse, seguimos reintentando solos — no hace falta que hagas nada, ni cierres la app.';
+      listEl.insertAdjacentElement('afterend', note);
+    }
+  }, 5000) : null;
+
+  const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }, i) => {
+    setItemState(i, 'uploading', 0);
     const isImg = file.type.startsWith('image/');
     let blob = file;
     if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
-    const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
+    const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId, pct => setItemState(i, 'uploading', pct));
     if (!newMediaByDate[date]) newMediaByDate[date] = [];
     newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
-    done++; progressEl.textContent = `Subiendo... ${done}/${total}`;
+    setItemState(i, 'done');
+    done++; lastCompletedAt = Date.now(); progressEl.textContent = `Subiendo... ${done}/${total}`;
   });
+  if (stallTimer) clearInterval(stallTimer);
+  const stallNoteNow = listEl && document.getElementById(`${listEl.id}-stall`);
+  if (stallNoteNow) stallNoteNow.remove();
+  tasks.forEach((t, i) => { if (results[i].status === 'rejected') setItemState(i, 'failed'); });
 
   const failedTasks = tasks.filter((t, i) => results[i].status === 'rejected');
   const quotaExceeded = results.some(r => r.status === 'rejected' && r.reason instanceof DriveQuotaExceededError);
@@ -4150,20 +4254,43 @@ async function confirmBulkUpload() {
   btn.disabled = false;
 }
 
+// v2.86: ya NO se reescala la resolución — decisión de producto explícita
+// (el espacio lo paga el Drive del usuario, no un server nuestro, así que
+// no tiene sentido perder calidad real para ahorrar algo que no cuesta
+// nada acá; y una foto que se ve pixelada impresa en el fotolibro sería
+// justo el tipo de problema que esta feature no se puede permitir). Se
+// sigue reconvirtiendo a JPEG a calidad altísima (0.95, sin pérdida
+// perceptible) en vez de guardar el archivo tal cual sale de la cámara —
+// necesario para que CUALQUIER navegador lo pueda mostrar después (HEIC,
+// el formato nativo de iPhone, Chrome/Android/Firefox no lo decodifican
+// nunca, solo Safari). Antes existían dos copias idénticas de esta
+// función (compressImage/compressImageFile) — unificadas en una sola.
+// Timeout defensivo (15s): si el celular se bloquea o la app pasa a
+// segundo plano justo durante la decodificación, sin esto la promesa
+// podía quedar esperando para siempre sin que nada la destrabara — mismo
+// patrón que ya usa driveReq() para pedidos de red, aplicado acá al único
+// paso del pipeline de carga que no pasa por ahí.
 function compressImageFile(file) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return; settled = true;
+      reject(new Error('Tardó demasiado en procesar la foto'));
+    }, 15000);
+    const finish = (fn, val) => { if (settled) return; settled = true; clearTimeout(timer); fn(val); };
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img; const MAX = 2400; // subido de 1200 en el Paso 3 del fotolibro-a-PDF — a 1200px ninguna foto nueva iba a poder llegar a 300 DPI real ni en el tamaño de hoja más chico (20x20cm)
-        if (width > MAX || height > MAX) { if (width > height) { height = Math.round(height * MAX / width); width = MAX; } else { width = Math.round(width * MAX / height); height = MAX; } }
-        const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        finish(resolve, canvas.toDataURL('image/jpeg', 0.95));
       };
+      img.onerror = () => finish(reject, new Error('No se pudo procesar la foto'));
       img.src = e.target.result;
     };
+    reader.onerror = () => finish(reject, new Error('No se pudo leer el archivo'));
     reader.readAsDataURL(file);
   });
 }
@@ -5027,22 +5154,33 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
   // compartidos incluso antes de que existiera la escritura vía proxy.
   const proxyAlbumId = isSharedAlbum ? albumFolderId : null;
   let skippedCount = 0;
-  for (const date of Object.keys(grouped.dated).sort()) {
-    const files = grouped.dated[date];
-    let day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum) || { title: '', notes: '', media: [] };
-    const dayFolderId = await getOrCreateFolder(date, albumFolderId, proxyAlbumId);
-    const existingNames = new Set(day.media.map(m => stripMediaNamePrefix(m.name)));
-    for (const file of files) {
-      if (existingNames.has(file.name)) { skippedCount++; continue; }
-      const isImg = file.type.startsWith('image/');
-      let blob = file;
-      if (isImg) { const data = await compressImage(file); blob = base64ToBlob(data); }
-      const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
-      day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
-      existingNames.add(file.name);
+  try {
+    for (const date of Object.keys(grouped.dated).sort()) {
+      const files = grouped.dated[date];
+      let day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum) || { title: '', notes: '', media: [] };
+      const dayFolderId = await getOrCreateFolder(date, albumFolderId, proxyAlbumId);
+      const existingNames = new Set(day.media.map(m => stripMediaNamePrefix(m.name)));
+      for (const file of files) {
+        if (existingNames.has(file.name)) { skippedCount++; continue; }
+        const isImg = file.type.startsWith('image/');
+        let blob = file;
+        if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
+        const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
+        day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
+        existingNames.add(file.name);
+      }
+      await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
+      invalidateDayCache(albumFolderId, date);
     }
-    await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
-    invalidateDayCache(albumFolderId, date);
+  } catch(e) {
+    // v2.86: antes esto no estaba envuelto — un fallo acá (ej. la
+    // compresión de una foto trabada) quedaba como una excepción sin
+    // atrapar, sin ningún mensaje para el usuario más allá del overlay de
+    // debug. Lo que sí se alcanzó a guardar antes del error queda en
+    // Drive igual (cada fecha se persiste al final de su propio loop).
+    setStatus('', 'Algo falló guardando por día: ' + e.message + ' Lo que ya se guardó quedó en Drive, probá de nuevo con el resto.');
+    trackEvent('error', { context: 'save_files_to_correct_days', message: String(e.message || e).slice(0, 200) });
+    return;
   }
   const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
   if (toCurrentDay.length) addFilesToCurrentDay(toCurrentDay);
@@ -5053,37 +5191,26 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
 
 function addFilesToCurrentDay(files) {
   let loaded = 0; const total = files.length;
+  const bump = () => { loaded++; if (loaded === total) { markDirty(); renderMedia(); } };
   files.forEach(file => {
     const isImg = file.type.startsWith('image/'); const isVideo = file.type.startsWith('video/');
     if (isImg) {
-      compressImage(file).then(data => { currentDay.media.push({ type: 'image', name: file.name, data, caption: '' }); loaded++; if (loaded === total) { markDirty(); renderMedia(); } });
+      // v2.86: antes solo tenía `.then()` — si la compresión fallaba o se
+      // colgaba (ahora puede rechazar, ver compressImageFile()), esa
+      // promesa nunca resolvía `loaded`, así que el resto de las fotos
+      // YA comprimidas de este mismo lote se quedaban sin renderizar,
+      // esperando para siempre a una que nunca iba a llegar.
+      compressImageFile(file).then(data => { currentDay.media.push({ type: 'image', name: file.name, data, caption: '' }); bump(); })
+        .catch(e => { trackEvent('error', { context: 'add_files_to_current_day', message: String(e.message || e).slice(0, 200) }); bump(); });
     } else if (isVideo) {
       const blobUrl = URL.createObjectURL(file);
       currentDay.media.push({ type: 'video', name: file.name, data: blobUrl, _file: file, caption: '' });
-      loaded++; if (loaded === total) { markDirty(); renderMedia(); }
+      bump();
     } else {
       const reader = new FileReader();
-      reader.onload = e => { currentDay.media.push({ type: 'audio', name: file.name, data: e.target.result, caption: '' }); loaded++; if (loaded === total) { markDirty(); renderMedia(); } };
+      reader.onload = e => { currentDay.media.push({ type: 'audio', name: file.name, data: e.target.result, caption: '' }); bump(); };
       reader.readAsDataURL(file);
     }
-  });
-}
-
-function compressImage(file) {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img; const MAX = 2400; // subido de 1200 en el Paso 3 del fotolibro-a-PDF — a 1200px ninguna foto nueva iba a poder llegar a 300 DPI real ni en el tamaño de hoja más chico (20x20cm)
-        if (width > MAX || height > MAX) { if (width > height) { height = Math.round(height * MAX / width); width = MAX; } else { width = Math.round(width * MAX / height); height = MAX; } }
-        const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
   });
 }
 
@@ -7082,6 +7209,8 @@ function openBulkDiary() {
   document.getElementById('bulk-diary-step-drop').style.display = '';
   document.getElementById('bulk-diary-step-review').style.display = 'none';
   document.getElementById('bulk-diary-progress').textContent = '';
+  const diaryListEl = document.getElementById('bulk-diary-upload-list'); // v2.86, ver openBulkUpload()
+  diaryListEl.style.display = 'none'; diaryListEl.innerHTML = '';
   document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-diary').classList.add('open');
 }

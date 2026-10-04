@@ -327,10 +327,16 @@ async function listDayFolders(albumFolderId, viaProxy = false) {
 }
 
 // ─── FILE HELPERS ────────────────────────────────────────
+// v2.86: `onProgress` opcional (último parámetro, `(pct:number) => void`) —
+// solo la carga masiva lo pasa hoy, para el donut de progreso real por
+// archivo (ver runBulkUpload() en app.html). Sin pasarlo, comportamiento
+// 100% idéntico al de siempre (fetch vía driveReq). Con proxyAlbumId
+// (álbum compartido, Contribuidor) todavía no hay progreso real — queda
+// como límite conocido, ver CLAUDE.md.
 // v2.62: `proxyAlbumId` opcional, mismo criterio de arriba — sube el
 // archivo con el token de la DUEÑA del álbum vía el proxy en vez del
 // token del invitado.
-async function uploadFile(blob, name, folderId, existingId = null, description = null, proxyAlbumId = null) {
+async function uploadFile(blob, name, folderId, existingId = null, description = null, proxyAlbumId = null, onProgress = null) {
   if (proxyAlbumId) return await uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId);
   const meta = { name };
   if (description) meta.description = description;
@@ -341,7 +347,10 @@ async function uploadFile(blob, name, folderId, existingId = null, description =
   const url = existingId
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-  const res = await driveReq(existingId ? 'PATCH' : 'POST', url, form);
+  const method = existingId ? 'PATCH' : 'POST';
+  const res = onProgress
+    ? await driveUploadWithProgress(method, url, form, onProgress)
+    : await driveReq(method, url, form);
   if (!res.ok) {
     const errInfo = await _driveErrorBody(res);
     if (_isQuotaExceeded(errInfo)) throw new DriveQuotaExceededError();
@@ -349,6 +358,69 @@ async function uploadFile(blob, name, folderId, existingId = null, description =
   }
   const file = await res.json();
   return file.id;
+}
+
+// Mismo propósito que driveReq() (subir un archivo, con reintento/backoff
+// ante 429/5xx, timeout, manejo de 401) pero vía XMLHttpRequest en vez de
+// fetch() — fetch() NO expone ningún evento de progreso de SUBIDA (solo
+// de lectura de la respuesta), así que no hay forma de saber "cuánto se
+// subió" en tiempo real con el mecanismo de siempre. `xhr.upload.onprogress`
+// es la única API del navegador para esto. No se intentó unificar con
+// driveReq() — XHR aborta/cancela por eventos, no por AbortSignal, la
+// forma es lo bastante distinta como para que forzar una sola función
+// fuera más confuso que tenerlas separadas.
+function driveUploadWithProgress(method, url, form, onProgress) {
+  function attempt(n) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, url);
+      xhr.setRequestHeader('Authorization', `Bearer ${driveToken}`);
+      xhr.timeout = 120000; // mismo margen que driveReq() le da a una subida
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+      }
+      xhr.onload = () => resolve(xhr);
+      xhr.onerror = () => reject(new Error('net'));
+      xhr.ontimeout = () => reject(new Error('timeout'));
+      xhr.send(form);
+    }).then(xhr => {
+      _driveApiRequestCount++;
+      if (xhr.status === 429) _driveApi429Count++;
+      if (xhr.status === 401) {
+        driveToken = null; rootFolderId = null;
+        localStorage.removeItem('drive_token');
+        clearDriveIdCache();
+        throw new Error('Token expirado, reconectá Drive');
+      }
+      const isRetryable = xhr.status === 429 || xhr.status >= 500;
+      if (isRetryable && n < DRIVE_MAX_RETRIES) {
+        const retryAfter = parseFloat(xhr.getResponseHeader('Retry-After'));
+        const delay = !isNaN(retryAfter) ? retryAfter * 1000 : (2 ** n) * 500 + Math.random() * 250;
+        return new Promise(r => setTimeout(r, delay)).then(() => attempt(n + 1));
+      }
+      return _xhrToResponseLike(xhr);
+    }, err => {
+      if (n >= DRIVE_MAX_RETRIES) {
+        throw new Error(err.message === 'timeout' ? 'La conexión con Drive tardó demasiado. Probá de nuevo.' : err.message);
+      }
+      return new Promise(r => setTimeout(r, (2 ** n) * 500 + Math.random() * 250)).then(() => attempt(n + 1));
+    });
+  }
+  return attempt(0);
+}
+
+// Envoltorio liviano con la misma forma que una Response de fetch() —
+// solo lo que uploadFile()/_driveErrorBody() necesitan (.ok/.status/
+// .json()/.clone()) — para que esas funciones no tengan que distinguir
+// si la subida vino por fetch (driveReq) o por XHR (driveUploadWithProgress).
+function _xhrToResponseLike(xhr) {
+  const text = xhr.responseText;
+  return {
+    ok: xhr.status >= 200 && xhr.status < 300,
+    status: xhr.status,
+    json: async () => text ? JSON.parse(text) : {},
+    clone() { return this; }, // el body ya está en memoria completo, nada que streamear dos veces
+  };
 }
 
 async function readJsonFile(fileId) {
