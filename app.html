@@ -1145,14 +1145,17 @@ audio { width: 100%; height: 32px; }
 <!-- ─── VIEW: DIARY ─── -->
 <div class="view" id="view-diary">
   <div class="diary-tabs" id="diary-tabs">
-    <button class="diary-tab active" data-tab="day" onclick="switchTab('day')">Día</button>
+    <button class="diary-tab active" data-tab="list" onclick="switchTab('list')">Galería</button>
+    <button class="diary-tab" data-tab="day" onclick="switchTab('day')">Día</button>
     <button class="diary-tab" data-tab="month" onclick="switchTab('month')">Mes</button>
-    <button class="diary-tab" data-tab="list" onclick="switchTab('list')">Galería</button>
     <button class="diary-tab" data-tab="book" onclick="switchTab('book')">Fotolibro</button>
   </div>
   <input type="date" id="date-input" style="position:absolute;opacity:0;pointer-events:none;top:110px;right:1rem;">
 
-  <div class="tab-panel active" id="tab-day">
+  <div class="tab-panel active" id="tab-list">
+    <div class="list-tab-wrap" id="list-tab-content"><div class="list-empty">Cargando días...</div></div>
+  </div>
+  <div class="tab-panel" id="tab-day">
     <div class="day-nav-bar">
       <button class="btn-nav" id="btn-prev">←</button>
       <div class="date-display" id="date-display" title="Elegir fecha"></div>
@@ -1162,9 +1165,6 @@ audio { width: 100%; height: 32px; }
   </div>
   <div class="tab-panel" id="tab-month">
     <div class="cal-wrap" id="cal-wrap"><div class="list-empty">Cargando calendario...</div></div>
-  </div>
-  <div class="tab-panel" id="tab-list">
-    <div class="list-tab-wrap" id="list-tab-content"><div class="list-empty">Cargando días...</div></div>
   </div>
   <div class="tab-panel" id="tab-book">
     <div class="book-wrap" id="book-wrap"><div class="list-empty">Cargando libro...</div></div>
@@ -1586,7 +1586,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.86';
+const APP_VERSION = '2.87';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4567,9 +4567,16 @@ async function bootstrapDiaryPage() {
   // Contribuidor dejaría las tabs escondidas para siempre.
   document.getElementById('diary-tabs').style.display = '';
   document.getElementById('contrib-fab-container').style.display = 'none';
-  currentTab = 'day';
-  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'day'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-day'));
+  // v2.87: entrar a un álbum aterriza en Galería, no en Día — lo más común
+  // es entrar a VER/compartir fotos, no a editar el título/notas de un día
+  // puntual (pedido explícito del usuario). Excepción: cuando quien navega
+  // ya pidió un día puntual (`diaryTargetDate`, v2.22 — ej. el día más
+  // reciente de una carga masiva recién terminada desde Home, pensado para
+  // escribirle una nota ahí mismo), se respeta Día como tab inicial — ese
+  // caso sigue queriendo la UI de edición de siempre, no la galería.
+  currentTab = diaryTargetDate ? 'day' : 'list';
+  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === currentTab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${currentTab}`));
   try {
     if (!isSharedAlbum) {
       albumFolderId = await getAlbumFolderId(albumId);
@@ -4630,10 +4637,12 @@ async function bootstrapDiaryPage() {
     // ese día en vez de dejar que resolveStartDate() elija el suyo — se
     // consume una sola vez, para que la próxima entrada al diario (sin
     // targetDate) vuelva al criterio de siempre.
+    const landOnDay = !!diaryTargetDate;
     currentDate = diaryTargetDate || await resolveStartDate();
     diaryTargetDate = null;
     renderDiaryPage();
     await loadDay(currentDate);
+    if (!landOnDay) renderListTab();
   } catch(e) {
     document.getElementById('day-editor').innerHTML = `<div class="page-loading">Error: ${escHtml(e.message)}</div>`;
   }

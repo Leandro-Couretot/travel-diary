@@ -1,4 +1,4 @@
 {
-  "version": "2.86",
-  "changelog": "Las fotos ya no pierden resolución al subirlas (solo se reconvierten a JPEG de calidad altísima) — y la carga masiva ahora muestra un progreso real por archivo, para saber si se colgó o sigue subiendo."
+  "version": "2.87",
+  "changelog": "Entrar a un álbum ahora te lleva directo a la Galería (movida al inicio de las tabs) — lo más normal es entrar a ver o compartir fotos, no a editar el día."
 }
