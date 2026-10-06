@@ -1,16 +1,15 @@
 // consent.js — GA4 + Meta Pixel con el mismo gate de consentimiento (GDPR) que
 // ya usa app.html, portado para landing.html/landing-viaje.html.
 //
-// Mismos IDs, misma versión de consentimiento, mismo Worker de geo y mismo
-// criterio geo-diferenciado (Marketing implícito fuera de UE/EEE/UK, Analítica
-// siempre opt-in explícito) documentados en CLAUDE.md → "Consentimiento de
-// Marketing geo-diferenciado" (v2.30) y "Onboarding personalizado... +
-// consentimiento de cookies (GDPR)" (v2.29). Simplificación deliberada frente
-// a app.html: sin el modal "Personalizar" (3 categorías con checkboxes) — acá
-// solo hay 2 categorías y ningún lugar natural (como el menú de Ayuda) para
-// reabrirlo después, así que el banner ofrece directo Aceptar todo/Rechazar +
-// un link a privacy.html. Si algún día esto necesita más granularidad, portar
-// el modal de app.html tal cual.
+// Mismos IDs y misma versión de consentimiento que app.html. Desde v2.89,
+// opt-in estricto en cualquier país — sin excepción geográfica (ver
+// "Funcionando bien" v2.89 en CLAUDE.md; revierte el modelo geo-diferenciado
+// de v2.30-v2.35, que sigue documentado ahí como registro histórico).
+// Simplificación deliberada frente a app.html: sin el modal "Personalizar"
+// (3 categorías con checkboxes) — acá solo hay 2 categorías y ningún lugar
+// natural (como el menú de Ayuda) para reabrirlo después, así que el banner
+// ofrece directo Aceptar todo/Rechazar + un link a privacy.html. Si algún
+// día esto necesita más granularidad, portar el modal de app.html tal cual.
 
 (function () {
   'use strict';
@@ -64,59 +63,7 @@
     } catch (e) {}
   }
   function hasAnalyticsConsent() { var c = getStoredConsent(); return !!(c && c.analytics); }
-  function hasMarketingConsent() {
-    var c = getStoredConsent();
-    if (c) return !!c.marketing;
-    return isLikelyNonEuVisitor();
-  }
-
-  // ─── Geo (mismo Worker de Cloudflare que app.html, ver cf-geo-worker/) ───
-  var GEO_WORKER_URL = 'https://legado-geo.pluxow-ideasverdesymas.workers.dev/';
-  var GEO_FETCH_TIMEOUT_MS = 1200;
-  var EU_EEA_UK_COUNTRIES = new Set([
-    'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT',
-    'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
-    'IS', 'LI', 'NO',
-    'GB'
-  ]);
-  var _geoCountry = null;
-  var _geoResolved = false;
-
-  function readUtmCountryOverride() {
-    try {
-      var raw = new URLSearchParams(location.search).get('utm_country');
-      if (!raw) return null;
-      var code = raw.trim().toUpperCase();
-      return /^[A-Z]{2}$/.test(code) ? code : null;
-    } catch (e) { return null; }
-  }
-  var _utmCountryOverride = readUtmCountryOverride();
-
-  var geoPromise = _utmCountryOverride
-    ? (function () {
-        _geoCountry = _utmCountryOverride;
-        _geoResolved = true;
-        return Promise.resolve();
-      })()
-    : (function () {
-        var controller = null, timeoutId = null;
-        try {
-          controller = new AbortController();
-          timeoutId = setTimeout(function () { controller.abort(); }, GEO_FETCH_TIMEOUT_MS);
-        } catch (e) {}
-        return fetch(GEO_WORKER_URL, { cache: 'no-store', signal: controller ? controller.signal : undefined })
-          .then(function (res) { return (res && res.ok) ? res.json() : null; })
-          .then(function (data) { _geoCountry = (data && data.country) || null; })
-          .catch(function () { _geoCountry = null; })
-          .finally(function () {
-            _geoResolved = true;
-            if (timeoutId) clearTimeout(timeoutId);
-          });
-      })();
-
-  function isLikelyNonEuVisitor() {
-    return _geoResolved && !!_geoCountry && !EU_EEA_UK_COUNTRIES.has(_geoCountry);
-  }
+  function hasMarketingConsent() { var c = getStoredConsent(); return !!(c && c.marketing); }
 
   // ─── Carga real (recién con consentimiento) ───
   var _gaLoaded = false, _metaPixelLoaded = false;
@@ -139,11 +86,6 @@
   function applyConsent(analytics, marketing) {
     if (analytics) loadGoogleAnalytics();
     if (marketing) loadMetaPixel();
-  }
-  function maybeApplyImplicitMarketingConsent() {
-    if (getStoredConsent()) return;
-    if (_metaPixelLoaded) return;
-    if (isLikelyNonEuVisitor()) loadMetaPixel();
   }
 
   // ─── Banner mínimo (inyectado por JS, sin markup en cada landing) ───
@@ -183,17 +125,12 @@
   }
   function maybeShowConsentBanner() {
     if (getStoredConsent()) return;
-    if (isLikelyNonEuVisitor()) return; // mismo criterio que app.html — no-UE nunca ve el banner
     buildBanner();
   }
   function initConsentGate() {
     var stored = getStoredConsent();
     if (stored) { applyConsent(stored.analytics, stored.marketing); return; }
-    maybeApplyImplicitMarketingConsent();
-    geoPromise.then(function () {
-      maybeApplyImplicitMarketingConsent();
-      maybeShowConsentBanner();
-    });
+    maybeShowConsentBanner();
   }
 
   window.LegadoConsent = { hasAnalyticsConsent: hasAnalyticsConsent, hasMarketingConsent: hasMarketingConsent };

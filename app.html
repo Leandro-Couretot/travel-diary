@@ -62,99 +62,18 @@
     } catch (e) { return null; }
   }
   function hasAnalyticsConsent() { const c = getStoredConsent(); return !!(c && c.analytics); }
-
-  // Consentimiento implícito de Marketing fuera de la UE/EEE/UK — Argentina no
-  // exige opt-in explícito para el Píxel de Meta (a diferencia de GDPR), y con
-  // el modelo estricto de siempre cualquier visita que ignora o cancela el
-  // banner queda invisible para Meta Ads Manager, perdiendo atribución real de
-  // campañas pagas en el único mercado donde hoy se pauta. Decisión confirmada
-  // con el usuario: para el resto del mundo (no UE/EEE/UK) el Píxel carga solo,
-  // sin esperar ningún click — el banner igual se muestra siempre, ofreciendo
-  // "Rechazar" explícito, que sigue ganándole a este default apenas se elige
-  // algo (ver hasMarketingConsent() más abajo). Alcance deliberadamente acotado
-  // a Marketing/Meta — Analytics (Google) se queda 100% opt-in en cualquier
-  // país, no fue parte de este pedido.
-  //
-  // El país sale de un Worker propio de Cloudflare (`cf-geo-worker/`, en este
-  // mismo repo) que solo devuelve `request.cf.country` — la señal de
-  // geolocalización que Cloudflare ya resuelve en su borde de red para
-  // cualquier pedido, sin consultar ninguna base de datos ni cobrar nada. Sin
-  // ningún dato personal de por medio (un código de país no identifica a
-  // nadie), y sin tocar la lógica ya existente de atribución por UTM
-  // (`captureUtmFirstTouch()`), que nunca dependió de consentimiento porque no
-  // carga ningún script de terceros.
-  const GEO_WORKER_URL = 'https://legado-geo.pluxow-ideasverdesymas.workers.dev/';
-  const GEO_FETCH_TIMEOUT_MS = 1200;
-  // 27 UE + Islandia/Liechtenstein/Noruega (EEE, no-UE) + Reino Unido (UK GDPR
-  // espeja las mismas reglas post-Brexit) — mismo criterio "mejor de más que
-  // de menos" que ya rige el resto del gate de consentimiento.
-  const EU_EEA_UK_COUNTRIES = new Set([
-    'AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT',
-    'LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE',
-    'IS','LI','NO',
-    'GB',
-  ]);
-  let _geoCountry = null;
-  let _geoResolved = false;
-  // Override de país por URL (`?utm_country=AR`) — pensado para las campañas
-  // pagas propias: ahí SÍ se sabe con certeza a qué país apunta cada campaña
-  // (lo elige el usuario al armarla en Meta/Google Ads), así que no tiene
-  // sentido dejarlo librado a que Cloudflare acierte el país del visitante.
-  // Toma prioridad total sobre el Worker de Cloudflare — ni siquiera se llega
-  // a pedir, ahorra la ida y vuelta — que queda como lo que siempre fue: el
-  // fallback automático para tráfico orgánico/directo, que nunca trae este
-  // parámetro. Mismo criterio de "un solo lugar lee la URL" que ya usa
-  // `captureUtmFirstTouch()` para el resto de los UTMs, aunque este vive acá
-  // (no ahí) porque tiene que resolverse ANTES de que el banner de
-  // consentimiento decida qué mostrar, mucho antes de que ese otro código
-  // corra.
-  function readUtmCountryOverride() {
-    try {
-      const raw = new URLSearchParams(location.search).get('utm_country');
-      if (!raw) return null;
-      const code = raw.trim().toUpperCase();
-      return /^[A-Z]{2}$/.test(code) ? code : null; // un valor con formato raro se ignora, nunca rompe nada
-    } catch (e) { return null; }
-  }
-  const _utmCountryOverride = readUtmCountryOverride();
-  // Se dispara una sola vez, apenas carga la página — bridge con
-  // window.__legadoGeoPromise para que el script inline principal (carga
-  // mucho después, al final del <body>) pueda esperar el resultado sea cual
-  // sea el timing, mismo patrón que ya usa debug.js/billing.js con
-  // window.__pendingErrorReports para el mismo tipo de problema de orden.
-  window.__legadoGeoPromise = _utmCountryOverride
-    ? (function () {
-        _geoCountry = _utmCountryOverride;
-        _geoResolved = true;
-        return Promise.resolve();
-      })()
-    : (function () {
-        let controller = null;
-        let timeoutId = null;
-        try {
-          controller = new AbortController();
-          timeoutId = setTimeout(() => controller.abort(), GEO_FETCH_TIMEOUT_MS);
-        } catch (e) { /* AbortController no soportado (muy poco probable) — sigue sin timeout, el catch de abajo igual cubre cualquier fetch que tire */ }
-        return fetch(GEO_WORKER_URL, { cache: 'no-store', signal: controller ? controller.signal : undefined })
-          .then(res => (res && res.ok) ? res.json() : null)
-          .then(data => { _geoCountry = (data && data.country) || null; })
-          .catch(() => { _geoCountry = null; }) // timeout, sin red, Worker caído — nunca rompe nada, solo se queda sin país (fail-closed, ver isLikelyNonEuVisitor)
-          .finally(() => {
-            _geoResolved = true;
-            if (timeoutId) clearTimeout(timeoutId);
-          });
-      })();
-  // Fail-closed real: sin resolver todavía, o resuelto sin país (timeout/error/
-  // Worker caído), nunca se asume "no es de la UE" — el default estricto de
-  // siempre sigue rigiendo hasta tener una señal de país concreta.
-  function isLikelyNonEuVisitor() {
-    return _geoResolved && !!_geoCountry && !EU_EEA_UK_COUNTRIES.has(_geoCountry);
-  }
-  function hasMarketingConsent() {
-    const c = getStoredConsent();
-    if (c) return !!c.marketing; // una elección explícita (aceptar o rechazar) siempre le gana a cualquier default implícito
-    return isLikelyNonEuVisitor();
-  }
+  // v2.89: deja de haber un default implícito para Marketing según el país
+  // del visitante — opt-in estricto en cualquier lugar, mismo criterio que ya
+  // regía Analítica desde siempre. Hasta esta versión, fuera de la UE/EEE/UK
+  // (Argentina incluida) el Píxel de Meta cargaba solo sin pedir nada, vía un
+  // Worker de Cloudflare que resolvía el país del visitante (`cf-geo-worker/`,
+  // ya sacado del repo) — una auditoría externa (Grok) sobre la Ley 25.326
+  // señaló que esa excepción geográfica no se sostiene: el estándar de
+  // "consentimiento libre, expreso e informado mediante una acción afirmativa
+  // clara" no tiene una excepción por país. Revierte el modelo geo-diferenciado
+  // de v2.30-v2.35 (esas entradas quedan en el changelog como registro
+  // histórico, pero su comportamiento ya no aplica).
+  function hasMarketingConsent() { const c = getStoredConsent(); return !!(c && c.marketing); }
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1075,12 +994,12 @@ audio { width: 100%; height: 32px; }
         <div><div class="consent-cat-title">Necesarias</div><div class="consent-cat-desc">Tu sesión y la conexión con tu Google Drive. Siempre activas, porque la app no funciona sin esto.</div></div>
       </div>
       <label class="consent-cat consent-cat-toggle">
-        <input type="checkbox" id="consent-check-analytics">
-        <div><div class="consent-cat-title">Medición y uso</div><div class="consent-cat-desc">Nos ayuda a arreglar más rápido lo que falla y a saber qué funciones se usan más (y cuáles menos).</div></div>
-      </label>
-      <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-marketing">
         <div><div class="consent-cat-title">Difusión</div><div class="consent-cat-desc">Aceptarlas nos ayuda a llegar a más familias para que conozcan Legado, midiendo qué campañas funcionan. Tus fotos nunca salen de tu Google Drive ni se comparten con terceros.</div></div>
+      </label>
+      <label class="consent-cat consent-cat-toggle">
+        <input type="checkbox" id="consent-check-analytics">
+        <div><div class="consent-cat-title">Medición y uso</div><div class="consent-cat-desc">Nos ayuda a arreglar más rápido lo que falla y a saber qué funciones se usan más (y cuáles menos).</div></div>
       </label>
       <button type="button" class="btn btn-primary" style="width:100%;margin-top:1rem;" onclick="saveConsentPrefsFromModal()">Continuar y guardar</button>
     </div>
@@ -1601,7 +1520,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.88';
+const APP_VERSION = '2.89';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1740,50 +1659,17 @@ function applyConsent(analytics, marketing) {
 function initConsentGate() {
   const stored = getStoredConsent();
   if (stored) { applyConsent(stored.analytics, stored.marketing); return; }
-  maybeApplyImplicitMarketingConsent(); // por si el geo del <head> ya resolvió para cuando llegamos acá
-  if (window.__legadoGeoPromise) {
-    window.__legadoGeoPromise.then(() => {
-      maybeApplyImplicitMarketingConsent();
-      maybeShowConsentBanner();
-    });
-  } else {
-    maybeShowConsentBanner();
-  }
+  maybeShowConsentBanner();
 }
-// El banner NUNCA se muestra para visitas fuera de la UE/EEE/UK — a pedido
-// explícito del usuario, en Argentina (y el resto del mundo no-UE) el aviso
-// queda escondido a propósito detrás de "Preferencias de cookies" (menú de
-// ayuda ?) en vez de aparecer solo al entrar. No es una obligación legal
-// para Argentina (Ley 25.326 exige consentimiento informado, no un banner
-// puntual al cargar — eso es una particularidad de la Directiva ePrivacy de
-// la UE, que Argentina no tiene) — es una decisión de producto/UX, no de
-// compliance. Para la UE/EEE/UK sigue apareciendo siempre, sin excepción —
-// ahí el opt-in explícito antes de cargar nada sí es obligatorio.
-//
-// Se espera a que el geo resuelva (o falle, fail-closed) ANTES de decidir
-// si mostrarlo, en vez de mostrarlo de una y ocultarlo después si el geo
-// confirma no-UE más tarde — evita el parpadeo de "aparece y desaparece".
-// El costo real es mínimo: el Worker de Cloudflare casi siempre ya resolvió
-// mucho antes de que este script (el último en cargar, al final del
-// <body>) llegue a correr; en el peor caso (geo lento o caído) el banner
-// tarda hasta 1.2s más en aparecer para quien sí lo necesita (UE), pero
-// nunca deja de aparecer ahí.
+// v2.89: el banner se muestra siempre, en cualquier país, mientras no haya
+// ninguna elección guardada — se saca la excepción geográfica de v2.30-v2.35
+// (ver el comentario grande de hasMarketingConsent() en el <head> para el
+// porqué). Nada de Meta/GA carga hasta que el usuario toca "Aceptar todo",
+// "Rechazar" o guarda desde "Preferencias de cookies".
 function maybeShowConsentBanner() {
-  if (getStoredConsent()) return; // se eligió algo mientras se esperaba el geo — nunca se pisa
-  if (isLikelyNonEuVisitor()) return; // AR/no-UE: nunca se muestra, la única entrada es "Preferencias de cookies"
+  if (getStoredConsent()) return;
   const banner = document.getElementById('consent-banner');
   if (banner) banner.style.display = 'flex';
-}
-// Carga el Píxel de Meta sin esperar ningún click del banner, únicamente para
-// visitas fuera de la UE/EEE/UK y solo mientras no haya ninguna elección
-// explícita guardada — ver el comentario grande de EU_EEA_UK_COUNTRIES en el
-// <head> para el porqué. Se llama tanto sincrónicamente (geo ya resuelto) como
-// desde el .then() de window.__legadoGeoPromise (geo resuelve tarde) — _metaPixelLoaded
-// la hace idempotente sea cual sea el camino que la dispare primero.
-function maybeApplyImplicitMarketingConsent() {
-  if (getStoredConsent()) return; // el usuario ya eligió algo mientras tanto (incluido "Rechazar") — nunca se pisa
-  if (_metaPixelLoaded) return;
-  if (isLikelyNonEuVisitor()) loadMetaPixel();
 }
 function resolveConsent(analytics, marketing) {
   saveConsent(analytics, marketing);
@@ -1794,15 +1680,14 @@ function resolveConsent(analytics, marketing) {
 function openConsentPrefsModal() {
   closeHelp(); // sin esto, el modal de Ayuda (mismo z-index, más adelante en el DOM) tapaba a este cuando se abría desde el link "Preferencias de cookies" de ahí adentro
   const stored = getStoredConsent();
-  // Las dos categorías opcionales arrancan tildadas fuera de la UE/EEE/UK
-  // cuando todavía no hay ninguna elección guardada — mismo criterio
-  // geo-diferenciado que ya rige el auto-load implícito del Píxel (v2.30),
-  // extendido acá también a Medición y uso: en la UE un checkbox pre-tildado
-  // no es consentimiento válido (caso Planet49, CJEU 2019), así que ahí las
-  // dos se quedan destildadas como siempre. Una elección ya guardada (la que
-  // sea) siempre gana sobre este default, igual que en el resto del módulo.
-  document.getElementById('consent-check-analytics').checked = stored ? !!stored.analytics : isLikelyNonEuVisitor();
-  document.getElementById('consent-check-marketing').checked = stored ? !!stored.marketing : isLikelyNonEuVisitor();
+  // v2.89: las dos categorías opcionales arrancan siempre destildadas sin
+  // una elección guardada, en cualquier país — un checkbox pre-tildado no es
+  // consentimiento válido (caso Planet49, CJEU 2019); antes de esta versión
+  // solo regía así dentro de la UE, con un default geo-diferenciado afuera
+  // (ver v2.30-v2.35 en el changelog). Una elección ya guardada sigue
+  // reflejándose tal cual.
+  document.getElementById('consent-check-analytics').checked = !!(stored && stored.analytics);
+  document.getElementById('consent-check-marketing').checked = !!(stored && stored.marketing);
   document.getElementById('modal-consent-prefs').classList.add('open');
 }
 function closeConsentPrefsModal() {
