@@ -50,7 +50,7 @@
      completa del DOM o a un click, nunca de forma síncrona al cargar un
      script). -->
 <script>
-  const CONSENT_VERSION = 4; // v2.90: nuevo texto de Difusión (explica que ayuda a sostener la app gratis) — sube para que quien ya aceptó con el texto viejo vuelva a ver el motivo real
+  const CONSENT_VERSION = 5; // v2.91: ajuste fino del texto de Difusión ("una capa gratuita"/"parte de la app", no "la app" entera) — sube de nuevo por el mismo motivo que v2.90
   const CONSENT_KEY = 'td_consent';
   function getStoredConsent() {
     try {
@@ -995,7 +995,7 @@ audio { width: 100%; height: 32px; }
       </div>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-marketing">
-        <div><div class="consent-cat-title">Difusión</div><div class="consent-cat-desc">Aceptarlas ayuda a que Legado pueda seguir siendo gratuita. Al llegar a más familias de forma eficiente, podemos mantener la app sin costo. Tus fotos nunca salen de tu Google Drive ni se comparten con terceros.</div></div>
+        <div><div class="consent-cat-title">Difusión</div><div class="consent-cat-desc">Aceptarlas ayuda a que Legado pueda seguir ofreciendo una capa gratuita. Al llegar a más familias de forma eficiente, podemos mantener parte de la app sin costo. Tus fotos nunca salen de tu Google Drive ni se comparten con terceros.</div></div>
       </label>
       <label class="consent-cat consent-cat-toggle">
         <input type="checkbox" id="consent-check-analytics">
@@ -1520,7 +1520,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.90';
+const APP_VERSION = '2.91';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════

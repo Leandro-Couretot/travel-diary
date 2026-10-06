@@ -43,7 +43,7 @@
   })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
 
   // ─── Consentimiento guardado (mismo storage/versión que app.html) ───
-  var CONSENT_VERSION = 4; // mismo valor que app.html — ambos leen/escriben el mismo td_consent
+  var CONSENT_VERSION = 5; // mismo valor que app.html — ambos leen/escriben el mismo td_consent
   var CONSENT_KEY = 'td_consent';
 
   function getStoredConsent() {
