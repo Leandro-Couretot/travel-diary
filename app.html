@@ -64,16 +64,80 @@
   function hasAnalyticsConsent() { const c = getStoredConsent(); return !!(c && c.analytics); }
   // v2.89: deja de haber un default implícito para Marketing según el país
   // del visitante — opt-in estricto en cualquier lugar, mismo criterio que ya
-  // regía Analítica desde siempre. Hasta esta versión, fuera de la UE/EEE/UK
-  // (Argentina incluida) el Píxel de Meta cargaba solo sin pedir nada, vía un
-  // Worker de Cloudflare que resolvía el país del visitante (`cf-geo-worker/`,
-  // ya sacado del repo) — una auditoría externa (Grok) sobre la Ley 25.326
-  // señaló que esa excepción geográfica no se sostiene: el estándar de
-  // "consentimiento libre, expreso e informado mediante una acción afirmativa
-  // clara" no tiene una excepción por país. Revierte el modelo geo-diferenciado
-  // de v2.30-v2.35 (esas entradas quedan en el changelog como registro
-  // histórico, pero su comportamiento ya no aplica).
+  // regía Analítica desde siempre. Revierte el modelo geo-diferenciado de
+  // v2.30-v2.35 (esas entradas quedan en el changelog como registro
+  // histórico, pero su comportamiento ya no aplica). El geo que se agrega
+  // más abajo (v2.92) es un mecanismo DISTINTO y de alcance mucho más chico
+  // — nunca vuelve a decidir si algo carga solo, solo qué BOTONES muestra el
+  // banner (ver el comentario grande de GEO_WORKER_URL).
   function hasMarketingConsent() { const c = getStoredConsent(); return !!(c && c.marketing); }
+
+  // ─── Geo del banner (v2.92) — solo decide qué botones mostrar ───────────
+  // El banner de cookies se ve distinto según si rige GDPR (UE/EEE/UK:
+  // "Personalizar"/"Rechazar"/"Aceptar todo", los 3 con el MISMO peso visual
+  // — nunca uno más tentador que otro, el estándar esperado ahí) o no (el
+  // resto del mundo: solo "Personalizar" en gris + "Aceptar todo y
+  // continuar" como CTA principal, pedido explícito del usuario). Esto es
+  // PURAMENTE de presentación del banner — a diferencia del módulo de geo
+  // que existió hasta v2.88, nunca decide si algo carga solo ni cambia el
+  // default de ningún checkbox: el opt-in estricto de v2.89 sigue 100%
+  // intacto en cualquier país, acá solo cambian los botones que se ven.
+  const GEO_WORKER_URL = 'https://legado-geo.pluxow-ideasverdesymas.workers.dev/';
+  const GEO_FETCH_TIMEOUT_MS = 1200;
+  // 27 UE + Islandia/Liechtenstein/Noruega (EEE, no-UE) + Reino Unido (UK
+  // GDPR espeja las mismas reglas post-Brexit).
+  const EU_EEA_UK_COUNTRIES = new Set([
+    'AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT',
+    'LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE',
+    'IS','LI','NO',
+    'GB',
+  ]);
+  let _geoCountry = null;
+  let _geoResolved = false;
+  // Override de país por URL (`?utm_country=AR`) — para las campañas propias,
+  // donde el país de destino ya se sabe con certeza al armar el link. Toma
+  // prioridad total sobre el Worker, ahorrándose esa ida y vuelta.
+  function readUtmCountryOverride() {
+    try {
+      const raw = new URLSearchParams(location.search).get('utm_country');
+      if (!raw) return null;
+      const code = raw.trim().toUpperCase();
+      return /^[A-Z]{2}$/.test(code) ? code : null;
+    } catch (e) { return null; }
+  }
+  const _utmCountryOverride = readUtmCountryOverride();
+  // Bridge con window.__legadoGeoPromise, mismo patrón que
+  // window.__pendingErrorReports (debug.js/billing.js) — el script inline
+  // principal (carga mucho después, al final del <body>) espera este
+  // resultado antes de elegir la variante del banner, sea cual sea el
+  // timing real de la respuesta.
+  window.__legadoGeoPromise = _utmCountryOverride
+    ? (function () {
+        _geoCountry = _utmCountryOverride;
+        _geoResolved = true;
+        return Promise.resolve();
+      })()
+    : (function () {
+        let controller = null;
+        let timeoutId = null;
+        try {
+          controller = new AbortController();
+          timeoutId = setTimeout(() => controller.abort(), GEO_FETCH_TIMEOUT_MS);
+        } catch (e) { /* AbortController no soportado — sin timeout, el catch de abajo igual cubre cualquier fetch que tire */ }
+        return fetch(GEO_WORKER_URL, { cache: 'no-store', signal: controller ? controller.signal : undefined })
+          .then(res => (res && res.ok) ? res.json() : null)
+          .then(data => { _geoCountry = (data && data.country) || null; })
+          .catch(() => { _geoCountry = null; }) // timeout, sin red, Worker caído — nunca rompe nada, solo se queda sin país
+          .finally(() => {
+            _geoResolved = true;
+            if (timeoutId) clearTimeout(timeoutId);
+          });
+      })();
+  // Fail-closed hacia la variante MÁS estricta (GDPR, 3 botones iguales): sin
+  // resolver todavía, o resuelto sin país, nunca se asume "no es de la UE".
+  function isLikelyNonEuVisitor() {
+    return _geoResolved && !!_geoCountry && !EU_EEA_UK_COUNTRIES.has(_geoCountry);
+  }
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -978,11 +1042,11 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── CONSENTIMIENTO DE COOKIES (GDPR) ─── -->
 <div id="consent-banner" style="display:none;" class="consent-banner">
-  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y entender qué anuncios funcionan. Podés elegir qué categorías aceptar. Mirá la <a href="privacy.html" target="_blank">Política de Privacidad</a> para más detalle.</div>
+  <div class="consent-banner-text">Usamos cookies propias (imprescindibles) y de terceros para medir el uso de la app y llegar a más familias de forma eficiente, <strong>lo que nos ayuda a mantener Legado gratuita</strong>. Podés elegir qué categorías aceptar. Mirá la <a href="privacy.html" target="_blank">Política de Privacidad</a> para más detalle.</div>
   <div class="consent-banner-actions">
     <button type="button" class="consent-banner-link" id="consent-banner-customize">Personalizar</button>
-    <button type="button" class="consent-banner-btn-ghost" id="consent-banner-reject">Rechazar</button>
-    <button type="button" class="update-banner-btn" id="consent-banner-accept">Aceptar todo</button>
+    <button type="button" class="consent-banner-btn-ghost" id="consent-banner-reject" style="display:none;">Rechazar</button>
+    <button type="button" class="update-banner-btn" id="consent-banner-accept">Aceptar todo y continuar</button>
   </div>
 </div>
 
@@ -1520,7 +1584,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.91';
+const APP_VERSION = '2.92';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1659,17 +1723,49 @@ function applyConsent(analytics, marketing) {
 function initConsentGate() {
   const stored = getStoredConsent();
   if (stored) { applyConsent(stored.analytics, stored.marketing); return; }
-  maybeShowConsentBanner();
+  // Se espera a que el geo del banner resuelva (o falle, fail-closed, ver
+  // isLikelyNonEuVisitor() en el <head>) antes de mostrar nada — evita el
+  // parpadeo de abrir con 2 botones y pasar a 3 (o viceversa) un instante
+  // después. Costo real: hasta 1.2s más para ver el banner en el peor caso
+  // (geo lento/caído); el Worker casi siempre ya resolvió para cuando este
+  // script, el último en cargar, llega a correr.
+  if (window.__legadoGeoPromise) {
+    window.__legadoGeoPromise.then(maybeShowConsentBanner);
+  } else {
+    maybeShowConsentBanner();
+  }
 }
 // v2.89: el banner se muestra siempre, en cualquier país, mientras no haya
 // ninguna elección guardada — se saca la excepción geográfica de v2.30-v2.35
-// (ver el comentario grande de hasMarketingConsent() en el <head> para el
-// porqué). Nada de Meta/GA carga hasta que el usuario toca "Aceptar todo",
-// "Rechazar" o guarda desde "Preferencias de cookies".
+// que lo ocultaba del todo fuera de la UE (ver el comentario grande de
+// hasMarketingConsent() en el <head>). Nada de Meta/GA carga hasta que el
+// usuario toca "Aceptar todo"/"Rechazar" o guarda desde "Preferencias de
+// cookies" — lo único que varía por país (v2.92) es qué botones se ofrecen.
 function maybeShowConsentBanner() {
-  if (getStoredConsent()) return;
+  if (getStoredConsent()) return; // se eligió algo mientras se esperaba el geo — nunca se pisa
+  applyConsentBannerVariant(!isLikelyNonEuVisitor());
   const banner = document.getElementById('consent-banner');
   if (banner) banner.style.display = 'flex';
+}
+// v2.92: GDPR (UE/EEE/UK) → 3 botones, mismo peso visual, nunca uno más
+// tentador que otro ("Personalizar"/"Rechazar"/"Aceptar todo"). Fuera de
+// GDPR → 2 botones, "Personalizar" en gris + "Aceptar todo y continuar"
+// como CTA principal — pedido explícito del usuario. Solo cambia qué se
+// VE; el gate de opt-in de fondo (hasMarketingConsent/hasAnalyticsConsent)
+// es el mismo en cualquier país, sin excepción.
+function applyConsentBannerVariant(isGdpr) {
+  const banner = document.getElementById('consent-banner');
+  const customizeBtn = document.getElementById('consent-banner-customize');
+  const rejectBtn = document.getElementById('consent-banner-reject');
+  const acceptBtn = document.getElementById('consent-banner-accept');
+  if (!banner || !customizeBtn || !rejectBtn || !acceptBtn) return;
+  banner.classList.toggle('consent-banner-gdpr', isGdpr);
+  rejectBtn.style.display = isGdpr ? '' : 'none';
+  acceptBtn.textContent = isGdpr ? 'Aceptar todo' : 'Aceptar todo y continuar';
+  customizeBtn.classList.toggle('consent-banner-link', !isGdpr);
+  customizeBtn.classList.toggle('consent-banner-btn-ghost', isGdpr);
+  acceptBtn.classList.toggle('update-banner-btn', !isGdpr);
+  acceptBtn.classList.toggle('consent-banner-btn-ghost', isGdpr);
 }
 function resolveConsent(analytics, marketing) {
   saveConsent(analytics, marketing);

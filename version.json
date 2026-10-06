@@ -1,4 +1,4 @@
 {
-  "version": "2.91",
-  "changelog": "Ajuste fino al texto de \"Difusión\" en Preferencias de cookies."
+  "version": "2.92",
+  "changelog": "Nuevo texto del banner de cookies + botones distintos según si rige GDPR o no."
 }
