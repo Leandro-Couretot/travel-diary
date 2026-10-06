@@ -1,4 +1,4 @@
 {
-  "version": "2.92",
-  "changelog": "Nuevo texto del banner de cookies + botones distintos según si rige GDPR o no."
+  "version": "2.93",
+  "changelog": "El mismo banner de cookies (texto + variantes GDPR) ahora también en las landing, desde un único lugar."
 }
