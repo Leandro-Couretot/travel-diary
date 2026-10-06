@@ -1,4 +1,4 @@
 {
-  "version": "2.89",
-  "changelog": "El aviso de cookies ahora pide consentimiento igual en cualquier país — antes, fuera de Europa, algunas cookies se activaban solas."
+  "version": "2.90",
+  "changelog": "El texto de la categoría \"Difusión\" en Preferencias de cookies explica mejor por qué nos ayuda."
 }
