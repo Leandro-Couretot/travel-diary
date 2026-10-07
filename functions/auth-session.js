@@ -181,6 +181,22 @@ exports.authSession = onRequest(
         return;
       }
 
+      // Popup de "Novedades" (ver maybeShowWhatsNewModal() en app.html, v2.94):
+      // última versión del changelog que esta CUENTA ya vio — se resuelve acá
+      // (y en subscription-status.js, la rama de sesión restaurada) en vez de
+      // en localStorage, para que siga a la cuenta entre dispositivos. Sin
+      // ninguna fila todavía (cuenta anterior a este mecanismo, o recién
+      // creada) queda `null` — el cliente decide qué hacer con eso.
+      const { data: lastChangelogRow } = await supabase
+        .from('usage_events')
+        .select('event_props')
+        .eq('google_sub', userInfo.sub)
+        .eq('event_name', 'changelog_seen')
+        .order('occurred_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lastChangelogSeen = (lastChangelogRow && lastChangelogRow.event_props && lastChangelogRow.event_props.version) || null;
+
       // Se genera ANTES de saber si es nuevo porque el ID en sí no es
       // sensible ni depende de nada — más simple que meterlo dentro del if.
       // Solo se usa (y se manda al cliente) cuando isNewUser es true.
@@ -258,6 +274,9 @@ exports.authSession = onRequest(
         // Solo tiene sentido cuando isNewUser es true (billing.js lo ignora
         // en cualquier otro caso).
         metaEventId: isNewUser ? metaEventId : undefined,
+        // Popup de "Novedades" (v2.94, ver comentario arriba) — null si esta
+        // cuenta todavía no tiene ningún registro guardado.
+        lastChangelogSeen,
       });
     } catch (e) {
       if (e instanceof AuthError) {

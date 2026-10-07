@@ -11,6 +11,13 @@ let currentUserEmail = null; // se llena en establishSession(), viene ya validad
 let currentUserPicture = null; // v1.81: avatar del header — mismo origen/validación que currentUserEmail
 let currentUserName = null; // v1.81: solo para el alt/title del avatar, no se usa en ningún otro lado
 let currentUserSub = null; // v2.74: el propio google_sub — lo necesita el rol Contribuidor para comparar contra `uploadedBy` de cada foto (ver CLAUDE.md)
+// v2.94: última versión del changelog de cara al usuario que esta CUENTA ya
+// vio (ver maybeShowWhatsNewModal() en app.html) — sale del mismo JWT/consulta
+// a Supabase que ya resuelve email/foto en cada sesión, nunca de localStorage
+// (así sigue a la cuenta entre dispositivos). `undefined` = todavía no
+// resolvió en esta carga de página; `null` = resolvió, sin ningún registro
+// guardado todavía (cuenta anterior a este mecanismo, o la primera vez real).
+let currentUserLastChangelogSeen = undefined;
 // Onboarding personalizado post-login (app.html → maybeShowPostLoginOnboarding()):
 // solo `true` en un signup genuino (isNewUser real de auth-session.js) —
 // una sesión restaurada nunca pasa por acá, así que su lectura por defecto
@@ -234,6 +241,7 @@ function applySessionResponse(data) {
   currentUserPicture = data.picture || null;
   currentUserName = data.name || null;
   currentUserSub = data.sub || null;
+  currentUserLastChangelogSeen = data.lastChangelogSeen;
   // Leído por app.html (maybeShowPostLoginOnboarding()) en los 3 puntos
   // donde una conexión nueva termina de resolver — mismo `isNewUser` real
   // que ya usa el bloque de CompleteRegistration de acá abajo.
@@ -294,6 +302,7 @@ async function refreshSubscriptionStatus() {
       currentUserPicture = data.picture || currentUserPicture;
       currentUserName = data.name || currentUserName;
       currentUserSub = data.sub || currentUserSub;
+      currentUserLastChangelogSeen = data.lastChangelogSeen;
     }
   } catch (e) {
     console.warn('No se pudo refrescar el estado de suscripción:', e);

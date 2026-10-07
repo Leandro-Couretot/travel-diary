@@ -61,6 +61,21 @@ exports.subscriptionStatus = onRequest(
         }
       }
 
+      // Popup de "Novedades" (ver maybeShowWhatsNewModal() en app.html,
+      // v2.94): última versión del changelog que esta CUENTA ya vio — mismo
+      // criterio que auth-session.js, resuelto acá también porque esta es la
+      // rama de sesión restaurada (la que corre en la mayoría de visitas).
+      // null si todavía no tiene ningún registro guardado.
+      const { data: lastChangelogRow } = await supabase
+        .from('usage_events')
+        .select('event_props')
+        .eq('google_sub', session.sub)
+        .eq('event_name', 'changelog_seen')
+        .order('occurred_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lastChangelogSeen = (lastChangelogRow && lastChangelogRow.event_props && lastChangelogRow.event_props.version) || null;
+
       res.status(200).json({
         plan: row.plan,
         status: row.status,
@@ -81,6 +96,7 @@ exports.subscriptionStatus = onRequest(
         // en la enorme mayoría de visitas después de la primera conexión).
         picture: session.picture,
         name: session.name,
+        lastChangelogSeen,
       });
     } catch (e) {
       console.error('subscription-status error:', e);

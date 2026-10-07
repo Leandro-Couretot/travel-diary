@@ -1584,7 +1584,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.93';
+const APP_VERSION = '2.94';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2064,27 +2064,58 @@ function decidePostLoginOnboarding(isNewUser) {
 // quien usa la app): acá van 2-4 bullets simples por versión, en criollo,
 // sin nombres de función ni detalle de implementación. Agregar una
 // entrada nueva cuando haya algo que valga la pena avisar (no en cada
-// bump de versión) y subir CHANGELOG_LATEST_VERSION a esa versión.
-const CHANGELOG_LATEST_VERSION = '2.29';
+// bump de versión — un fix invisible o algo legal/de tracking, como el
+// banner de cookies, no cuenta; un beneficio real que el usuario puede
+// notar, sí).
+//
+// v2.94: pasa de trackearse por DISPOSITIVO (localStorage) a trackearse
+// por CUENTA — `currentUserLastChangelogSeen` (billing.js) sale del mismo
+// JWT/consulta a Supabase que ya resuelve email/foto en cada sesión (ver
+// auth-session.js/subscription-status.js), así que entrar desde otro
+// dispositivo no repite lo que ya se vio en el primero. CHANGELOG_BASELINE_VERSION
+// es la versión "ya vista" que se le asigna en silencio a cualquier cuenta
+// SIN ningún evento `changelog_seen` guardado todavía (o sea, cualquier
+// cuenta existente a la fecha de este deploy) — a partir de acá nunca se
+// muestra el historial atrasado, solo lo que se agregue de ahora en más
+// (decisión explícita del usuario). Subirla no tiene sentido una vez hecho
+// esto — queda fija como el punto de corte real.
+const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
-  { version: '2.29', items: [
-    'Ahora podés encuadrar y hacer zoom en cada foto del fotolibro, para elegir bien qué parte se ve.',
-    'El fotolibro se exporta directo a PDF, listo para imprimir en cualquier imprenta.',
-    'Sumamos un aviso de cookies para que elijas qué querés compartir, y podés cambiarlo cuando quieras desde "Preferencias de cookies" en la ayuda (?).',
+  { version: '2.94', items: [
+    'El aviso de "Novedades" ahora te sigue a tu cuenta, no al dispositivo — si entrás desde otro celular o compu, no repite lo que ya viste.',
   ]},
 ];
-const CHANGELOG_SEEN_KEY = 'td_changelog_seen';
+// Compara versiones "X.Y[.Z...]" numéricamente, no como texto — '2.10'
+// tiene que ganarle a '2.9'.
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
 function maybeShowWhatsNewModal() {
-  let seen = null;
-  try { seen = localStorage.getItem(CHANGELOG_SEEN_KEY); } catch (e) {}
-  if (seen === CHANGELOG_LATEST_VERSION) return; // ya lo vio, nada que mostrar
-  const entry = USER_CHANGELOG.find(e => e.version === CHANGELOG_LATEST_VERSION);
-  if (!entry) return; // el usuario no pasó ninguna versión con novedades reales todavía
+  const lastSeen = currentUserLastChangelogSeen; // null = esta cuenta todavía no tiene ningún registro
+  if (lastSeen === null) {
+    // Primera vez que corre este mecanismo para esta cuenta — se la marca
+    // al día en silencio, sin mostrar nada (ver CHANGELOG_BASELINE_VERSION).
+    trackEvent('changelog_seen', { version: CHANGELOG_BASELINE_VERSION });
+    currentUserLastChangelogSeen = CHANGELOG_BASELINE_VERSION;
+    return;
+  }
+  const pending = USER_CHANGELOG
+    .filter(e => compareVersions(e.version, lastSeen) > 0)
+    .sort((a, b) => compareVersions(a.version, b.version));
+  if (!pending.length) return; // nada nuevo desde la última vez que se le avisó a esta cuenta
+  const items = pending.flatMap(e => e.items);
+  const newestVersion = pending[pending.length - 1].version;
   showOnboardingInfoModal({
     title: 'Novedades',
-    itemsHtml: entry.items.map(t => `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>${escHtml(t)}</span></div>`).join(''),
+    itemsHtml: items.map(t => `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>${escHtml(t)}</span></div>`).join(''),
     ctaLabel: 'Entendido',
-    onCta: () => { try { localStorage.setItem(CHANGELOG_SEEN_KEY, CHANGELOG_LATEST_VERSION); } catch (e) {} },
+    onCta: () => { trackEvent('changelog_seen', { version: newestVersion }); currentUserLastChangelogSeen = newestVersion; },
   });
 }
 function showWelcomeModal() {
