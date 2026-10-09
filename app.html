@@ -1485,7 +1485,7 @@ audio { width: 100%; height: 32px; }
       <div id="bulk-step-drop">
         <div class="bulk-drop-zone" id="bulk-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
         <input type="file" id="bulk-file-input" accept="image/*,video/*" multiple style="display:none;">
-        <button type="button" class="btn btn-secondary" style="width:100%;margin-top:0.6rem;" onclick="importFromDrive()"><span data-icon="drive"></span> Importar desde Drive</button>
+        <button type="button" class="btn btn-secondary" style="width:100%;margin-top:0.6rem;" id="bulk-import-drive-btn" onclick="importFromDrive()"><span data-icon="drive"></span> Importar desde Drive</button>
       </div>
       <div id="bulk-step-review" style="display:none;">
         <div class="bulk-album-select"><div class="form-label" style="margin-bottom:0.4rem;">Álbum de destino</div><select id="bulk-album-select"></select></div>
@@ -1586,7 +1586,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.97';
+const APP_VERSION = '2.98';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3997,6 +3997,29 @@ function openBulkUpload() {
   document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-upload').classList.add('open');
   preloadGooglePicker(); // v2.97, ver importFromDrive() — adelanta la carga del script del Picker
+  setupDriveImportButton('bulk-import-drive-btn'); // v2.98, ver drive.js isIosStandalonePwa()
+}
+
+// v2.98: en la PWA instalada en iOS (standalone), el Picker de Google no
+// puede abrir su ventana — `window.open()` no funciona en ese modo, un
+// límite real de WebKit (ver drive.js, isIosStandalonePwa()), no algo que
+// se arregle con timing. En vez de dejar un botón que siempre iba a
+// terminar en el mismo error, se reemplaza por una nota explicando qué
+// hacer — nunca se pierde un toque en algo que no puede funcionar ahí.
+// El reemplazo conserva el mismo `id` (como un `<div>` en vez de un
+// `<button>`) para que los lugares que después togglean `.style.display`
+// sobre ese id (ej. `openBulkDiary()` según `isSharedAlbum`) sigan
+// encontrando algo — y el chequeo `tagName !== 'BUTTON'` hace que una
+// segunda apertura del modal sea un no-op, nunca reemplaza dos veces.
+function setupDriveImportButton(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn || btn.tagName !== 'BUTTON' || !isIosStandalonePwa()) return;
+  const note = document.createElement('div');
+  note.id = btnId;
+  note.className = 'bulk-drop-sub';
+  note.style.marginTop = '0.6rem';
+  note.textContent = 'Para importar fotos ya guardadas en tu Drive, abrí legadofamiliar.com.ar directo en Safari (no desde el ícono de la app) — no funciona dentro de la app instalada en iPhone.';
+  btn.replaceWith(note);
 }
 
 function openBulkUploadForAlbum(albumId) {
@@ -7362,7 +7385,7 @@ function openBulkDiary() {
   // no soporta el camino de proxy que necesita un álbum compartido (ver
   // drive.js, copyDriveFileIntoFolder()) — se oculta ahí, nunca en uno propio.
   document.getElementById('bulk-diary-import-drive-btn').style.display = isSharedAlbum ? 'none' : '';
-  if (!isSharedAlbum) preloadGooglePicker(); // v2.97, ver importFromDrive()
+  if (!isSharedAlbum) { preloadGooglePicker(); setupDriveImportButton('bulk-diary-import-drive-btn'); } // v2.97/v2.98
   document.getElementById('modal-bulk-diary').classList.add('open');
 }
 function closeBulkDiary() { document.getElementById('modal-bulk-diary').classList.remove('open'); }

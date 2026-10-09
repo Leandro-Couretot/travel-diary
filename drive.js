@@ -617,6 +617,28 @@ function stripMediaNamePrefix(driveName) {
 // puede usar (Picker API), no por "para qué" se abre el Picker.
 const GOOGLE_PICKER_API_KEY = 'AIzaSyDPLdukKssUqn5-_euan6FwmxnML3xJiJM';
 
+// v2.98: bug real reportado por el usuario DESPUÉS del fix de v2.97 — el
+// botón seguía quedándose "quieto" pese al preload, y confirmó (vía
+// AskUserQuestion) que estaba usando la app instalada en la pantalla de
+// inicio del iPhone, no una pestaña normal de Safari. Ahí está la causa
+// real de fondo: el Picker de Google abre su UI con `window.open()` por
+// debajo, y una PWA en modo standalone de iOS (`display-mode: standalone`)
+// no soporta abrir una ventana nueva como lo hace una pestaña normal de
+// Safari — iOS la bloquea en silencio o la saca de la app instalada, sin
+// ningún ícono de "pop-up bloqueado" que destrabar (no hay ninguna barra
+// de direcciones en ese modo). Ningún ajuste de timing (preload, nunca
+// cruzar un macrotask) puede arreglar esto — es un límite real de WebKit
+// en standalone, no un problema de "gesto del usuario" como se pensó en
+// v2.97. `navigator.standalone` es la señal nativa de iOS/Safari para esto
+// (`true` solo cuando la app corre agregada a la pantalla de inicio) —
+// deliberadamente no se usa `matchMedia('(display-mode: standalone)')`
+// acá, que también daría `true` en Android/Chrome, donde este límite de
+// `window.open()` no existe (Chrome sí abre popups normales desde una PWA
+// instalada vía Custom Tabs).
+function isIosStandalonePwa() {
+  return typeof navigator !== 'undefined' && navigator.standalone === true;
+}
+
 let _pickerLoadPromise = null;
 // Timeout propio (no depende de withTimeout() de app.html — drive.js nunca
 // llama a globals definidos ahí, se mantiene autocontenido) — sin esto, un
@@ -656,7 +678,7 @@ function ensurePickerLoaded() {
 // real reportado: "queda ahí quieto, no tira ningún error". Nunca tira ni
 // hace nada visible — si falla, el click real lo va a intentar de nuevo.
 function preloadGooglePicker() {
-  if (!GOOGLE_PICKER_API_KEY) return;
+  if (!GOOGLE_PICKER_API_KEY || isIosStandalonePwa()) return;
   ensurePickerLoaded().catch(() => {});
 }
 
@@ -666,6 +688,7 @@ function preloadGooglePicker() {
 // configurar, se traduce a un Error con mensaje legible para mostrar en la UI.
 async function openDrivePhotoPicker() {
   if (!GOOGLE_PICKER_API_KEY) throw new Error('Falta configurar la clave del selector de Google Drive (contactá al desarrollador).');
+  if (isIosStandalonePwa()) throw new Error('Esta función no funciona dentro de la app instalada en la pantalla de inicio de iPhone (es un límite real de iOS, no se puede evitar desde acá). Abrí legadofamiliar.com.ar directo en Safari, sin pasar por el ícono de la app, y ahí sí vas a poder importar desde Drive.');
   await ensurePickerLoaded();
   return new Promise((resolve, reject) => {
     try {
