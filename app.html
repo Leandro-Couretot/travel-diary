@@ -1586,7 +1586,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.96';
+const APP_VERSION = '2.97';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3996,6 +3996,7 @@ function openBulkUpload() {
   listEl.style.display = 'none'; listEl.innerHTML = '';
   document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
   document.getElementById('modal-bulk-upload').classList.add('open');
+  preloadGooglePicker(); // v2.97, ver importFromDrive() — adelanta la carga del script del Picker
 }
 
 function openBulkUploadForAlbum(albumId) {
@@ -4054,13 +4055,37 @@ function mergeBulkGroups(target, extra) {
   target.undated.push(...extra.undated);
 }
 
-async function importFromDrive() {
+// v2.97: bug real reportado por el usuario — tocar "Importar desde Drive"
+// se quedaba "quieto" para siempre, sin ningún error. Causa: entre el click
+// y `picker.setVisible(true)` había de por medio una descarga real de red
+// (ensurePickerLoaded(), la primera vez) — el navegador deja de considerar
+// eso "originado por el usuario" y bloquea el popup del Picker EN SILENCIO
+// (sin excepción, sin evento, sin log) — ver preloadGooglePicker() en
+// drive.js, que ahora adelanta esa descarga al abrir el modal, antes del
+// click real. Esta función comparte, entre Home y el modal del álbum, el
+// feedback visible mientras se abre (en vez de nada) + un aviso pasados 6s
+// si todavía no resolvió, sugiriendo revisar el bloqueo de pop-ups — nunca
+// cancela la espera real, solo informa; si el Picker sí estaba abierto y
+// el usuario tardó en elegir, el aviso desaparece solo al resolver.
+async function runDrivePickerImport(dropZoneId) {
+  const zoneEl = document.getElementById(dropZoneId);
+  const originalHtml = zoneEl.innerHTML;
+  zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Abriendo selector de Google Drive...</div>`;
+  const hintTimer = setTimeout(() => {
+    zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Abriendo selector de Google Drive...</div><div class="bulk-drop-sub">¿No se abrió nada? Puede que tu navegador bloqueó la ventana emergente — fijate si hay un ícono de pop-up bloqueado en la barra de direcciones, permitilo, y volvé a tocar el botón.</div>`;
+  }, 6000);
   let items;
   try { items = await openDrivePhotoPicker(); }
-  catch (e) { alert(e.message); return; }
-  if (!items || !items.length) return;
-  document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${items.length} archivo${items.length > 1 ? 's' : ''}...</div>`;
-  const extra = await groupDrivePickerItems(items);
+  catch (e) { clearTimeout(hintTimer); zoneEl.innerHTML = originalHtml; alert(e.message); return null; }
+  clearTimeout(hintTimer);
+  if (!items || !items.length) { zoneEl.innerHTML = originalHtml; return null; }
+  zoneEl.innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${items.length} archivo${items.length > 1 ? 's' : ''}...</div>`;
+  return await groupDrivePickerItems(items);
+}
+
+async function importFromDrive() {
+  const extra = await runDrivePickerImport('bulk-drop-zone');
+  if (!extra) return;
   if (!bulkGrouped) bulkGrouped = { dated: {}, undated: [] };
   mergeBulkGroups(bulkGrouped, extra);
   renderBulkReview();
@@ -4068,12 +4093,8 @@ async function importFromDrive() {
 }
 
 async function importFromDriveDiary() {
-  let items;
-  try { items = await openDrivePhotoPicker(); }
-  catch (e) { alert(e.message); return; }
-  if (!items || !items.length) return;
-  document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${items.length} archivo${items.length > 1 ? 's' : ''}...</div>`;
-  const extra = await groupDrivePickerItems(items);
+  const extra = await runDrivePickerImport('bulk-diary-drop-zone');
+  if (!extra) return;
   if (!bulkDiaryGrouped) bulkDiaryGrouped = { dated: {}, undated: [] };
   mergeBulkGroups(bulkDiaryGrouped, extra);
   renderBulkDiaryReview();
@@ -7341,6 +7362,7 @@ function openBulkDiary() {
   // no soporta el camino de proxy que necesita un álbum compartido (ver
   // drive.js, copyDriveFileIntoFolder()) — se oculta ahí, nunca en uno propio.
   document.getElementById('bulk-diary-import-drive-btn').style.display = isSharedAlbum ? 'none' : '';
+  if (!isSharedAlbum) preloadGooglePicker(); // v2.97, ver importFromDrive()
   document.getElementById('modal-bulk-diary').classList.add('open');
 }
 function closeBulkDiary() { document.getElementById('modal-bulk-diary').classList.remove('open'); }

@@ -618,10 +618,23 @@ function stripMediaNamePrefix(driveName) {
 const GOOGLE_PICKER_API_KEY = 'AIzaSyDPLdukKssUqn5-_euan6FwmxnML3xJiJM';
 
 let _pickerLoadPromise = null;
+// Timeout propio (no depende de withTimeout() de app.html — drive.js nunca
+// llama a globals definidos ahí, se mantiene autocontenido) — sin esto, un
+// script que nunca dispara ni onload/onerror ni el callback/onerror de
+// gapi.load() (CDN caído de una forma rara, un bloqueador silencioso) deja
+// la promesa colgada para siempre, sin ningún error visible ni en consola.
+function _pickerLoadWithTimeout(executor, ms, timeoutMsg) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled) { settled = true; reject(new Error(timeoutMsg)); } }, ms);
+    const wrap = (fn) => (...args) => { if (settled) return; settled = true; clearTimeout(timer); fn(...args); };
+    executor(wrap(resolve), wrap(reject));
+  });
+}
 function ensurePickerLoaded() {
   if (window.google && window.google.picker) return Promise.resolve();
   if (_pickerLoadPromise) return _pickerLoadPromise;
-  _pickerLoadPromise = new Promise((resolve, reject) => {
+  _pickerLoadPromise = _pickerLoadWithTimeout((resolve, reject) => {
     const script = document.createElement('script');
     script.src = 'https://apis.google.com/js/api.js';
     script.onload = () => {
@@ -629,8 +642,22 @@ function ensurePickerLoaded() {
     };
     script.onerror = () => reject(new Error('No se pudo cargar el selector de Google Drive'));
     document.head.appendChild(script);
-  });
+  }, 10000, 'No se pudo cargar el selector de Google Drive (tardó demasiado) — probá de nuevo.').catch(e => { _pickerLoadPromise = null; throw e; });
   return _pickerLoadPromise;
+}
+
+// Fire-and-forget: arranca la descarga del script del Picker apenas se abre
+// un modal de carga masiva, para que el click real en "Importar desde
+// Drive" encuentre `ensurePickerLoaded()` ya resuelto — evita que el click
+// a `picker.setVisible(true)` quede varios saltos async después del click
+// original (red real de por medio), que es lo que hace que el navegador
+// trate la apertura del popup del Picker como NO iniciada por el usuario y
+// la bloquee en silencio (sin ningún error, ni evento, ni log) — el síntoma
+// real reportado: "queda ahí quieto, no tira ningún error". Nunca tira ni
+// hace nada visible — si falla, el click real lo va a intentar de nuevo.
+function preloadGooglePicker() {
+  if (!GOOGLE_PICKER_API_KEY) return;
+  ensurePickerLoaded().catch(() => {});
 }
 
 // Abre el picker nativo de Google acotado a fotos/videos, multiselección —

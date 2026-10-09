@@ -1,4 +1,4 @@
 {
-  "version": "2.96",
-  "changelog": "Nuevo: \"Importar desde Drive\" en la carga masiva — traé fotos que ya tenías guardadas en tu Google Drive sin volver a subirlas desde el celular."
+  "version": "2.97",
+  "changelog": "Arreglado: \"Importar desde Drive\" podía quedarse quieto sin ningún error — el selector de Google ya se prepara antes de tocar el botón."
 }
