@@ -1604,15 +1604,45 @@ async function resolveMyGuestRole(folderDriveId) {
 // Lector/Co-propietario). `newName`/`oldNames` siguen el mismo criterio de
 // nombre nuevo/viejo que ya usa el resto de la app (dayJsonName()/
 // dayJsonNameOld()/DAY_JSON_OLD_NAME_LEGACY).
+//
+// Verificación + reintento (v2.95): `contributorAppendMedia` hace un
+// leer→modificar→escribir del lado del servidor, sin ningún lock — si dos
+// Contribuidores suben al MISMO día casi al mismo instante (el caso real:
+// varios invitados de un casamiento subiendo justo después de un brindis),
+// la escritura que llega última puede pisar el array completo y perder la
+// referencia que acaba de agregar la otra subida. El archivo en Drive
+// nunca se pierde (ver CLAUDE.md), pero sin esto quedaba invisible en la
+// galería para siempre. Acá se relee el day.json recién escrito y, si el
+// propio driveFileId no aparece, se reintenta el append — hasta
+// CONTRIB_APPEND_MAX_ATTEMPTS veces, con un jitter corto entre intentos
+// para no volver a chocar con el mismo reintento de otra subida. Un
+// reintento de más (ej. por una demora real de lectura, no una carrera de
+// verdad) nunca duplica nada — dedupeMediaByDriveFileId() ya colapsa
+// cualquier driveFileId repetido al leer el día (v1.71).
+const CONTRIB_APPEND_MAX_ATTEMPTS = 3;
 async function contributorAppendMediaToDay(albumFolderId, dayFolderId, dateStr, media) {
-  const res = await sharedAlbumProxyCall(albumFolderId, 'contributorAppendMedia', {
+  const params = {
     parentId: dayFolderId,
     newName: dayJsonName(dateStr),
     oldNames: [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY],
     media,
-  });
-  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo guardar la foto en el álbum');
-  return (await res.json()).id;
+  };
+  let jsonFileId = null;
+  for (let attempt = 1; attempt <= CONTRIB_APPEND_MAX_ATTEMPTS; attempt++) {
+    const res = await sharedAlbumProxyCall(albumFolderId, 'contributorAppendMedia', params);
+    if (!res.ok) await _proxyWriteThrow(res, 'No se pudo guardar la foto en el álbum');
+    jsonFileId = (await res.json()).id;
+
+    const checkRes = await sharedAlbumProxyCall(albumFolderId, 'getFileJson', { fileId: jsonFileId });
+    if (!checkRes.ok) return jsonFileId; // no se pudo verificar — nos quedamos con lo que ya se escribió, sin bloquear la subida por esto
+    const content = (await checkRes.json()).content;
+    const landed = Array.isArray(content && content.media) && content.media.some(m => m.driveFileId === media.driveFileId);
+    if (landed) return jsonFileId;
+    if (attempt < CONTRIB_APPEND_MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, 250 + Math.random() * 400));
+    }
+  }
+  return jsonFileId; // agotados los reintentos: la foto sigue en Drive, puede faltar solo la referencia — mejor que tirar un error sobre una subida que en los hechos sí funcionó
 }
 async function contributorTrashOwnMediaFromDay(albumFolderId, dayFolderId, dateStr, fileId) {
   const res = await sharedAlbumProxyCall(albumFolderId, 'contributorTrashOwnMedia', {
