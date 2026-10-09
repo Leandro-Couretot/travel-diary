@@ -1,4 +1,4 @@
 {
-  "version": "2.95",
-  "changelog": "Arreglo interno: si dos invitados suben una foto al mismo día casi al mismo instante en un álbum compartido, la app ya no deja ninguna foto invisible."
+  "version": "2.96",
+  "changelog": "Nuevo: \"Importar desde Drive\" en la carga masiva — traé fotos que ya tenías guardadas en tu Google Drive sin volver a subirlas desde el celular."
 }

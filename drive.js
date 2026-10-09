@@ -592,6 +592,110 @@ function stripMediaNamePrefix(driveName) {
   return m ? m[1] : driveName;
 }
 
+// ─── IMPORTAR FOTOS YA EXISTENTES DE DRIVE ─────────────────
+// v2.96: a diferencia del Picker de v2.58-v2.61 (que intentaba resolver
+// acceso a una carpeta COMPARTIDA ajena, y no funcionaba por un límite de
+// `drive.file` documentado por Google — ver CLAUDE.md), este uso es
+// exactamente el caso de libro de texto del Picker: el propio usuario
+// eligiendo SUS propios archivos ya existentes en su Drive (otra app, el
+// celular ya respaldado, lo que sea) — ahí sí funciona sin ningún límite,
+// porque el permiso que otorga el Picker es justamente "este archivo
+// puntual, elegido a mano, para esta app".
+//
+// Decisión de producto (charlada con el usuario): se COPIA cada archivo
+// elegido dentro del álbum, no se referencia in-place — más fácil de
+// explicar ("se guarda una copia en tu álbum, la original no se toca") y
+// evita cualquier caso raro de permisos/borrado compartido entre la copia
+// del álbum y el archivo original. El costo real es que el archivo queda
+// duplicado en el Drive del usuario — aceptado explícitamente.
+//
+// TODO (bloqueante para que esto funcione en producción, ver convención #5
+// de CLAUDE.md): `GOOGLE_PICKER_API_KEY` necesita una clave real de la
+// Picker API — Google Cloud Console (proyecto family-fotos-491610) →
+// APIs & Services → Credentials → crear (o confirmar si ya existe de la
+// entrega de v2.58) una API key de tipo Web, restringida a la Picker API +
+// a los dominios de esta app. Sin esto, "Importar desde Drive" muestra un
+// error claro al tocar el botón, en vez de romper en silencio.
+const GOOGLE_PICKER_API_KEY = '';
+
+let _pickerLoadPromise = null;
+function ensurePickerLoaded() {
+  if (window.google && window.google.picker) return Promise.resolve();
+  if (_pickerLoadPromise) return _pickerLoadPromise;
+  _pickerLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => {
+      gapi.load('picker', { callback: resolve, onerror: () => reject(new Error('No se pudo cargar el selector de Google Drive')) });
+    };
+    script.onerror = () => reject(new Error('No se pudo cargar el selector de Google Drive'));
+    document.head.appendChild(script);
+  });
+  return _pickerLoadPromise;
+}
+
+// Abre el picker nativo de Google acotado a fotos/videos, multiselección —
+// devuelve un array de {id, name, mimeType} de lo elegido, o null si se
+// cancela. Nunca tira: un fallo de carga del script, o la clave todavía sin
+// configurar, se traduce a un Error con mensaje legible para mostrar en la UI.
+async function openDrivePhotoPicker() {
+  if (!GOOGLE_PICKER_API_KEY) throw new Error('Falta configurar la clave del selector de Google Drive (contactá al desarrollador).');
+  await ensurePickerLoaded();
+  return new Promise((resolve, reject) => {
+    try {
+      const view = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES_AND_VIDEOS)
+        .setIncludeFolders(false)
+        .setSelectFolderEnabled(false);
+      const picker = new google.picker.PickerBuilder()
+        .setOAuthToken(driveToken)
+        .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+        .addView(view)
+        .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+        .setCallback(data => {
+          if (data.action === google.picker.Action.PICKED) {
+            resolve(data.docs.map(d => ({ id: d.id, name: d.name, mimeType: d.mimeType })));
+          } else if (data.action === google.picker.Action.CANCEL) {
+            resolve(null);
+          }
+        })
+        .build();
+      picker.setVisible(true);
+    } catch (e) { reject(e); }
+  });
+}
+
+// Metadata liviana para decidir en qué día cae una foto elegida del
+// Picker — nunca descarga el archivo completo, solo sus campos. Mismo
+// criterio de "EXIF primero, lastModified después" que ya usa exif.js
+// para archivos subidos directo, adaptado a lo que la API de Drive expone
+// sin bajar bytes: `imageMediaMetadata.time` (la fecha EXIF original, si
+// Drive la pudo leer) y `createdTime` como respaldo.
+async function getDriveFileImportMeta(fileId) {
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,createdTime,imageMediaMetadata(time)`);
+  if (!res.ok) throw new Error('No se pudo leer la información del archivo elegido');
+  return await res.json();
+}
+
+// Copia `fileId` (un archivo que no creó la app — elegido a mano por el
+// usuario vía Picker) dentro de `destFolderId` — el resultado es un archivo
+// NUEVO, creado por esta llamada, así que a partir de acá la app lo "posee"
+// igual que cualquier otro archivo que suba por su cuenta (drive.file).
+// El original elegido por el usuario queda intacto, sin tocarlo.
+async function copyDriveFileIntoFolder(fileId, newName, destFolderId, description) {
+  const res = await driveReq('POST', `https://www.googleapis.com/drive/v3/files/${fileId}/copy`, {
+    name: newName,
+    parents: [destFolderId],
+    description,
+  });
+  if (!res.ok) {
+    const errInfo = await _driveErrorBody(res);
+    if (_isQuotaExceeded(errInfo)) throw new DriveQuotaExceededError();
+    throw new Error(errInfo?.message || 'No se pudo copiar el archivo elegido');
+  }
+  const file = await res.json();
+  return file.id;
+}
+
 const USAGE_JSON_OLD_NAME = `${APP_NAME_PREFIX_OLD} - Uso.json`; // usage.json nunca tuvo un nombre plano de antes de v1.36
 
 // ─── USAGE (gate de audio del plan gratis) ─────────────────

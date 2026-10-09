@@ -1485,6 +1485,7 @@ audio { width: 100%; height: 32px; }
       <div id="bulk-step-drop">
         <div class="bulk-drop-zone" id="bulk-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
         <input type="file" id="bulk-file-input" accept="image/*,video/*" multiple style="display:none;">
+        <button type="button" class="btn btn-secondary" style="width:100%;margin-top:0.6rem;" onclick="importFromDrive()"><span data-icon="drive"></span> Importar desde Drive</button>
       </div>
       <div id="bulk-step-review" style="display:none;">
         <div class="bulk-album-select"><div class="form-label" style="margin-bottom:0.4rem;">Álbum de destino</div><select id="bulk-album-select"></select></div>
@@ -1505,6 +1506,7 @@ audio { width: 100%; height: 32px; }
       <div id="bulk-diary-step-drop">
         <div class="bulk-drop-zone" id="bulk-diary-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
         <input type="file" id="bulk-diary-file-input" accept="image/*,video/*" multiple style="display:none;">
+        <button type="button" class="btn btn-secondary" style="width:100%;margin-top:0.6rem;" id="bulk-diary-import-drive-btn" onclick="importFromDriveDiary()"><span data-icon="drive"></span> Importar desde Drive</button>
       </div>
       <div id="bulk-diary-step-review" style="display:none;">
         <div class="bulk-summary"><div class="bulk-summary-title">Resumen de archivos</div><div id="bulk-diary-dated-list"></div><div id="bulk-diary-undated-list"></div></div>
@@ -1584,7 +1586,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.95';
+const APP_VERSION = '2.96';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4002,6 +4004,82 @@ function openBulkUploadForAlbum(albumId) {
 }
 function closeBulkUpload() { document.getElementById('modal-bulk-upload').classList.remove('open'); }
 
+// ─── Carga masiva: importar fotos ya existentes de Drive ──
+// v2.96 (ver drive.js, "IMPORTAR FOTOS YA EXISTENTES DE DRIVE", para el
+// porqué del enfoque "copiar, no referenciar"). Lo elegido en el Picker se
+// resuelve a una fecha real y se mezcla en el MISMO bulkGrouped/bulkDiaryGrouped
+// que ya arma el drop de archivos locales — de ahí en más es exactamente
+// el mismo camino de revisión/duplicados/subida, sin ninguna rama nueva
+// salvo dentro de runBulkUpload() (ver ahí el chequeo `file._driveImport`).
+//
+// `imageMediaMetadata.time` (si Drive la pudo leer de la foto original)
+// viene en el mismo formato ASCII de EXIF ("YYYY:MM:DD HH:MM:SS", ver
+// parseExifDateStr en exif.js) — se toma la fecha tal cual, sin pasar por
+// ningún Date/huso horario, mismo criterio que ya usa esta app para EXIF.
+// `createdTime` (ISO 8601 real, UTC) es el respaldo si no hay EXIF — ahí
+// sí hace falta `localDateStr()` para no repetir el bug de v2.13 (una
+// conversión a huso UTC corriendo la fecha un día).
+function driveImportDateStr(meta) {
+  const t = meta.imageMediaMetadata && meta.imageMediaMetadata.time;
+  if (t) {
+    const m = /^(\d{4}):(\d{2}):(\d{2})/.exec(t);
+    if (m && m[1] !== '0000') return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  if (meta.createdTime) return localDateStr(new Date(meta.createdTime));
+  return null;
+}
+
+// `items` = lo que devuelve openDrivePhotoPicker() ({id,name,mimeType}).
+// Cada uno se marca `_driveImport:true` + `_driveFileId` — el resto del
+// pipeline (markBulkDuplicates, renderBulkDatedList) solo mira `.name`/
+// `.type`, así que un item de Drive se comporta como cualquier File real
+// sin necesitar ninguna rama especial ahí.
+async function groupDrivePickerItems(items) {
+  const dated = {}; const undated = [];
+  await Promise.all(items.map(async item => {
+    let date = null;
+    try { date = driveImportDateStr(await getDriveFileImportMeta(item.id)); } catch {}
+    const pseudo = { name: item.name, type: item.mimeType, _driveImport: true, _driveFileId: item.id };
+    if (date) { if (!dated[date]) dated[date] = []; dated[date].push(pseudo); }
+    else undated.push(pseudo);
+  }));
+  return { dated, undated };
+}
+
+function mergeBulkGroups(target, extra) {
+  Object.keys(extra.dated).forEach(date => {
+    if (!target.dated[date]) target.dated[date] = [];
+    target.dated[date].push(...extra.dated[date]);
+  });
+  target.undated.push(...extra.undated);
+}
+
+async function importFromDrive() {
+  let items;
+  try { items = await openDrivePhotoPicker(); }
+  catch (e) { alert(e.message); return; }
+  if (!items || !items.length) return;
+  document.getElementById('bulk-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${items.length} archivo${items.length > 1 ? 's' : ''}...</div>`;
+  const extra = await groupDrivePickerItems(items);
+  if (!bulkGrouped) bulkGrouped = { dated: {}, undated: [] };
+  mergeBulkGroups(bulkGrouped, extra);
+  renderBulkReview();
+  refreshBulkDuplicates();
+}
+
+async function importFromDriveDiary() {
+  let items;
+  try { items = await openDrivePhotoPicker(); }
+  catch (e) { alert(e.message); return; }
+  if (!items || !items.length) return;
+  document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${items.length} archivo${items.length > 1 ? 's' : ''}...</div>`;
+  const extra = await groupDrivePickerItems(items);
+  if (!bulkDiaryGrouped) bulkDiaryGrouped = { dated: {}, undated: [] };
+  mergeBulkGroups(bulkDiaryGrouped, extra);
+  renderBulkDiaryReview();
+  markBulkDuplicates(bulkDiaryGrouped, albumFolderId).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
+}
+
 // ─── Carga masiva: aviso de posibles duplicados ────────────
 // Compara por nombre de archivo contra lo que ya está guardado en el
 // day.json de cada fecha (no por contenido — ver conversación en
@@ -4203,9 +4281,20 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }, i) => {
     setItemState(i, 'uploading', 0);
     const isImg = file.type.startsWith('image/');
-    let blob = file;
-    if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
-    const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId, pct => setItemState(i, 'uploading', pct));
+    let fileId;
+    if (file._driveImport) {
+      // v2.96: foto/video elegido del Picker — nunca pasa por el navegador,
+      // es una copia server-side de Drive a Drive, así que no hay ningún
+      // porcentaje real de bytes que mostrar (a diferencia de una subida
+      // normal) — se deja el donut en "a mitad" como único indicador de
+      // "en curso" hasta que la copia resuelve.
+      setItemState(i, 'uploading', 50);
+      fileId = await copyDriveFileIntoFolder(file._driveFileId, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], MEDIA_FILE_DESCRIPTION);
+    } else {
+      let blob = file;
+      if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
+      fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId, pct => setItemState(i, 'uploading', pct));
+    }
     if (!newMediaByDate[date]) newMediaByDate[date] = [];
     newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
     setItemState(i, 'done');
@@ -7248,6 +7337,10 @@ function openBulkDiary() {
   const diaryListEl = document.getElementById('bulk-diary-upload-list'); // v2.86, ver openBulkUpload()
   diaryListEl.style.display = 'none'; diaryListEl.innerHTML = '';
   document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div>`;
+  // v2.96: "Importar desde Drive" copia con el token PROPIO del usuario —
+  // no soporta el camino de proxy que necesita un álbum compartido (ver
+  // drive.js, copyDriveFileIntoFolder()) — se oculta ahí, nunca en uno propio.
+  document.getElementById('bulk-diary-import-drive-btn').style.display = isSharedAlbum ? 'none' : '';
   document.getElementById('modal-bulk-diary').classList.add('open');
 }
 function closeBulkDiary() { document.getElementById('modal-bulk-diary').classList.remove('open'); }
