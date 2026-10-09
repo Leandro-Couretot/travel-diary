@@ -609,14 +609,13 @@ function stripMediaNamePrefix(driveName) {
 // del álbum y el archivo original. El costo real es que el archivo queda
 // duplicado en el Drive del usuario — aceptado explícitamente.
 //
-// TODO (bloqueante para que esto funcione en producción, ver convención #5
-// de CLAUDE.md): `GOOGLE_PICKER_API_KEY` necesita una clave real de la
-// Picker API — Google Cloud Console (proyecto family-fotos-491610) →
-// APIs & Services → Credentials → crear (o confirmar si ya existe de la
-// entrega de v2.58) una API key de tipo Web, restringida a la Picker API +
-// a los dominios de esta app. Sin esto, "Importar desde Drive" muestra un
-// error claro al tocar el botón, en vez de romper en silencio.
-const GOOGLE_PICKER_API_KEY = '';
+// Reusa la misma clave generada en Cloud Console para el intento de v2.58
+// (Picker para álbumes COMPARTIDOS, descartado en v2.61 por un límite real
+// de `drive.file` — ver CLAUDE.md) — nunca se borró de Cloud Console, solo
+// dejó de referenciarse en el código cuando se sacó ese mecanismo. Sirve
+// igual acá: está restringida por dominio (HTTP referrer) y por qué API
+// puede usar (Picker API), no por "para qué" se abre el Picker.
+const GOOGLE_PICKER_API_KEY = 'AIzaSyDPLdukKssUqn5-_euan6FwmxnML3xJiJM';
 
 let _pickerLoadPromise = null;
 function ensurePickerLoaded() {
