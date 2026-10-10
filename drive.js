@@ -727,12 +727,41 @@ function preloadGooglePicker() {
 // ese error, la próxima vez que se repita, es la pista real para seguir
 // diagnosticando la causa de fondo (¿bloqueo del navegador? ¿la clave de la
 // Picker API no tiene legadofamiliar.com.ar en sus dominios permitidos?).
-async function openDrivePhotoPicker() {
+// v2.101: la telemetría de v2.100 (`drive_picker_debug` en usage_events)
+// mostró la cadena COMPLETA hasta `callback_fired {action:'loaded'}` — o sea,
+// Google SÍ renderizó el Picker; la API key, el OAuth y el script estaban
+// bien. El bug era nuestro: el timeout de 20s seguía corriendo con el Picker
+// ya abierto (y rechazaba igual aunque el usuario estuviera eligiendo
+// fotos), y el aviso de "¿no se abrió nada?" de la UI también. Ahora el
+// timeout solo vigila hasta `'loaded'` (momento en que se cancela y se avisa
+// a la UI vía `onOpened`); desde ahí se espera sin límite a PICKED/CANCEL.
+// `onOpened` es opcional.
+function _describePickerDom() {
+  try {
+    const nodes = [...document.querySelectorAll('.picker-dialog, .picker-dialog-bg, iframe.picker-frame')];
+    return nodes.map(n => {
+      const cs = getComputedStyle(n);
+      const r = n.getBoundingClientRect();
+      return { cls: String(n.className).slice(0, 40), display: cs.display, vis: cs.visibility, op: cs.opacity, z: cs.zIndex, w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), left: Math.round(r.left) };
+    });
+  } catch (e) { return [{ error: String(e && e.message || e) }]; }
+}
+async function openDrivePhotoPicker(onOpened) {
   if (!GOOGLE_PICKER_API_KEY) throw new Error('Falta configurar la clave del selector de Google Drive (contactá al desarrollador).');
   if (isIosStandalonePwa()) throw new Error('Esta función no funciona dentro de la app instalada en la pantalla de inicio de iPhone (es un límite real de iOS, no se puede evitar desde acá). Abrí legadofamiliar.com.ar directo en Safari, sin pasar por el ícono de la app, y ahí sí vas a poder importar desde Drive.');
   await ensurePickerLoaded();
   _trackPickerStep('building_picker');
-  return await _pickerLoadWithTimeout((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    let opened = false;
+    const OPEN_TIMEOUT_MSG = 'El selector de Google Drive no llegó a abrirse (puede que el navegador lo haya bloqueado, o que Google lo esté rechazando). Probá de nuevo — si se repite, avisale al desarrollador con este mensaje exacto.';
+    const timer = setTimeout(() => {
+      if (settled || opened) return;
+      settled = true;
+      _trackPickerStep('setvisible_timeout_or_error', { message: OPEN_TIMEOUT_MSG });
+      reject(new Error(OPEN_TIMEOUT_MSG));
+    }, 20000);
+    const done = (fn, val) => { if (settled) return; settled = true; clearTimeout(timer); fn(val); };
     try {
       const view = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES_AND_VIDEOS)
         .setIncludeFolders(false)
@@ -740,29 +769,33 @@ async function openDrivePhotoPicker() {
       const picker = new google.picker.PickerBuilder()
         .setOAuthToken(driveToken)
         .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+        .setOrigin(window.location.protocol + '//' + window.location.host)
         .addView(view)
         .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
         .setCallback(data => {
-          _trackPickerStep('callback_fired', { action: String(data && data.action) });
-          if (data.action === google.picker.Action.PICKED) {
-            resolve(data.docs.map(d => ({ id: d.id, name: d.name, mimeType: d.mimeType })));
-          } else if (data.action === google.picker.Action.CANCEL) {
-            resolve(null);
+          const action = data && data.action;
+          _trackPickerStep('callback_fired', { action: String(action) });
+          if (action === google.picker.Action.PICKED) {
+            done(resolve, data.docs.map(d => ({ id: d.id, name: d.name, mimeType: d.mimeType })));
+          } else if (action === google.picker.Action.CANCEL) {
+            done(resolve, null);
+          } else if (action === 'loaded' && !opened) {
+            // El Picker ya dibujó su UI: se corta el timeout de apertura y
+            // se espera sin límite a que el usuario elija o cancele.
+            opened = true;
+            clearTimeout(timer);
+            try { if (typeof onOpened === 'function') onOpened(); } catch (e) {}
+            setTimeout(() => _trackPickerStep('picker_dom', { nodes: _describePickerDom() }), 600);
           }
-          // cualquier otra acción (ej. 'loaded' — el picker ya renderizó su
-          // UI de verdad, dato clave para diagnosticar: si este checkpoint
-          // nunca llega, el picker nunca llegó a dibujarse en absoluto) se
-          // ignora para la promesa en sí — no es ni una elección ni una
-          // cancelación, el picker sigue abierto — pero sí queda trackeada.
         })
         .build();
       _trackPickerStep('build_ok');
       picker.setVisible(true);
       _trackPickerStep('setvisible_called');
-    } catch (e) { _trackPickerStep('build_threw', { message: String(e && e.message || e) }); reject(e); }
-  }, 20000, 'El selector de Google Drive no llegó a abrirse (puede que el navegador lo haya bloqueado, o que Google lo esté rechazando). Probá de nuevo — si se repite, avisale al desarrollador con este mensaje exacto.').catch(e => {
-    _trackPickerStep('setvisible_timeout_or_error', { message: String(e && e.message || e) });
-    throw e;
+    } catch (e) {
+      _trackPickerStep('build_threw', { message: String(e && e.message || e) });
+      done(reject, e);
+    }
   });
 }
 

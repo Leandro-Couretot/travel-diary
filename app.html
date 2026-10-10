@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.100';
+const APP_VERSION = '2.101';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4104,7 +4104,13 @@ async function runDrivePickerImport(dropZoneId) {
     zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Abriendo selector de Google Drive...</div><div class="bulk-drop-hint">¿No se abrió nada? Puede que el navegador haya bloqueado la ventana (fijate si hay un ícono de pop-up bloqueado en la barra de direcciones) o que Google la esté rechazando. Si en unos segundos más no pasa nada, te avisamos con un error.</div>`;
   }, 6000);
   let items;
-  try { items = await openDrivePhotoPicker(); }
+  try {
+    items = await openDrivePhotoPicker(() => {
+      // v2.101: el Picker ya está dibujado — fuera el aviso de "¿no se abrió nada?"
+      clearTimeout(hintTimer);
+      zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Elegí tus archivos en la ventana de Google Drive...</div>`;
+    });
+  }
   catch (e) { clearTimeout(hintTimer); zoneEl.innerHTML = originalHtml; alert(e.message); return null; }
   clearTimeout(hintTimer);
   if (!items || !items.length) { zoneEl.innerHTML = originalHtml; return null; }

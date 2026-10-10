@@ -285,3 +285,8 @@ body {
    sobreescribe el object-fit: cover de los thumbnails para que el ícono
    y el texto del placeholder se vean completos, sin recortar. */
 .media-unavailable { object-fit: contain !important; background: var(--accent-light); }
+
+/* v2.101: el Picker de Google se dibuja como overlay en el DOM de la página;
+   los modales de la app (.modal-overlay, z-index:200) no pueden taparlo. */
+.picker-dialog-bg { z-index: 100000 !important; }
+.picker-dialog { z-index: 100001 !important; }

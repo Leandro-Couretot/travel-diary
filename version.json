@@ -1,4 +1,4 @@
 {
-  "version": "2.100",
-  "changelog": "\"Importar desde Drive\" sigue sin abrir, ya con el dominio bien configurado en Google Cloud — se agregaron breadcrumbs internos para saber exactamente en qué paso se traba la próxima vez, sin adivinar más."
+  "version": "2.101",
+  "changelog": "Arreglo del selector de \"Importar desde Drive\": ya no se corta ni muestra un aviso falso mientras elegís tus archivos."
 }
