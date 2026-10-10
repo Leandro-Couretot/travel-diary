@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.102';
+const APP_VERSION = '2.103';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2089,6 +2089,9 @@ function decidePostLoginOnboarding(isNewUser) {
 // esto — queda fija como el punto de corte real.
 const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
+  { version: '2.103', items: [
+    '"Importar desde Drive" ahora funciona en iPhone: se abre el selector de archivos del teléfono y desde "Explorar" elegís Google Drive.',
+  ]},
   { version: '2.94', items: [
     'El aviso de "Novedades" ahora te sigue a tu cuenta, no al dispositivo — si entrás desde otro celular o compu, no repite lo que ya viste.',
   ]},
@@ -4017,15 +4020,27 @@ function openBulkUpload() {
 // sobre ese id (ej. `openBulkDiary()` según `isSharedAlbum`) sigan
 // encontrando algo — y el chequeo `tagName !== 'BUTTON'` hace que una
 // segunda apertura del modal sea un no-op, nunca reemplaza dos veces.
+// v2.103: ya no se reemplaza el botón por una nota. En iPhone/iPad (todos
+// los navegadores, y también la app instalada) el Picker de Google no se
+// dibuja (ver drive.js, shouldUseNativeDriveChooser()) — ahí el botón abre
+// el selector de archivos del sistema, que ofrece Google Drive como
+// ubicación. Solo se agrega una aclaración de cómo llegar a Drive, una vez.
 function setupDriveImportButton(btnId) {
   const btn = document.getElementById(btnId);
-  if (!btn || btn.tagName !== 'BUTTON' || !isIosStandalonePwa()) return;
-  const note = document.createElement('div');
-  note.id = btnId;
-  note.className = 'bulk-drop-sub';
-  note.style.marginTop = '0.6rem';
-  note.textContent = 'Para importar fotos ya guardadas en tu Drive, abrí legadofamiliar.com.ar directo en Safari (no desde el ícono de la app) — no funciona dentro de la app instalada en iPhone.';
-  btn.replaceWith(note);
+  if (!btn || !shouldUseNativeDriveChooser() || document.getElementById(btnId + '-hint')) return;
+  const hint = document.createElement('div');
+  hint.id = btnId + '-hint';
+  hint.className = 'bulk-drop-sub';
+  hint.style.marginTop = '0.4rem';
+  hint.textContent = 'En iPhone se abre el selector de archivos: tocá "Explorar" y elegí Google Drive. Los archivos se descargan al teléfono antes de subirse al álbum.';
+  btn.insertAdjacentElement('afterend', hint);
+}
+
+// Abre el selector de archivos nativo (el mismo <input> que ya usa el drop
+// de la carga masiva — de ahí en adelante es el pipeline normal).
+function openNativeFileChooser(inputId) {
+  const input = document.getElementById(inputId);
+  if (input) input.click();
 }
 
 function openBulkUploadForAlbum(albumId) {
@@ -4119,6 +4134,7 @@ async function runDrivePickerImport(dropZoneId) {
 }
 
 async function importFromDrive() {
+  if (shouldUseNativeDriveChooser()) { openNativeFileChooser('bulk-file-input'); return; } // v2.103
   const extra = await runDrivePickerImport('bulk-drop-zone');
   if (!extra) return;
   if (!bulkGrouped) bulkGrouped = { dated: {}, undated: [] };
@@ -4128,6 +4144,7 @@ async function importFromDrive() {
 }
 
 async function importFromDriveDiary() {
+  if (shouldUseNativeDriveChooser()) { openNativeFileChooser('bulk-diary-file-input'); return; } // v2.103
   const extra = await runDrivePickerImport('bulk-diary-drop-zone');
   if (!extra) return;
   if (!bulkDiaryGrouped) bulkDiaryGrouped = { dated: {}, undated: [] };

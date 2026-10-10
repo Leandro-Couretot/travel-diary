@@ -639,6 +639,22 @@ function isIosStandalonePwa() {
   return typeof navigator !== 'undefined' && navigator.standalone === true;
 }
 
+// v2.103: cualquier navegador en iPhone/iPad (Safari, Chrome, etc. — todos
+// usan WebKit, política de Apple) — incluye iPadOS que se presenta como Mac
+// de escritorio (MacIntel + pantalla táctil). Ahí el Picker de Google (un
+// iframe de docs.google.com) no llega a dibujarse: ITP bloquea las cookies
+// de terceros del iframe, sin error ni excepción (confirmado con telemetría:
+// llega a setVisible pero nunca a callback 'loaded', mientras que en Chrome
+// de escritorio con la misma config sí). Sin forma de arreglarlo desde acá
+// (la Storage Access API la tendría que llamar el código de Google dentro
+// del iframe), "Importar desde Drive" usa el selector de archivos del propio
+// sistema, que en iOS ofrece Google Drive como ubicación (app Archivos).
+function shouldUseNativeDriveChooser() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+}
+
 // Número del proyecto de Google Cloud (family-fotos-491610) = prefijo del DRIVE_CLIENT_ID.
 const GOOGLE_PROJECT_NUMBER = '29099211489';
 let _pickerLoadPromise = null;
@@ -702,7 +718,7 @@ function ensurePickerLoaded() {
 // real reportado: "queda ahí quieto, no tira ningún error". Nunca tira ni
 // hace nada visible — si falla, el click real lo va a intentar de nuevo.
 function preloadGooglePicker() {
-  if (!GOOGLE_PICKER_API_KEY || isIosStandalonePwa()) return;
+  if (!GOOGLE_PICKER_API_KEY || isIosStandalonePwa() || shouldUseNativeDriveChooser()) return;
   ensurePickerLoaded().catch(() => {});
 }
 
