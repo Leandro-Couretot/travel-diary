@@ -1,4 +1,4 @@
 {
-  "version": "2.101",
-  "changelog": "Arreglo del selector de \"Importar desde Drive\": ya no se corta ni muestra un aviso falso mientras elegís tus archivos."
+  "version": "2.102",
+  "changelog": "\"Importar desde Drive\": se corrige la configuración del selector de Google (faltaba indicar el ID de proyecto que Google exige)."
 }

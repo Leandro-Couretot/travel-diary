@@ -639,6 +639,8 @@ function isIosStandalonePwa() {
   return typeof navigator !== 'undefined' && navigator.standalone === true;
 }
 
+// Número del proyecto de Google Cloud (family-fotos-491610) = prefijo del DRIVE_CLIENT_ID.
+const GOOGLE_PROJECT_NUMBER = '29099211489';
 let _pickerLoadPromise = null;
 // Timeout propio (no depende de withTimeout() de app.html — drive.js nunca
 // llama a globals definidos ahí, se mantiene autocontenido) — sin esto, un
@@ -769,6 +771,11 @@ async function openDrivePhotoPicker(onOpened) {
       const picker = new google.picker.PickerBuilder()
         .setOAuthToken(driveToken)
         .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+        // v2.102: la referencia oficial de PickerBuilder.setAppId dice que es
+        // OBLIGATORIO con el scope drive.file (el número del proyecto de Cloud,
+        // no el project ID ni el client ID). Sin esto el Picker no puede darle a la
+        // app acceso a lo que el usuario elige. Es el prefijo numérico del Client ID.
+        .setAppId(GOOGLE_PROJECT_NUMBER)
         .setOrigin(window.location.protocol + '//' + window.location.host)
         .addView(view)
         .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
