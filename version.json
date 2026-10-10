@@ -1,4 +1,4 @@
 {
-  "version": "2.98",
-  "changelog": "Encontrada la causa real de \"Importar desde Drive\": no funciona dentro de la app instalada en la pantalla de inicio de iPhone (límite de iOS) — ahora te lo avisa de una, con qué hacer, en vez de quedarse quieto."
+  "version": "2.99",
+  "changelog": "\"Importar desde Drive\" seguía quedándose quieto incluso en Chrome normal (no solo en la app instalada) — ahora, si el selector de Google no llega a abrirse en 20s, te avisa con un error en vez de quedar colgado para siempre."
 }

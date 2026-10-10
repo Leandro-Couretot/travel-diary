@@ -686,11 +686,30 @@ function preloadGooglePicker() {
 // devuelve un array de {id, name, mimeType} de lo elegido, o null si se
 // cancela. Nunca tira: un fallo de carga del script, o la clave todavía sin
 // configurar, se traduce a un Error con mensaje legible para mostrar en la UI.
+//
+// v2.99: bug real reportado DESPUÉS del fix de v2.98 (standalone iOS) — el
+// usuario probó de nuevo desde Chrome normal (no la PWA instalada, barra de
+// direcciones visible) y el mismo cuelgue siguió pasando ahí también, así
+// que la hipótesis de v2.98 no explica todo el problema. Auditando el código
+// se encontró un hueco real, separado: `ensurePickerLoaded()` SÍ tiene un
+// timeout (10s, arriba) para la descarga del script — pero una vez que ese
+// script carga bien, el paso siguiente (`picker.setVisible(true)`, que es
+// lo que de verdad abre la ventana del selector) no tenía NINGÚN timeout ni
+// mecanismo de reintento — si esa ventana no llega a abrirse de verdad (un
+// bloqueo silencioso de WebKit, una clave de API restringida por dominio
+// que Google rechaza sin que el callback del picker se entere, lo que sea),
+// la promesa quedaba colgada PARA SIEMPRE, sin ningún error — coincide
+// exacto con "queda ahí quieto" tanto en Safari como en Chrome. Se agrega un
+// timeout real acá también (20s) para que, pase lo que pase, el usuario
+// termine viendo un error real en vez de una espera infinita — el texto de
+// ese error, la próxima vez que se repita, es la pista real para seguir
+// diagnosticando la causa de fondo (¿bloqueo del navegador? ¿la clave de la
+// Picker API no tiene legadofamiliar.com.ar en sus dominios permitidos?).
 async function openDrivePhotoPicker() {
   if (!GOOGLE_PICKER_API_KEY) throw new Error('Falta configurar la clave del selector de Google Drive (contactá al desarrollador).');
   if (isIosStandalonePwa()) throw new Error('Esta función no funciona dentro de la app instalada en la pantalla de inicio de iPhone (es un límite real de iOS, no se puede evitar desde acá). Abrí legadofamiliar.com.ar directo en Safari, sin pasar por el ícono de la app, y ahí sí vas a poder importar desde Drive.');
   await ensurePickerLoaded();
-  return new Promise((resolve, reject) => {
+  return await _pickerLoadWithTimeout((resolve, reject) => {
     try {
       const view = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES_AND_VIDEOS)
         .setIncludeFolders(false)
@@ -706,11 +725,13 @@ async function openDrivePhotoPicker() {
           } else if (data.action === google.picker.Action.CANCEL) {
             resolve(null);
           }
+          // cualquier otra acción (ej. 'loaded') se ignora a propósito — no
+          // es ni una elección ni una cancelación, el picker sigue abierto
         })
         .build();
       picker.setVisible(true);
     } catch (e) { reject(e); }
-  });
+  }, 20000, 'El selector de Google Drive no llegó a abrirse (puede que el navegador lo haya bloqueado, o que Google lo esté rechazando). Probá de nuevo — si se repite, avisale al desarrollador con este mensaje exacto.');
 }
 
 // Metadata liviana para decidir en qué día cae una foto elegida del

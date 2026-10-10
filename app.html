@@ -717,6 +717,12 @@ audio { width: 100%; height: 32px; }
 .bulk-drop-text { font-size: 0.875rem; color: var(--ink-muted); }
 .bulk-drop-text strong { color: var(--ink); font-weight: 500; }
 .bulk-drop-sub { font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.25rem; }
+/* v2.99: el aviso de "¿no se abrió nada?" de runDrivePickerImport() se
+   pintaba con .bulk-drop-sub (--ink-faint, pensado para una leyenda
+   decorativa de bajo contraste) — el usuario reportó directamente no poder
+   leerlo. Clase nueva, mismo criterio de color que .bulk-dupe-warning/
+   .bulk-undated-label (--red) para cualquier texto accionable de este modal. */
+.bulk-drop-hint { font-size: 0.78rem; color: var(--red); margin-top: 0.5rem; line-height: 1.4; }
 .bulk-summary { margin-bottom: 1.25rem; }
 .bulk-summary-title { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 0.75rem; }
 .bulk-day-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--ink-faint); font-size: 0.875rem; }
@@ -1586,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.98';
+const APP_VERSION = '2.99';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4095,7 +4101,7 @@ async function runDrivePickerImport(dropZoneId) {
   const originalHtml = zoneEl.innerHTML;
   zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Abriendo selector de Google Drive...</div>`;
   const hintTimer = setTimeout(() => {
-    zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Abriendo selector de Google Drive...</div><div class="bulk-drop-sub">¿No se abrió nada? Puede que tu navegador bloqueó la ventana emergente — fijate si hay un ícono de pop-up bloqueado en la barra de direcciones, permitilo, y volvé a tocar el botón.</div>`;
+    zoneEl.innerHTML = `<div class="bulk-drop-icon">${icon('drive')}</div><div class="bulk-drop-text">Abriendo selector de Google Drive...</div><div class="bulk-drop-hint">¿No se abrió nada? Puede que el navegador haya bloqueado la ventana (fijate si hay un ícono de pop-up bloqueado en la barra de direcciones) o que Google la esté rechazando. Si en unos segundos más no pasa nada, te avisamos con un error.</div>`;
   }, 6000);
   let items;
   try { items = await openDrivePhotoPicker(); }
