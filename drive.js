@@ -653,18 +653,40 @@ function _pickerLoadWithTimeout(executor, ms, timeoutMsg) {
     executor(wrap(resolve), wrap(reject));
   });
 }
+
+// v2.100: breadcrumbs de diagnóstico — después de 2 rondas de fixes
+// especulativos (v2.97-v2.99) que no resolvieron el cuelgue real, y con
+// `js_error`/`usage_events` sin mostrar NINGÚN error no atrapado durante los
+// intentos reales del usuario (confirmado consultando Supabase), hace falta
+// saber en qué paso exacto se traba, no seguir adivinando a ciegas. Manda un
+// evento por cada hito real del flujo del Picker (mismo pipeline que ya usa
+// `trackEvent()`/`usage_events` desde v1.62) — nunca puede romper nada si
+// `trackEvent` no está disponible todavía (mismo criterio defensivo que ya
+// usa el resto de drive.js con `appCheckHeaders`/`sessionToken` de billing.js).
+function _trackPickerStep(step, extra) {
+  try { if (typeof trackEvent === 'function') trackEvent('drive_picker_debug', { step, ...extra }); } catch (e) { /* nunca romper el flujo real por esto */ }
+}
 function ensurePickerLoaded() {
-  if (window.google && window.google.picker) return Promise.resolve();
+  if (window.google && window.google.picker) { _trackPickerStep('already_loaded'); return Promise.resolve(); }
   if (_pickerLoadPromise) return _pickerLoadPromise;
+  _trackPickerStep('script_load_start');
   _pickerLoadPromise = _pickerLoadWithTimeout((resolve, reject) => {
     const script = document.createElement('script');
     script.src = 'https://apis.google.com/js/api.js';
     script.onload = () => {
-      gapi.load('picker', { callback: resolve, onerror: () => reject(new Error('No se pudo cargar el selector de Google Drive')) });
+      _trackPickerStep('script_loaded');
+      gapi.load('picker', {
+        callback: () => { _trackPickerStep('gapi_picker_loaded'); resolve(); },
+        onerror: () => { _trackPickerStep('gapi_picker_error'); reject(new Error('No se pudo cargar el selector de Google Drive')); },
+      });
     };
-    script.onerror = () => reject(new Error('No se pudo cargar el selector de Google Drive'));
+    script.onerror = () => { _trackPickerStep('script_load_error'); reject(new Error('No se pudo cargar el selector de Google Drive')); };
     document.head.appendChild(script);
-  }, 10000, 'No se pudo cargar el selector de Google Drive (tardó demasiado) — probá de nuevo.').catch(e => { _pickerLoadPromise = null; throw e; });
+  }, 10000, 'No se pudo cargar el selector de Google Drive (tardó demasiado) — probá de nuevo.').catch(e => {
+    _pickerLoadPromise = null;
+    _trackPickerStep('script_load_timeout_or_error', { message: String(e && e.message || e) });
+    throw e;
+  });
   return _pickerLoadPromise;
 }
 
@@ -709,6 +731,7 @@ async function openDrivePhotoPicker() {
   if (!GOOGLE_PICKER_API_KEY) throw new Error('Falta configurar la clave del selector de Google Drive (contactá al desarrollador).');
   if (isIosStandalonePwa()) throw new Error('Esta función no funciona dentro de la app instalada en la pantalla de inicio de iPhone (es un límite real de iOS, no se puede evitar desde acá). Abrí legadofamiliar.com.ar directo en Safari, sin pasar por el ícono de la app, y ahí sí vas a poder importar desde Drive.');
   await ensurePickerLoaded();
+  _trackPickerStep('building_picker');
   return await _pickerLoadWithTimeout((resolve, reject) => {
     try {
       const view = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES_AND_VIDEOS)
@@ -720,18 +743,27 @@ async function openDrivePhotoPicker() {
         .addView(view)
         .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
         .setCallback(data => {
+          _trackPickerStep('callback_fired', { action: String(data && data.action) });
           if (data.action === google.picker.Action.PICKED) {
             resolve(data.docs.map(d => ({ id: d.id, name: d.name, mimeType: d.mimeType })));
           } else if (data.action === google.picker.Action.CANCEL) {
             resolve(null);
           }
-          // cualquier otra acción (ej. 'loaded') se ignora a propósito — no
-          // es ni una elección ni una cancelación, el picker sigue abierto
+          // cualquier otra acción (ej. 'loaded' — el picker ya renderizó su
+          // UI de verdad, dato clave para diagnosticar: si este checkpoint
+          // nunca llega, el picker nunca llegó a dibujarse en absoluto) se
+          // ignora para la promesa en sí — no es ni una elección ni una
+          // cancelación, el picker sigue abierto — pero sí queda trackeada.
         })
         .build();
+      _trackPickerStep('build_ok');
       picker.setVisible(true);
-    } catch (e) { reject(e); }
-  }, 20000, 'El selector de Google Drive no llegó a abrirse (puede que el navegador lo haya bloqueado, o que Google lo esté rechazando). Probá de nuevo — si se repite, avisale al desarrollador con este mensaje exacto.');
+      _trackPickerStep('setvisible_called');
+    } catch (e) { _trackPickerStep('build_threw', { message: String(e && e.message || e) }); reject(e); }
+  }, 20000, 'El selector de Google Drive no llegó a abrirse (puede que el navegador lo haya bloqueado, o que Google lo esté rechazando). Probá de nuevo — si se repite, avisale al desarrollador con este mensaje exacto.').catch(e => {
+    _trackPickerStep('setvisible_timeout_or_error', { message: String(e && e.message || e) });
+    throw e;
+  });
 }
 
 // Metadata liviana para decidir en qué día cae una foto elegida del

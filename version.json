@@ -1,4 +1,4 @@
 {
-  "version": "2.99",
-  "changelog": "\"Importar desde Drive\" seguía quedándose quieto incluso en Chrome normal (no solo en la app instalada) — ahora, si el selector de Google no llega a abrirse en 20s, te avisa con un error en vez de quedar colgado para siempre."
+  "version": "2.100",
+  "changelog": "\"Importar desde Drive\" sigue sin abrir, ya con el dominio bien configurado en Google Cloud — se agregaron breadcrumbs internos para saber exactamente en qué paso se traba la próxima vez, sin adivinar más."
 }
