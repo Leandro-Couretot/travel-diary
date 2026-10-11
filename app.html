@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.106';
+const APP_VERSION = '2.107';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4025,30 +4025,43 @@ function openBulkUpload() {
 // dibuja (ver drive.js, shouldUseNativeDriveChooser()) — ahí el botón abre
 // el selector de archivos del sistema, que ofrece Google Drive como
 // ubicación. Solo se agrega una aclaración de cómo llegar a Drive, una vez.
-// v2.106: un texto corto según dónde esté el usuario (la app instalada no
-// ofrece "Google Drive" en el menú; Chrome iOS sí, con opción propia; Safari
-// y el resto llegan por "Seleccionar archivos" > "Explorar").
-function driveImportHint() {
-  if (isIosStandalonePwa()) return 'Para traer fotos de Google Drive, abrí legadofamiliar.com.ar en Chrome o Safari.';
-  if (/CriOS/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '')) return 'Para traer fotos de Google Drive, elegí "Google Drive" en el menú.';
-  return 'Para traer fotos de Google Drive, elegí "Seleccionar archivos" y buscá Drive en "Explorar".';
-}
-
+// v2.107: aviso según dónde esté el usuario. Chrome iOS ofrece solo la
+// opción "Google Drive" en el menú → no hace falta decir nada. Safari y el
+// resto llegan por "Seleccionar archivos" > "Explorar". La app instalada no
+// ofrece Drive → link para abrir la app en el navegador. IMPORTANTE: el link
+// va a OTRO origen (el .web.app, mismo sitio) — uno del mismo origen
+// (legadofamiliar.com.ar, dentro del scope del manifest) se quedaría dentro
+// de la propia app instalada en vez de salir al navegador.
+const DRIVE_BROWSER_URL = 'https://family-fotos-491610.web.app/app.html';
 function setupDriveImportButton(btnId, dropZoneId) {
   const btn = document.getElementById(btnId);
   if (!btn || !shouldUseNativeDriveChooser()) return;
   // v2.104: en iPhone/iPad el selector nativo ya ofrece Google Drive (menú
   // de iOS), así que el botón "Importar desde Drive" era redundante — se
-  // oculta (no se saca del DOM: openBulkDiary() togglea su display) y la
-  // aclaración pasa al propio drop-zone, que ya abre ese mismo selector.
+  // oculta (no se saca del DOM: openBulkDiary() togglea su display).
   btn.style.display = 'none';
   const sub = document.querySelector('#' + dropZoneId + ' .bulk-drop-sub');
   if (!sub) return;
-  // v2.105: la app instalada en iPhone NO muestra la opción "Google Drive"
-  // en el menú (Chrome sí) — se le avisa que lo haga desde el navegador.
-  // Color propio: .bulk-drop-sub es casi invisible (--ink-faint).
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  if (!isIosStandalonePwa() && /CriOS/.test(ua)) return; // Chrome: aparece solo
+  // .bulk-drop-sub es casi invisible (--ink-faint): color propio.
   sub.style.color = 'var(--ink-muted)';
-  sub.textContent = driveImportHint();
+  if (isIosStandalonePwa()) {
+    sub.textContent = 'Para traer fotos de Google Drive, ';
+    const a = document.createElement('a');
+    a.href = DRIVE_BROWSER_URL;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'abrí la app en el navegador';
+    a.style.textDecoration = 'underline';
+    a.style.color = 'var(--ink)';
+    a.style.fontWeight = '600';
+    a.addEventListener('click', e => e.stopPropagation()); // no abrir el selector del drop-zone
+    sub.appendChild(a);
+    sub.appendChild(document.createTextNode('.'));
+  } else {
+    sub.textContent = 'Para traer fotos de Google Drive, elegí "Seleccionar archivos" y buscá Drive en "Explorar".';
+  }
 }
 
 // Abre el selector de archivos nativo (el mismo <input> que ya usa el drop
