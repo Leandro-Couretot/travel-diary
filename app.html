@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.107';
+const APP_VERSION = '2.108';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4025,14 +4025,29 @@ function openBulkUpload() {
 // dibuja (ver drive.js, shouldUseNativeDriveChooser()) — ahí el botón abre
 // el selector de archivos del sistema, que ofrece Google Drive como
 // ubicación. Solo se agrega una aclaración de cómo llegar a Drive, una vez.
-// v2.107: aviso según dónde esté el usuario. Chrome iOS ofrece solo la
+// v2.108: aviso según dónde esté el usuario. Chrome iOS ofrece solo la
 // opción "Google Drive" en el menú → no hace falta decir nada. Safari y el
 // resto llegan por "Seleccionar archivos" > "Explorar". La app instalada no
-// ofrece Drive → link para abrir la app en el navegador. IMPORTANTE: el link
-// va a OTRO origen (el .web.app, mismo sitio) — uno del mismo origen
-// (legadofamiliar.com.ar, dentro del scope del manifest) se quedaría dentro
-// de la propia app instalada en vez de salir al navegador.
-const DRIVE_BROWSER_URL = 'https://family-fotos-491610.web.app/app.html';
+// ofrece Drive en el menú → se le pide abrir la app desde el navegador y se
+// le da un botón "Copiar link". (Un link no sirve: uno al mismo origen se
+// queda DENTRO de la app instalada, y uno a otro dominio, como el .web.app,
+// no comparte la sesión; ver v2.107.)
+const APP_PUBLIC_URL = 'https://legadofamiliar.com.ar';
+function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+  } catch (e) {}
+  return new Promise((resolve, reject) => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('copy_failed'));
+    } catch (e) { reject(e); }
+  });
+}
 function setupDriveImportButton(btnId, dropZoneId) {
   const btn = document.getElementById(btnId);
   if (!btn || !shouldUseNativeDriveChooser()) return;
@@ -4047,18 +4062,19 @@ function setupDriveImportButton(btnId, dropZoneId) {
   // .bulk-drop-sub es casi invisible (--ink-faint): color propio.
   sub.style.color = 'var(--ink-muted)';
   if (isIosStandalonePwa()) {
-    sub.textContent = 'Para traer fotos de Google Drive, ';
-    const a = document.createElement('a');
-    a.href = DRIVE_BROWSER_URL;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.textContent = 'abrí la app en el navegador';
-    a.style.textDecoration = 'underline';
-    a.style.color = 'var(--ink)';
-    a.style.fontWeight = '600';
-    a.addEventListener('click', e => e.stopPropagation()); // no abrir el selector del drop-zone
-    sub.appendChild(a);
-    sub.appendChild(document.createTextNode('.'));
+    sub.textContent = 'Para importar fotos desde Google Drive, abrí la app desde el navegador (Chrome o Safari). ';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'Copiar link';
+    copyBtn.style.cssText = 'background:none;border:none;padding:0;font:inherit;font-weight:600;text-decoration:underline;color:var(--ink);cursor:pointer;';
+    copyBtn.addEventListener('click', e => {
+      e.stopPropagation(); // no abrir el selector del drop-zone
+      copyTextToClipboard(APP_PUBLIC_URL).then(
+        () => { copyBtn.textContent = '¡Link copiado!'; },
+        () => { copyBtn.textContent = APP_PUBLIC_URL.replace('https://', ''); }
+      );
+    });
+    sub.appendChild(copyBtn);
   } else {
     sub.textContent = 'Para traer fotos de Google Drive, elegí "Seleccionar archivos" y buscá Drive en "Explorar".';
   }
