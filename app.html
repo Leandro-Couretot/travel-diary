@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.104';
+const APP_VERSION = '2.105';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4034,7 +4034,14 @@ function setupDriveImportButton(btnId, dropZoneId) {
   // aclaración pasa al propio drop-zone, que ya abre ese mismo selector.
   btn.style.display = 'none';
   const sub = document.querySelector('#' + dropZoneId + ' .bulk-drop-sub');
-  if (sub) sub.textContent = 'Elegí "Elegir archivos" para traerlos desde Google Drive (se descargan al teléfono antes de subirse). La app lee la fecha de cada archivo y los agrupa por día.';
+  if (!sub) return;
+  // v2.105: la app instalada en iPhone NO muestra la opción "Google Drive"
+  // en el menú (Chrome sí) — se le avisa que lo haga desde el navegador.
+  // Color propio: .bulk-drop-sub es casi invisible (--ink-faint).
+  sub.style.color = 'var(--ink-muted)';
+  sub.textContent = isIosStandalonePwa()
+    ? 'Para traer fotos desde Google Drive, abrí legadofamiliar.com.ar en el navegador (no desde el ícono de la app). En Chrome elegí "Google Drive" en el menú; en Safari, "Seleccionar archivos" y buscá Drive en "Explorar".'
+    : 'Para traer archivos desde Google Drive, elegí "Google Drive" en el menú (o "Elegir archivos" y buscá Drive en "Explorar"). Se descargan al teléfono antes de subirse.';
 }
 
 // Abre el selector de archivos nativo (el mismo <input> que ya usa el drop
