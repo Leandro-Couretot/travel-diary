@@ -1,4 +1,1 @@
-{
-  "version": "2.103",
-  "changelog": "\"Importar desde Drive\" ahora funciona en iPhone: abre el selector de archivos del teléfono, donde elegís Google Drive."
-}
+{ "version": "2.104", "changelog": "Carga masiva en iPhone más limpia: sin el botón repetido de Drive, el selector del teléfono ya lo ofrece." }
