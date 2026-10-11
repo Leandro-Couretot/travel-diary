@@ -1361,6 +1361,9 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null, p
           delete item._file;
         }
       } catch (e) {
+        // v2.110: tipo/tamaño del archivo que falló (nunca el nombre) para
+        // el registro técnico — ver logIssue() en billing.js.
+        try { e._itemInfo = { file_type: item.type, file_size_mb: Math.round((blob.size / 1048576) * 10) / 10, via_proxy: !!proxyAlbumId }; } catch (_) {}
         failedItems.push(e); // item.data/_file quedan intactos para poder reintentar
       }
     }
@@ -1398,6 +1401,7 @@ async function saveDayToDrive(albumFolderId, dateStr, day, previousIds = null, p
       ? 'Tu Google Drive se quedó sin espacio. Se guardó lo que sí entró. Liberá lugar y tocá "Guardar" para reintentar el resto.'
       : `Se guardó lo que se pudo, pero ${failedItems.length} archivo${failedItems.length > 1 ? 's' : ''} no se pudo${failedItems.length > 1 ? 'n' : ''} subir. Tocá "Guardar" para reintentar.`);
     err.driveSaveFailedCount = failedItems.length;
+    err.driveFailures = failedItems; // v2.110: los errores reales, para error_log
     throw err;
   }
   return day;
@@ -2001,7 +2005,14 @@ async function _blobToBase64(blob) {
 async function _proxyWriteThrow(res, fallbackMsg) {
   const body = await _proxyErrorBody(res);
   if (_isQuotaExceeded(body?.detail)) throw new DriveQuotaExceededError();
-  throw new Error(body?.error ? _proxyErrorMessage(body.error) : fallbackMsg);
+  const err = new Error(body?.error ? _proxyErrorMessage(body.error) : fallbackMsg);
+  // v2.110: el código HTTP y el código del proxy quedan en el error para el
+  // registro técnico (error_log) — antes se perdían detrás del mensaje en
+  // criollo, y un 413 (pedido demasiado grande) se veía igual que cualquier
+  // otro fallo.
+  err.httpStatus = res.status;
+  err.proxyCode = body?.error || null;
+  throw err;
 }
 async function getOrCreateFolderViaProxy(name, parentId, proxyAlbumId) {
   const res = await sharedAlbumProxyCall(proxyAlbumId, 'getOrCreateFolder', { name, parentId });
@@ -2010,11 +2021,33 @@ async function getOrCreateFolderViaProxy(name, parentId, proxyAlbumId) {
 }
 async function uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId) {
   const dataBase64 = await _blobToBase64(blob);
-  const res = await sharedAlbumProxyCall(proxyAlbumId, 'uploadMedia', {
-    parentId: folderId, name, mimeType: blob.type || 'application/octet-stream',
-    dataBase64, existingId: existingId || undefined, description,
-  });
-  if (!res.ok) await _proxyWriteThrow(res, 'No se pudo subir el archivo a Drive');
+  const sizeMb = Math.round((blob.size / 1048576) * 10) / 10;
+  let res;
+  try {
+    res = await sharedAlbumProxyCall(proxyAlbumId, 'uploadMedia', {
+      parentId: folderId, name, mimeType: blob.type || 'application/octet-stream',
+      dataBase64, existingId: existingId || undefined, description,
+    });
+  } catch (netErr) {
+    // v2.110: fetch() tira un TypeError genérico ("Load failed" en Safari)
+    // cuando la conexión se corta a mitad de un POST grande — que es
+    // justo lo que pasa con un video pesado por el proxy (el archivo viaja
+    // en base64 dentro del body, ver "Pendientes conocidos"). Se envuelve
+    // para que la persona vea algo accionable y el registro técnico tenga
+    // el tamaño real.
+    const err = new Error(`No se pudo enviar el archivo (${sizeMb} MB) a este álbum compartido. Si es un video o una foto muy pesada, puede ser demasiado grande para subirlo desde acá; probá con uno más liviano o subilo desde la cuenta de quien creó el álbum.`);
+    err.sizeMb = sizeMb; err.networkError = true; err.originalMessage = netErr && netErr.message;
+    throw err;
+  }
+  if (!res.ok) {
+    if (res.status === 413) {
+      const err = new Error(`El archivo (${sizeMb} MB) es demasiado pesado para subirlo a un álbum compartido. Probá con uno más liviano o subilo desde la cuenta de quien creó el álbum.`);
+      err.httpStatus = 413; err.sizeMb = sizeMb;
+      throw err;
+    }
+    try { await _proxyWriteThrow(res, 'No se pudo subir el archivo a Drive'); }
+    catch (e) { e.sizeMb = sizeMb; throw e; }
+  }
   return (await res.json()).id;
 }
 async function writeJsonFileMigratingViaProxy(obj, newName, oldNames, folderId, description, proxyAlbumId) {

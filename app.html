@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.109';
+const APP_VERSION = '2.110';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -3545,7 +3545,7 @@ async function deleteCurrentAlbum() {
     closeNewAlbumModal(); await renderAlbums();
   } catch(e) {
     showAlbumError(e.message);
-    trackEvent('error', { context: 'album_delete', message: e.message.slice(0, 200) });
+    trackEvent('error', { context: 'album_delete', message: e.message.slice(0, 200) }); logIssue('handled_error', 'album_delete', { error: e });
     btn.textContent = 'Eliminar álbum'; btn.disabled = false;
   }
 }
@@ -3563,7 +3563,7 @@ async function archiveCurrentAlbum() {
     closeNewAlbumModal(); await renderAlbums();
   } catch(e) {
     showAlbumError(e.message);
-    trackEvent('error', { context: 'album_archive', message: e.message.slice(0, 200) });
+    trackEvent('error', { context: 'album_archive', message: e.message.slice(0, 200) }); logIssue('handled_error', 'album_archive', { error: e });
     btn.textContent = 'Archivar álbum'; btn.disabled = false;
   }
 }
@@ -3583,7 +3583,7 @@ async function submitNewAlbum() {
       closeNewAlbumModal(); await renderAlbums();
     } catch(e) {
       showAlbumError(e.message);
-      trackEvent('error', { context: 'album_edit', message: e.message.slice(0, 200) });
+      trackEvent('error', { context: 'album_edit', message: e.message.slice(0, 200) }); logIssue('handled_error', 'album_edit', { error: e });
       btn.textContent = 'Guardar cambios'; btn.disabled = false;
     }
     return;
@@ -4313,6 +4313,21 @@ let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
 // pase por el proxy con el token de la dueña. La carga masiva desde Home
 // (confirmBulkUpload()) nunca lo pasa — ahí solo se gestionan álbumes
 // propios, nunca compartidos.
+// v2.110: subida que tarda más de esto se registra como 'slow' en error_log.
+const SLOW_UPLOAD_MS = 25000;
+// Datos para el registro técnico de una subida: tipo/tamaño/tiempo, NUNCA el
+// nombre del archivo (puede ser personal).
+function _uploadIssueProps(file, i, total, t0, proxyAlbumId) {
+  const p = {
+    file_type: file.type || null,
+    file_size_mb: Math.round(((file.size || 0) / 1048576) * 10) / 10,
+    drive_import: !!file._driveImport,
+    via_proxy: !!proxyAlbumId,
+    index: i, total, elapsed_ms: Date.now() - t0,
+  };
+  return p;
+}
+
 async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess, proxyAlbumId = null) {
   // Aviso mientras dura la subida — minimizar la app o bloquear el
   // celular puede cortarla a mitad de camino (ver ERROR_HANDLING_PLAN.md).
@@ -4397,6 +4412,8 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
 
   const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }, i) => {
     setItemState(i, 'uploading', 0);
+    const t0 = Date.now();
+    try {
     const isImg = file.type.startsWith('image/');
     let fileId;
     if (file._driveImport) {
@@ -4416,6 +4433,14 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
     setItemState(i, 'done');
     done++; lastCompletedAt = Date.now(); progressEl.textContent = `Subiendo... ${done}/${total}`;
+    // v2.110: una subida que salió bien pero tardó mucho también se registra
+    // (sin nombre de archivo, solo tipo/tamaño/tiempo) — es la señal de que
+    // algo anda lento antes de que llegue a fallar.
+    if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'bulk_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, total, t0, proxyAlbumId) });
+    } catch (e) {
+      try { e._issueProps = _uploadIssueProps(file, i, total, t0, proxyAlbumId); } catch (_) {}
+      throw e;
+    }
   });
   if (stallTimer) clearInterval(stallTimer);
   const stallNoteNow = listEl && document.getElementById(`${listEl.id}-stall`);
@@ -4425,6 +4450,21 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   const failedTasks = tasks.filter((t, i) => results[i].status === 'rejected');
   const quotaExceeded = results.some(r => r.status === 'rejected' && r.reason instanceof DriveQuotaExceededError);
   if (failedTasks.length) trackEvent('error', { context: 'bulk_upload', message: quotaExceeded ? 'quota_exceeded' : 'upload_failed', failed_count: failedTasks.length });
+  // v2.110: registro técnico — UNA fila por archivo que falló, todas con el
+  // mismo código de incidente (el que se le muestra a la persona abajo) y el
+  // motivo REAL de cada una (antes solo quedaba "upload_failed" + un conteo).
+  let incidentCode = null;
+  if (failedTasks.length) {
+    incidentCode = newIssueCode();
+    results.forEach((r, i) => {
+      if (r.status !== 'rejected') return;
+      const err = r.reason || {};
+      logIssue('upload_error', 'bulk_upload', {
+        error: err, code: incidentCode,
+        props: { ...(err._issueProps || {}), failed_count: failedTasks.length, total },
+      });
+    });
+  }
 
   for (const date of Object.keys(newMediaByDate)) {
     const day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId) || { title: '', notes: '', media: [] };
@@ -4438,7 +4478,11 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     const reasonMsg = quotaExceeded
       ? 'Tu Google Drive se quedó sin espacio. Liberá lugar o ampliá tu almacenamiento en Google.'
       : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
-    progressEl.innerHTML = `${icon('warning')} ${okCount}/${total} subidos. ${reasonMsg} <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
+    // Con un solo archivo fallido (o varios por la misma causa) el motivo real
+    // es más útil que el genérico "no se pudo subir".
+    const firstErr = (results.find(r => r.status === 'rejected') || {}).reason;
+    const detailMsg = (!quotaExceeded && firstErr && firstErr.message && (firstErr.sizeMb || firstErr.httpStatus)) ? ` ${escHtml(firstErr.message)}` : '';
+    progressEl.innerHTML = `${icon('warning')} ${okCount}/${total} subidos. ${reasonMsg}${detailMsg} <span style="display:block;font-size:0.75rem;opacity:0.8;margin-top:0.3rem;">Código de error: <b>${incidentCode}</b> (si nos escribís, pasanos este código)</span> <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
     bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess, proxyAlbumId };
   } else {
@@ -5016,19 +5060,31 @@ async function uploadContributorMedia(fileListRaw) {
   const tasks = [];
   for (const file of files) { const date = (await getFileDateStr(file)) || localDateStr(); tasks.push({ file, date }); }
 
-  const results = await runWithConcurrency(tasks, CONTRIB_UPLOAD_CONCURRENCY, async ({ file, date }) => {
-    const dataUrl = await compressImageFile(file);
-    const blob = base64ToBlob(dataUrl);
-    const dayFolderId = await resolveDayFolder(date);
-    const driveFileId = await uploadFile(blob, mediaFileName('image', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, albumFolderId);
-    await contributorAppendMediaToDay(albumFolderId, dayFolderId, date, { type: 'image', name: file.name, driveFileId });
-    invalidateDayCache(albumFolderId, date);
+  const results = await runWithConcurrency(tasks, CONTRIB_UPLOAD_CONCURRENCY, async ({ file, date }, i) => {
+    const t0 = Date.now();
+    try {
+      const dataUrl = await compressImageFile(file);
+      const blob = base64ToBlob(dataUrl);
+      const dayFolderId = await resolveDayFolder(date);
+      const driveFileId = await uploadFile(blob, mediaFileName('image', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, albumFolderId);
+      await contributorAppendMediaToDay(albumFolderId, dayFolderId, date, { type: 'image', name: file.name, driveFileId });
+      invalidateDayCache(albumFolderId, date);
+      if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'contributor_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, tasks.length, t0, albumFolderId) });
+    } catch (e) {
+      try { e._issueProps = _uploadIssueProps(file, i, tasks.length, t0, albumFolderId); } catch (_) {}
+      throw e;
+    }
   });
 
   btn.disabled = false; btn.textContent = prevLabel;
   await renderContributorGallery();
-  const failed = results.filter(r => r.status === 'rejected').length;
-  if (failed) alert(`${failed} de ${files.length} foto${files.length === 1 ? '' : 's'} no se ${failed === 1 ? 'pudo subir' : 'pudieron subir'}. Probá de nuevo.`);
+  const failedResults = results.filter(r => r.status === 'rejected');
+  const failed = failedResults.length;
+  if (failed) {
+    const code = newIssueCode();
+    failedResults.forEach(r => logIssue('upload_error', 'contributor_upload', { error: r.reason, code, props: { ...((r.reason && r.reason._issueProps) || {}), failed_count: failed, total: files.length } }));
+    alert(`${failed} de ${files.length} foto${files.length === 1 ? '' : 's'} no se ${failed === 1 ? 'pudo subir' : 'pudieron subir'}. Probá de nuevo.\n\nCódigo de error: ${code}`);
+  }
 }
 
 function switchTab(tab) {
@@ -5186,11 +5242,16 @@ async function saveCurrentDay() {
       // prefijo "Error:" — es un guardado parcial, no una falla total.
       currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
       await syncAudioUsageAfterSave();
-      setStatus('error', e.message);
       trackEvent('error', { context: 'save_day_partial', message: e.message.slice(0, 200) });
+      // v2.110: una fila por archivo que falló, con su motivo real (antes
+      // solo se sabía la cantidad) y un código para que la persona nos lo pase.
+      const code = newIssueCode();
+      (e.driveFailures && e.driveFailures.length ? e.driveFailures : [e]).forEach(f => logIssue('upload_error', 'save_day', { error: f, code, props: { ...(f._itemInfo || {}), failed_count: e.driveSaveFailedCount } }));
+      setStatus('error', `${e.message} (código ${code})`);
     } else {
-      setStatus('error', 'Error: ' + e.message);
       trackEvent('error', { context: 'save_day', message: e.message.slice(0, 200) });
+      const code = logIssue('handled_error', 'save_day', { error: e });
+      setStatus('error', `Error: ${e.message}${code ? ` (código ${code})` : ''}`);
     }
   }
 }
@@ -5422,7 +5483,8 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
     // atrapar, sin ningún mensaje para el usuario más allá del overlay de
     // debug. Lo que sí se alcanzó a guardar antes del error queda en
     // Drive igual (cada fecha se persiste al final de su propio loop).
-    setStatus('', 'Algo falló guardando por día: ' + e.message + ' Lo que ya se guardó quedó en Drive, probá de nuevo con el resto.');
+    const code = logIssue('handled_error', 'save_files_to_correct_days', { error: e });
+    setStatus('', 'Algo falló guardando por día: ' + e.message + ' Lo que ya se guardó quedó en Drive, probá de nuevo con el resto.' + (code ? ` (código ${code})` : ''));
     trackEvent('error', { context: 'save_files_to_correct_days', message: String(e.message || e).slice(0, 200) });
     return;
   }
@@ -5445,7 +5507,7 @@ function addFilesToCurrentDay(files) {
       // YA comprimidas de este mismo lote se quedaban sin renderizar,
       // esperando para siempre a una que nunca iba a llegar.
       compressImageFile(file).then(data => { currentDay.media.push({ type: 'image', name: file.name, data, caption: '' }); bump(); })
-        .catch(e => { trackEvent('error', { context: 'add_files_to_current_day', message: String(e.message || e).slice(0, 200) }); bump(); });
+        .catch(e => { trackEvent('error', { context: 'add_files_to_current_day', message: String(e.message || e).slice(0, 200) }); logIssue('handled_error', 'add_files_to_current_day', { error: e, props: { file_type: file.type, file_size_mb: Math.round((file.size / 1048576) * 10) / 10 } }); bump(); });
     } else if (isVideo) {
       const blobUrl = URL.createObjectURL(file);
       currentDay.media.push({ type: 'video', name: file.name, data: blobUrl, _file: file, caption: '' });

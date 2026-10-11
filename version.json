@@ -1,1 +1,1 @@
-{ "version": "2.109", "changelog": "Carga masiva en la app instalada del iPhone: el aviso indica entrar a legadofamiliar.com.ar desde el navegador y permite copiar el link." }
+{ "version": "2.110", "changelog": "Ahora registramos las fallas técnicas (por ejemplo al subir archivos) y te mostramos un código de error para que puedas reportarlo." }

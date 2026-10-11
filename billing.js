@@ -361,13 +361,170 @@ function trackEvent(eventName, eventProps = {}) {
   if (!_trackFlushTimer) _trackFlushTimer = setTimeout(() => flushTrackEvents(), TRACK_FLUSH_MS);
 }
 
+// ─── Registro técnico de fallas (v2.110, tabla error_log) ───────────────
+// Pedido del usuario: que ningún error se pierda (el caso real fue su esposa
+// subiendo un video a un álbum compartido, sin copiar el mensaje). Es un
+// canal APARTE de trackEvent(): trackEvent() es analítica y exige
+// consentimiento, esto es diagnóstico de funcionamiento y se manda siempre.
+// - Con consentimiento de analítica + sesión: la falla viaja con el JWT, el
+//   servidor la asocia al google_sub.
+// - Sin consentimiento: viaja SIN sesión, solo con `anon_id` (UUID al azar
+//   de este navegador, td_anon_id en localStorage) — alcanza para saber si
+//   dos fallas son del mismo dispositivo sin saber quién es.
+// Nunca se manda email, nombres de archivo ni contenido (ver el armado de
+// `props` en cada call-site). Las fallas pendientes se guardan también en
+// localStorage (excepción a la convención #2, mismo criterio que
+// td_first_touch): si la página se mata antes de poder mandarlas, salen en
+// la próxima carga.
+const ISSUE_QUEUE_KEY = 'td_issue_queue';
+const ANON_ID_KEY = 'td_anon_id';
+const ISSUE_FLUSH_MS = 3000;
+const ISSUE_QUEUE_MAX = 20;
+const ISSUE_MAX_ATTEMPTS = 5;
+const ISSUE_MAX_PER_PAGE = 40;
+const ISSUE_MAX_PER_KEY = 5;
+let _issueBuffer = [];
+let _issueFlushTimer = null;
+let _issuesLoggedThisPage = 0;
+const _issueKeyCount = {};
+
+function getAnonId() {
+  try {
+    let id = localStorage.getItem(ANON_ID_KEY);
+    if (id && /^[A-Za-z0-9-]{8,64}$/.test(id)) return id;
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    localStorage.setItem(ANON_ID_KEY, id);
+    return id;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Código corto que se le muestra a la persona ("ERR-4F2A"). Sin 0/O/1/I
+// para que se pueda dictar o leer de una captura sin confundirse.
+function newIssueCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  return 'ERR-' + c;
+}
+
+function _persistIssueQueue() {
+  try { localStorage.setItem(ISSUE_QUEUE_KEY, JSON.stringify(_issueBuffer.slice(-ISSUE_QUEUE_MAX))); } catch (e) { /* sin storage: queda solo en memoria */ }
+}
+
+// Contexto de la app en el momento de la falla — cada campo con su propio
+// try/catch (algunas variables viven en app.html y pueden estar en su TDZ
+// si la falla ocurre durante la carga).
+function _issueContext() {
+  const ctx = { path: location.pathname, online: navigator.onLine };
+  try { ctx.view = typeof currentView !== 'undefined' ? currentView : null; } catch (e) {}
+  try { ctx.tab = typeof currentTab !== 'undefined' ? currentTab : null; } catch (e) {}
+  try { ctx.album_shared = typeof isSharedAlbum !== 'undefined' ? !!isSharedAlbum : null; } catch (e) {}
+  try { ctx.standalone = navigator.standalone === true; } catch (e) {}
+  try { if (navigator.connection) { ctx.net = navigator.connection.effectiveType || null; ctx.save_data = !!navigator.connection.saveData; } } catch (e) {}
+  ctx.ua = String(navigator.userAgent || '').slice(0, 200);
+  return ctx;
+}
+
+// Campos útiles que algunos errores traen colgados (ver uploadFileViaProxy()
+// y _proxyWriteThrow() en drive.js) — código HTTP, tamaño, si fue un corte de red.
+function _issueExtra(err) {
+  const x = {};
+  if (!err || typeof err !== 'object') return x;
+  if (err.httpStatus) x.http_status = err.httpStatus;
+  if (err.proxyCode) x.proxy_code = err.proxyCode;
+  if (err.sizeMb != null) x.size_mb = err.sizeMb;
+  if (err.networkError) { x.network_error = true; x.original_message = String(err.originalMessage || '').slice(0, 200); }
+  if (err.name && err.name !== 'Error') x.error_name = err.name;
+  return x;
+}
+
+// kind: 'js_error' | 'handled_error' | 'upload_error' | 'slow' | 'server_error'
+// details: { error?: Error, message?, stack?, props?, code? } — `code` permite
+// que varias filas de un mismo incidente compartan el mismo ERR-XXXX.
+// Devuelve el código (para mostrárselo a la persona) o null si se descartó.
+function logIssue(kind, context, details = {}) {
+  try {
+    const key = `${kind}|${context}|${(details.error && details.error.message) || details.message || ''}`;
+    _issueKeyCount[key] = (_issueKeyCount[key] || 0) + 1;
+    const code = details.code || newIssueCode();
+    if (_issueKeyCount[key] > ISSUE_MAX_PER_KEY || _issuesLoggedThisPage >= ISSUE_MAX_PER_PAGE) return code;
+    _issuesLoggedThisPage++;
+    const err = details.error;
+    let appVersion = null;
+    try { appVersion = typeof APP_VERSION !== 'undefined' ? APP_VERSION : null; } catch (e) {}
+    _issueBuffer.push({
+      error_code: code,
+      kind: String(kind).slice(0, 40),
+      context: String(context || '').slice(0, 80),
+      message: String((err && err.message) || details.message || '').slice(0, 1000),
+      stack: (err && err.stack) ? String(err.stack).slice(0, 3000) : (details.stack ? String(details.stack).slice(0, 3000) : null),
+      app_version: appVersion,
+      anon_id: getAnonId(),
+      props: { ...(details.props || {}), ..._issueExtra(err), ..._issueContext() },
+      _try: 0,
+    });
+    _persistIssueQueue();
+    if (!_issueFlushTimer) _issueFlushTimer = setTimeout(() => flushIssues(), ISSUE_FLUSH_MS);
+    return code;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function flushIssues(useBeacon = false) {
+  if (_issueFlushTimer) { clearTimeout(_issueFlushTimer); _issueFlushTimer = null; }
+  if (!_issueBuffer.length) return;
+  const batch = _issueBuffer.slice(0, 20);
+  // Identificada solo con consentimiento de analítica Y sesión viva.
+  const identified = !!(sessionToken && hasAnalyticsConsent());
+  const issues = batch.map(({ _try, ...rest }) => rest);
+  const drop = () => { _issueBuffer = _issueBuffer.filter(i => !batch.includes(i)); _persistIssueQueue(); };
+  try {
+    if (useBeacon && navigator.sendBeacon) {
+      const appCheckToken = await appCheckTokenValue();
+      const payload = { issues, app_check_token: appCheckToken, ...(identified ? { session_token: sessionToken } : {}) };
+      if (navigator.sendBeacon('/api/track', new Blob([JSON.stringify(payload)], { type: 'application/json' }))) drop();
+      return;
+    }
+    const res = await fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(identified ? { Authorization: `Bearer ${sessionToken}` } : {}), ...(await appCheckHeaders()) },
+      body: JSON.stringify({ issues }),
+    });
+    if (res.ok) { drop(); return; }
+    throw new Error('HTTP ' + res.status);
+  } catch (e) {
+    // Sin red o rechazado: se reintenta en el próximo flush/carga, pero no
+    // para siempre (un rechazo permanente no debe girar en loop).
+    batch.forEach(i => { i._try = (i._try || 0) + 1; });
+    _issueBuffer = _issueBuffer.filter(i => (i._try || 0) < ISSUE_MAX_ATTEMPTS);
+    _persistIssueQueue();
+  }
+}
+
+// Fallas que quedaron guardadas de una carga anterior (la página se cerró o
+// se mató antes de poder mandarlas) — salen unos segundos después de abrir.
+try {
+  const saved = JSON.parse(localStorage.getItem(ISSUE_QUEUE_KEY) || '[]');
+  if (Array.isArray(saved) && saved.length) {
+    _issueBuffer = saved.filter(i => i && typeof i === 'object').slice(-ISSUE_QUEUE_MAX);
+    setTimeout(() => flushIssues(), 6000);
+  }
+} catch (e) { /* cola corrupta: se ignora */ }
+
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushIssues(true); });
+window.addEventListener('pagehide', () => flushIssues(true));
+
 // debug.js corre antes que este archivo (ver los <script> en app.html) —
-// un error real puede pasar en esa ventana chica, antes de que trackEvent()
+// un error real puede pasar en esa ventana chica, antes de que logIssue()
 // exista todavía. Esos reportes quedan en window.__pendingErrorReports en
 // vez de perderse (ver reportError() en debug.js) — se vacían acá, apenas
-// trackEvent() ya está definido.
+// logIssue() ya está definido.
 if (window.__pendingErrorReports && window.__pendingErrorReports.length) {
-  window.__pendingErrorReports.splice(0).forEach(payload => trackEvent('js_error', payload));
+  window.__pendingErrorReports.splice(0).forEach(p => logIssue('js_error', 'global', { message: p.message, stack: p.stack, props: { source: p.source } }));
 }
 
 async function flushTrackEvents(useBeacon = false) {

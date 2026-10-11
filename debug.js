@@ -14,35 +14,15 @@
 
   const debugMode = new URLSearchParams(location.search).has('debug');
 
-  // Contexto de la app en el momento del error — para poder recrear "dónde,
-  // cuándo, a quién y en qué versión" sin tener que pedirle detalles al
-  // usuario. Estas variables viven en app.html/billing.js, que cargan
-  // DESPUÉS que este archivo (ver los <script> en app.html) — como todos
-  // son scripts clásicos (no módulos), comparten un mismo scope global, así
-  // que para cuando el error realmente ocurre (mucho después de la carga
-  // inicial) ya están definidas. Cada campo se resuelve por separado y con
-  // try/catch: si el error pasó MIENTRAS esos scripts todavía se estaban
-  // cargando, referenciar una `let`/`const` que todavía no se ejecutó tira
-  // ReferenceError (temporal dead zone) — se lo traga y ese campo queda
-  // ausente, nunca se pierde el resto del reporte por eso.
-  function appContextSnapshot() {
-    const ctx = { path: location.pathname, user_agent: navigator.userAgent, online: navigator.onLine };
-    try { ctx.app_version = typeof APP_VERSION !== 'undefined' ? APP_VERSION : null; } catch (e) {}
-    try { ctx.view = typeof currentView !== 'undefined' ? currentView : null; } catch (e) {}
-    try { ctx.tab = typeof currentTab !== 'undefined' ? currentTab : null; } catch (e) {}
-    try { ctx.album_id = typeof albumId !== 'undefined' ? albumId : null; } catch (e) {}
-    try { ctx.date = typeof currentDate !== 'undefined' ? currentDate : null; } catch (e) {}
-    try { ctx.user_email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : null; } catch (e) {}
-    return ctx;
-  }
-
-  // Manda el error al mismo pipeline de analytics que ya usa el resto de la
-  // app (trackEvent() → /api/track → tabla usage_events en Supabase, ver
-  // CLAUDE.md → "Métricas de producto") — sin inventar un canal nuevo. Si
-  // trackEvent() todavía no existe (billing.js carga después que este
-  // archivo — un error puede pasar en esa ventana chica), el reporte queda
-  // en cola y billing.js la vacía apenas se define (ver el flush al final
-  // de ese archivo).
+  // Manda el error al registro técnico de fallas (logIssue() → /api/track →
+  // tabla error_log en Supabase, ver billing.js y CLAUDE.md v2.110). Ese
+  // canal NO depende del consentimiento de analítica y arma él mismo el
+  // contexto (versión, pantalla, dispositivo, conexión) — por eso acá solo
+  // se pasa el error en sí, y ya no se manda el email del usuario (con v2.110
+  // la identidad la decide billing.js: google_sub solo con consentimiento,
+  // anon_id si no). Si logIssue() todavía no existe (billing.js carga después
+  // de este archivo y un error puede pasar en esa ventana chica), el reporte
+  // queda en cola y billing.js la vacía apenas se define.
   function reportError(msg, source, stack) {
     const key = `${msg}|${source}`;
     if (reportedKeys.has(key)) return;
@@ -51,10 +31,9 @@
       message: String(msg).slice(0, 500),
       source: String(source || '').slice(0, 300),
       stack: stack ? String(stack).slice(0, 2000) : null,
-      ...appContextSnapshot(),
     };
-    if (typeof window.trackEvent === 'function') {
-      window.trackEvent('js_error', payload);
+    if (typeof window.logIssue === 'function') {
+      window.logIssue('js_error', 'global', { message: payload.message, stack: payload.stack, props: { source: payload.source } });
     } else {
       (window.__pendingErrorReports = window.__pendingErrorReports || []).push(payload);
     }

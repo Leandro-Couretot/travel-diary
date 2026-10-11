@@ -20,6 +20,36 @@ const ANON_ALLOWED_EVENTS = new Set(['onboarding_viewed', 'signup_started']);
 // evita que un body gigante le pegue una carga rara a Supabase.
 const MAX_EVENTS_PER_REQUEST = 50;
 
+// Registro técnico de fallas (v2.110, tabla error_log). Viaja en el mismo
+// endpoint pero en un campo aparte (`issues`) porque tiene reglas distintas:
+// no depende del consentimiento de analítica y acepta pedidos SIN sesión
+// (la identidad, si hay, la decide el cliente al mandar o no el JWT). Todo
+// se recorta acá: el cliente no es de fiar en cuanto a tamaños.
+const MAX_ISSUES_PER_REQUEST = 20;
+const ISSUE_CODE_RE = /^ERR-[A-Z0-9]{4,8}$/;
+const ANON_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+const cut = (v, n) => (typeof v === 'string' && v ? v.slice(0, n) : null);
+function sanitizeIssue(raw, googleSub) {
+  if (!raw || typeof raw !== 'object') return null;
+  const kind = cut(raw.kind, 40);
+  if (!kind) return null;
+  let props = {};
+  if (raw.props && typeof raw.props === 'object' && !Array.isArray(raw.props)) {
+    try { if (JSON.stringify(raw.props).length <= 4000) props = raw.props; } catch (e) { /* props inválidas: se ignoran */ }
+  }
+  return {
+    error_code: typeof raw.error_code === 'string' && ISSUE_CODE_RE.test(raw.error_code) ? raw.error_code : null,
+    kind,
+    context: cut(raw.context, 80),
+    message: cut(raw.message, 1000),
+    stack: cut(raw.stack, 3000),
+    app_version: cut(raw.app_version, 20),
+    anon_id: typeof raw.anon_id === 'string' && ANON_ID_RE.test(raw.anon_id) ? raw.anon_id : null,
+    google_sub: googleSub,
+    props,
+  };
+}
+
 exports.trackEvent = onRequest(
   {
     region: 'southamerica-east1',
@@ -54,7 +84,8 @@ exports.trackEvent = onRequest(
     }
 
     const events = Array.isArray(body.events) ? body.events : [];
-    if (!events.length) {
+    const issues = Array.isArray(body.issues) ? body.issues : [];
+    if (!events.length && !issues.length) {
       res.status(200).json({ ok: true, inserted: 0 });
       return;
     }
@@ -83,23 +114,47 @@ exports.trackEvent = onRequest(
         event_props: e.event_props && typeof e.event_props === 'object' ? e.event_props : {},
       }));
 
-    if (!rows.length) {
-      res.status(200).json({ ok: true, inserted: 0 });
-      return;
-    }
-
     try {
       const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
-      // Un solo insert para todo el lote (no uno por evento) — mismo
-      // criterio de eficiencia que llevó a batchear el POST en sí, ver
-      // GROWTH_PLAN.md Fase 2.
-      const { error } = await supabase.from('usage_events').insert(rows);
-      if (error) {
-        console.error('usage_events insert error:', error);
-        res.status(500).json({ error: 'insert_failed' });
-        return;
+      let inserted = 0;
+      if (rows.length) {
+        // Un solo insert para todo el lote (no uno por evento) — mismo
+        // criterio de eficiencia que llevó a batchear el POST en sí, ver
+        // GROWTH_PLAN.md Fase 2.
+        const { error } = await supabase.from('usage_events').insert(rows);
+        if (error) {
+          console.error('usage_events insert error:', error);
+          res.status(500).json({ error: 'insert_failed' });
+          return;
+        }
+        inserted = rows.length;
       }
-      res.status(200).json({ ok: true, inserted: rows.length });
+      // Fallas técnicas: tabla propia, con su propio manejo de error — que
+      // falle acá nunca debe tirar abajo los eventos de analítica de arriba.
+      let issuesInserted = 0;
+      if (issues.length) {
+        const issueRows = issues.slice(0, MAX_ISSUES_PER_REQUEST).map((i) => sanitizeIssue(i, googleSub)).filter(Boolean);
+        if (issueRows.length) {
+          const { error: issueErr } = await supabase.from('error_log').insert(issueRows);
+          if (issueErr) {
+            console.error('error_log insert error:', issueErr);
+            res.status(500).json({ error: 'issue_insert_failed', inserted });
+            return;
+          }
+          issuesInserted = issueRows.length;
+          // Retención: no hay pg_cron en el proyecto de Supabase, así que la
+          // limpieza de filas con más de 90 días corre acá, de vez en cuando
+          // (~2% de los pedidos que guardan fallas). Best-effort: si falla no
+          // afecta nada.
+          if (Math.random() < 0.02) {
+            try {
+              const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+              await supabase.from('error_log').delete().lt('occurred_at', cutoff);
+            } catch (e) { /* best-effort */ }
+          }
+        }
+      }
+      res.status(200).json({ ok: true, inserted, issuesInserted });
     } catch (e) {
       console.error('track-event error:', e);
       res.status(500).json({ error: 'internal_error' });

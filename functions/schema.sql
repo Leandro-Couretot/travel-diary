@@ -117,6 +117,34 @@ create table if not exists travel_diary.usage_events (
 create index if not exists usage_events_google_sub_idx on travel_diary.usage_events (google_sub);
 create index if not exists usage_events_event_name_idx on travel_diary.usage_events (event_name);
 
+-- Registro técnico de fallas (v2.110) — separado de usage_events a propósito:
+-- usage_events es analítica y exige consentimiento; esto es diagnóstico de
+-- funcionamiento (qué falló, dónde, en qué dispositivo) y se guarda siempre.
+-- google_sub solo viene cargado si la persona dio consentimiento de
+-- analítica; si no, queda null y anon_id (un UUID al azar generado en el
+-- navegador, ver logIssue() en billing.js) permite saber si dos fallas
+-- vinieron del mismo dispositivo sin saber quién es. error_code es el código
+-- corto (ERR-XXXX) que la app le muestra a la persona para que lo pueda
+-- avisar; varias filas pueden compartir código (un incidente con varios
+-- archivos fallidos). Nunca se guardan nombres de archivo ni contenido.
+create table if not exists travel_diary.error_log (
+  id           bigserial primary key,
+  occurred_at  timestamptz not null default now(),
+  error_code   text,
+  kind         text not null,
+  context      text,
+  message      text,
+  stack        text,
+  app_version  text,
+  anon_id      text,
+  google_sub   text,
+  props        jsonb not null default '{}'
+);
+create index if not exists error_log_occurred_at_idx on travel_diary.error_log (occurred_at desc);
+create index if not exists error_log_error_code_idx on travel_diary.error_log (error_code);
+create index if not exists error_log_anon_id_idx on travel_diary.error_log (anon_id);
+create index if not exists error_log_context_idx on travel_diary.error_log (context);
+
 -- Links de campaña con slug corto (legadofamiliar.com.ar/{slug}) — mecanismo
 -- genérico para afiliados (.../christian) y puntos de reparto en la calle
 -- (.../feria), ver CLAUDE.md → "Atribución de campaña (UTM) → Supabase,
@@ -190,6 +218,7 @@ create table if not exists travel_diary.shared_album_members (
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 alter table travel_diary.usage_events enable row level security;
+alter table travel_diary.error_log enable row level security;
 alter table travel_diary.campaign_links enable row level security;
 alter table travel_diary.shared_album_owner enable row level security;
 alter table travel_diary.shared_album_invites enable row level security;
