@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.105';
+const APP_VERSION = '2.106';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4025,6 +4025,15 @@ function openBulkUpload() {
 // dibuja (ver drive.js, shouldUseNativeDriveChooser()) — ahí el botón abre
 // el selector de archivos del sistema, que ofrece Google Drive como
 // ubicación. Solo se agrega una aclaración de cómo llegar a Drive, una vez.
+// v2.106: un texto corto según dónde esté el usuario (la app instalada no
+// ofrece "Google Drive" en el menú; Chrome iOS sí, con opción propia; Safari
+// y el resto llegan por "Seleccionar archivos" > "Explorar").
+function driveImportHint() {
+  if (isIosStandalonePwa()) return 'Para traer fotos de Google Drive, abrí legadofamiliar.com.ar en Chrome o Safari.';
+  if (/CriOS/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '')) return 'Para traer fotos de Google Drive, elegí "Google Drive" en el menú.';
+  return 'Para traer fotos de Google Drive, elegí "Seleccionar archivos" y buscá Drive en "Explorar".';
+}
+
 function setupDriveImportButton(btnId, dropZoneId) {
   const btn = document.getElementById(btnId);
   if (!btn || !shouldUseNativeDriveChooser()) return;
@@ -4039,9 +4048,7 @@ function setupDriveImportButton(btnId, dropZoneId) {
   // en el menú (Chrome sí) — se le avisa que lo haga desde el navegador.
   // Color propio: .bulk-drop-sub es casi invisible (--ink-faint).
   sub.style.color = 'var(--ink-muted)';
-  sub.textContent = isIosStandalonePwa()
-    ? 'Para traer fotos desde Google Drive, abrí legadofamiliar.com.ar en el navegador (no desde el ícono de la app). En Chrome elegí "Google Drive" en el menú; en Safari, "Seleccionar archivos" y buscá Drive en "Explorar".'
-    : 'Para traer archivos desde Google Drive, elegí "Google Drive" en el menú (o "Elegir archivos" y buscá Drive en "Explorar"). Se descargan al teléfono antes de subirse.';
+  sub.textContent = driveImportHint();
 }
 
 // Abre el selector de archivos nativo (el mismo <input> que ya usa el drop
