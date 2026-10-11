@@ -1592,7 +1592,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.108';
+const APP_VERSION = '2.109';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4062,10 +4062,10 @@ function setupDriveImportButton(btnId, dropZoneId) {
   // .bulk-drop-sub es casi invisible (--ink-faint): color propio.
   sub.style.color = 'var(--ink-muted)';
   if (isIosStandalonePwa()) {
-    sub.textContent = 'Para importar fotos desde Google Drive, abrí la app desde el navegador (Chrome o Safari). ';
+    sub.textContent = 'Para importar fotos desde Google Drive, entrá a legadofamiliar.com.ar desde el navegador de tu teléfono. ';
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
-    copyBtn.textContent = 'Copiar link';
+    copyBtn.textContent = 'Tocá acá para copiar el link de la app';
     copyBtn.style.cssText = 'background:none;border:none;padding:0;font:inherit;font-weight:600;text-decoration:underline;color:var(--ink);cursor:pointer;';
     copyBtn.addEventListener('click', e => {
       e.stopPropagation(); // no abrir el selector del drop-zone
