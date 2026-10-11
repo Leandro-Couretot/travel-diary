@@ -1,1 +1,1 @@
-{ "version": "2.110", "changelog": "Ahora registramos las fallas técnicas (por ejemplo al subir archivos) y te mostramos un código de error para que puedas reportarlo." }
+{ "version": "2.111", "changelog": "Ajuste interno para probar el registro de fallas." }

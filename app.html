@@ -1562,6 +1562,10 @@ audio { width: 100%; height: 32px; }
         <button type="button" class="btn btn-secondary" style="flex:1;padding:0.4rem;font-size:0.78rem;" onclick="setDebugPlan('pro')">Forzar Pro</button>
       </div>
       <div class="help-tip">Solo afecta este navegador, no toca tu suscripción real ni Mercado Pago.</div>
+      <div style="margin-top:0.6rem;">
+        <button type="button" class="btn btn-secondary" style="width:100%;padding:0.4rem;font-size:0.78rem;" onclick="sendTestIssue()">Enviar falla de prueba</button>
+        <div class="help-tip" id="debug-issue-result">Guarda una fila de prueba en el registro de fallas y muestra su código.</div>
+      </div>
     </div>
     <div class="help-version">
       Versión <span id="app-version-label">1.77</span> ·
@@ -1592,7 +1596,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.110';
+const APP_VERSION = '2.111';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4588,6 +4592,18 @@ function setDebugPlan(value) {
   setDebugPlanOverride(value);
   updateDebugPlanStatus();
   if (currentView === 'home') renderAlbums();
+}
+// v2.111: prueba de punta a punta del registro de fallas (error_log) desde el
+// celular, sin consola. Solo visible para la cuenta del dev (misma sección).
+function sendTestIssue() {
+  const el = document.getElementById('debug-issue-result');
+  try {
+    const code = logIssue('handled_error', 'prueba_manual', { message: 'prueba de registro de fallas' });
+    flushIssues(false);
+    if (el) el.textContent = 'Enviada. Código: ' + code;
+  } catch (e) {
+    if (el) el.textContent = 'No se pudo enviar: ' + e.message;
+  }
 }
 function updateDebugPlanStatus() {
   // v1.60: la sección entera solo se muestra para la cuenta del dev
