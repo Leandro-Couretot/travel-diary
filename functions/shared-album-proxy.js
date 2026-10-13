@@ -141,6 +141,37 @@ const CONTRIBUTOR_WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', '
 // el token de la DUEÑA por el mismo límite de fondo de drive.file que ya
 // motivó todo este proxy (el token del invitado nunca puede tocar algo
 // que no creó él mismo, ni siquiera con rol de editor).
+// v2.112: medición por paso (Server-Timing). Registra cuántos ms toma cada
+// tramo del pedido (owner/token/role/action y, en las acciones pesadas,
+// descendant/drive) y los manda en el header `Server-Timing` de la
+// respuesta, legible por el cliente (mismo origen vía rewrite de Hosting).
+// Se engancha en res.end porque dispatchAction() responde por su cuenta.
+function startServerTiming(res) {
+  const marks = [];
+  const t0 = Date.now();
+  let last = t0;
+  res.__mark = (name) => { const n = Date.now(); marks.push([name, n - last]); last = n; };
+  const origEnd = res.end;
+  res.end = function (...args) {
+    try {
+      if (!res.headersSent) {
+        res.__mark('action');
+        marks.push(['total', Date.now() - t0]);
+        res.setHeader('Server-Timing', marks.map(([n, d]) => `${n};dur=${d}`).join(', '));
+      }
+    } catch (e) { /* la medición nunca puede romper la respuesta */ }
+    return origEnd.apply(this, args);
+  };
+}
+const mark = (res, name) => { if (res && res.__mark) res.__mark(name); };
+
+// v2.112: acciones de laboratorio (experimentos de miniaturas). Allowlist
+// por cuenta validada acá, del lado del servidor, con el email de la sesión
+// (nunca algo que mande el cliente): aunque alguien toque el JS, para
+// cualquier otra cuenta estas acciones devuelven 403.
+const LAB_ALLOWED_EMAILS = ['lcouretot@gmail.com'];
+const LAB_ACTIONS = new Set(['labThumbnailInfo', 'labThumbnailBytes']);
+
 exports.sharedAlbumProxy = onRequest(
   {
     region: 'southamerica-east1',
@@ -165,6 +196,11 @@ exports.sharedAlbumProxy = onRequest(
       res.status(400).json({ error: 'bad_request' });
       return;
     }
+    if (LAB_ACTIONS.has(action) && !LAB_ALLOWED_EMAILS.includes(String(session.email).toLowerCase())) {
+      res.status(403).json({ error: 'lab_not_allowed' });
+      return;
+    }
+    startServerTiming(res);
 
     let supabase, ownerAccessToken;
     try {
@@ -177,6 +213,7 @@ exports.sharedAlbumProxy = onRequest(
         .maybeSingle();
       if (ownerErr) { console.error('shared-album-proxy owner lookup error:', ownerErr); res.status(500).json({ error: 'owner_lookup_failed' }); return; }
       if (!ownerRow) { res.status(404).json({ error: 'not_shared' }); return; }
+      mark(res, 'owner');
 
       try {
         ownerAccessToken = await getOwnerAccessToken(supabase, ownerRow.owner_google_sub, GOOGLE_CLIENT_ID.value(), GOOGLE_CLIENT_SECRET.value());
@@ -196,6 +233,7 @@ exports.sharedAlbumProxy = onRequest(
         }
         return;
       }
+      mark(res, 'token');
 
       // v2.70 (Paso 2): un Contribuidor nunca tiene permiso real de Drive —
       // se chequea primero contra la tabla de acceso propia (barato, sin
@@ -205,6 +243,7 @@ exports.sharedAlbumProxy = onRequest(
       let role = await getContributorRole(supabase, folderDriveId, session.sub);
       if (!role) role = await getGuestRoleCached(folderDriveId, session.email, ownerAccessToken);
       if (!role) { res.status(403).json({ error: 'not_authorized' }); return; }
+      mark(res, 'role');
 
       // whoAmI (v2.74, rol Contribuidor Paso 5): el cliente necesita saber
       // SU PROPIO rol real ANTES de decidir qué vista mostrar al entrar a
@@ -449,13 +488,99 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     return;
   }
 
+  // v2.112: manifest de álbum. Hoy abrir un álbum compartido dispara decenas
+  // de pedidos (por cada día: findFileByName x2 + getFileJson o listFiles),
+  // y cada uno paga el preámbulo completo del proxy. Esto lo resuelve en UN
+  // pedido: lista los días y, en paralelo acotado, trae el day.json de cada
+  // uno (o la lista de archivos si falta, para que el cliente reconstruya
+  // igual que siempre). Lectura pura, cualquier rol. No hace falta
+  // isDescendant(): todo se descubre listando desde folderDriveId.
+  if (action === 'getAlbumManifest') {
+    const q = `mimeType='application/vnd.google-apps.folder' and '${folderDriveId}' in parents and trashed=false`;
+    const lr = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name&pageSize=1000`, ownerAccessToken);
+    if (!lr.ok) { res.status(502).json({ error: 'drive_error' }); return; }
+    const dayFolders = ((await lr.json()).files || []).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f.name));
+    mark(res, 'list');
+    const days = new Array(dayFolders.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < dayFolders.length) {
+        const i = next++;
+        const f = dayFolders[i];
+        const entry = { date: f.name, folderId: f.id, json: null, files: null };
+        try {
+          const fq = `'${f.id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+          const fr = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(fq)}&fields=files(id,name,mimeType)&pageSize=1000`, ownerAccessToken);
+          if (fr.ok) {
+            const files = (await fr.json()).files || [];
+            // El día guarda un único .json (day.json en cualquiera de sus
+            // nombres históricos); si hay más de uno se prefiere el que
+            // coincide con "Día" para no confundirlo con otro auxiliar.
+            const jsons = files.filter(x => /\.json$/i.test(x.name || ''));
+            const dayFile = jsons.find(x => /d[ií]a|day/i.test(x.name)) || jsons[0];
+            if (dayFile) {
+              const cr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${dayFile.id}?alt=media`, ownerAccessToken);
+              if (cr.ok) { try { entry.json = await cr.json(); } catch { /* json roto: cae a reconstrucción */ } }
+            }
+            if (!entry.json) entry.files = files.filter(x => !/\.json$/i.test(x.name || ''));
+          }
+        } catch (e) { /* un día que falla no rompe el resto del manifest */ }
+        days[i] = entry;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, dayFolders.length) }, worker));
+    mark(res, 'days');
+    res.status(200).json({ days });
+    return;
+  }
+
+  // v2.112 (LABORATORIO, solo cuentas de LAB_ALLOWED_EMAILS): metadata para
+  // evaluar si las miniaturas de Drive (`thumbnailLink`) sirven para
+  // álbumes compartidos con buena calidad. Ver CLAUDE.md v2.112.
+  if (action === 'labThumbnailInfo') {
+    const fileId = params.fileId;
+    if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink,size,imageMediaMetadata(width,height)`, ownerAccessToken);
+    if (!dr.ok) { res.status(404).json({ error: 'not_found' }); return; }
+    const data = await dr.json();
+    const meta = data.imageMediaMetadata || {};
+    res.status(200).json({ thumbnailLink: data.thumbnailLink || null, size: Number(data.size) || null, width: meta.width || null, height: meta.height || null });
+    return;
+  }
+
+  // Descarga la miniatura del lado del servidor (con el token de la dueña si
+  // hace falta) a un tamaño elegido, para comparar calidad/peso/tiempo
+  // contra el archivo completo. Devuelve los bytes tal cual.
+  if (action === 'labThumbnailBytes') {
+    const fileId = params.fileId;
+    const px = Math.min(Math.max(parseInt(params.px, 10) || 800, 64), 3000);
+    if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`, ownerAccessToken);
+    if (!dr.ok) { res.status(404).json({ error: 'not_found' }); return; }
+    const link = (await dr.json()).thumbnailLink;
+    if (!link) { res.status(404).json({ error: 'no_thumbnail' }); return; }
+    mark(res, 'meta');
+    const sized = /=s\d+$/.test(link) ? link.replace(/=s\d+$/, `=s${px}`) : `${link}=s${px}`;
+    let tr = await fetch(sized);
+    let authUsed = false;
+    if (!tr.ok) { tr = await driveFetch(sized, ownerAccessToken); authUsed = true; }
+    if (!tr.ok) { res.status(502).json({ error: 'thumb_fetch_failed', status: tr.status }); return; }
+    const contentType = tr.headers.get('content-type') || 'image/jpeg';
+    const buf = Buffer.from(await tr.arrayBuffer());
+    mark(res, 'thumb');
+    res.status(200).set('Content-Type', contentType).set('X-Lab-Auth-Used', authUsed ? '1' : '0').send(buf);
+    return;
+  }
+
   if (action === 'getMediaBytes') {
     const fileId = params.fileId;
     if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    mark(res, 'descendant');
     const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, ownerAccessToken);
     if (!dr.ok) { res.status(404).json({ error: 'not_found' }); return; }
     const contentType = dr.headers.get('content-type') || 'application/octet-stream';
     const buf = Buffer.from(await dr.arrayBuffer());
+    mark(res, 'drive');
     res.status(200).set('Content-Type', contentType).send(buf);
     return;
   }

@@ -1,1 +1,4 @@
-{ "version": "2.111", "changelog": "Ajuste interno para probar el registro de fallas." }
+{
+  "version": "2.112",
+  "changelog": "Mejoras internas para que los álbumes compartidos carguen más rápido."
+}

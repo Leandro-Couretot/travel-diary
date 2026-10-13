@@ -2080,7 +2080,81 @@ async function shareSharedAlbumWithUser(folderDriveId, guestEmail, role) {
 // en _dayCache, así loadDayFromDriveViaProxy() no tiene que volver a
 // buscar el id de cada carpeta de día) — solo cambia que el pedido real
 // sale con el token de la dueña, vía el proxy.
+// v2.112: "modo rápido" de álbumes compartidos, SOLO para la cuenta del dev
+// (misma allowlist que el toggle de debug: isDebugPlanAllowed(), billing.js,
+// basada en el email validado por el servidor). Interruptor en la sección
+// de debug del modal de ayuda (localStorage `td_lab_fast`, '0' = apagado)
+// para comparar la experiencia con y sin esto en el mismo teléfono. El resto
+// de las cuentas sigue exactamente por el camino de siempre.
+function proxyLabEnabled() {
+  try {
+    if (typeof isDebugPlanAllowed !== 'function' || !isDebugPlanAllowed()) return false;
+    return localStorage.getItem('td_lab_fast') !== '0';
+  } catch { return false; }
+}
+
+// Armado del día a partir de lo que devuelve Drive, compartido entre el
+// camino de siempre y el manifest (misma normalización en los dos).
+function _dayFromJson(dayJson) {
+  return {
+    title: dayJson.title || '',
+    notes: dayJson.notes || '',
+    media: dedupeMediaByDriveFileId((dayJson.media || []).map(m => ({
+      type: m.type, name: m.name,
+      driveFileId: m.driveFileId,
+      caption: m.caption || '',
+      uploadedBy: m.uploadedBy || null,
+    })))
+  };
+}
+function _dayFromFiles(files) {
+  const media = (files || [])
+    .map(f => {
+      const mt = f.mimeType || '';
+      const type = mt.startsWith('image/') ? 'image'
+        : mt.startsWith('video/') ? 'video'
+        : mt.startsWith('audio/') ? 'audio' : null;
+      return type ? { type, name: stripMediaNamePrefix(f.name), driveFileId: f.id, caption: '' } : null;
+    })
+    .filter(Boolean);
+  if (!media.length) return null;
+  return { title: '', notes: '', media, _reconstructed: true };
+}
+
+// Un solo pedido en lugar de decenas (ver `getAlbumManifest` en
+// shared-album-proxy.js). Puebla _dayCache de todos los días de una vez, así
+// los loadDayFromDriveViaProxy() siguientes no pegan a la red. Devuelve las
+// fechas (ordenadas) o lanza si el servidor no pudo (el caller cae al
+// camino de siempre).
+const _manifestLoaded = new Set();
+async function loadAlbumManifestViaProxy(albumFolderId) {
+  const res = await sharedAlbumProxyCall(albumFolderId, 'getAlbumManifest', {});
+  if (!res.ok) throw new Error('manifest_failed');
+  const data = await res.json();
+  const dates = [];
+  for (const d of (data.days || [])) {
+    if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) continue;
+    dates.push(d.date);
+    const key = _dayKey(albumFolderId, d.date);
+    let result = null;
+    if (d.json) result = _dayFromJson(d.json);
+    else if (d.files) result = _dayFromFiles(d.files);
+    _dayCache[key] = result ? { folderId: d.folderId, json: result } : { ..._dayCache[key], folderId: d.folderId };
+  }
+  return dates.sort();
+}
+
 async function listDayFoldersViaProxy(albumFolderId) {
+  // El manifest se usa UNA vez por álbum por carga de la app (trae todo y
+  // puebla _dayCache). Las llamadas siguientes usan el listado liviano de
+  // siempre (1 pedido) para ver días nuevos creados después.
+  if (proxyLabEnabled() && !_manifestLoaded.has(albumFolderId)) {
+    try {
+      const dates = await loadAlbumManifestViaProxy(albumFolderId);
+      _manifestLoaded.add(albumFolderId);
+      return dates;
+    } catch (e) { console.warn('manifest no disponible, uso el camino de siempre:', e); }
+  }
   const res = await sharedAlbumProxyCall(albumFolderId, 'listFolders', { parentId: albumFolderId });
   if (!res.ok) throw new Error('No se pudo listar los días de este álbum compartido');
   const data = await res.json();
@@ -2166,13 +2240,41 @@ async function loadDayFromDriveViaProxy(albumFolderId, dateStr) {
 // globalmente, así que reusar la misma caché no puede pisarse con la de un
 // álbum propio), pero pidiendo los bytes vía el proxy en vez de con el
 // token del invitado.
+const LAB_CACHE_NAME = 'legado-shared-media-v1';
+const LAB_CACHE_MAX_ENTRIES = 400;
+async function _labCacheGet(fileId) {
+  try {
+    const c = await caches.open(LAB_CACHE_NAME);
+    const r = await c.match('/__shared-media/' + fileId);
+    return r ? await r.blob() : null;
+  } catch { return null; }
+}
+async function _labCachePut(fileId, blob) {
+  try {
+    const c = await caches.open(LAB_CACHE_NAME);
+    await c.put('/__shared-media/' + fileId, new Response(blob, { headers: { 'Content-Type': blob.type || 'application/octet-stream' } }));
+    const keys = await c.keys();
+    // Tope simple por cantidad: borra lo más viejo (orden de inserción).
+    for (let i = 0; i < keys.length - LAB_CACHE_MAX_ENTRIES; i++) await c.delete(keys[i]);
+  } catch { /* la caché es una optimización, nunca puede romper nada */ }
+}
 async function fetchAuthImgUrlViaProxy(folderDriveId, fileId) {
   const cacheKey = `auth_${fileId}`;
   if (_imgCache[cacheKey]) return _imgCache[cacheKey];
   try {
-    const res = await sharedAlbumProxyCall(folderDriveId, 'getMediaBytes', { fileId });
-    if (!res.ok) return '';
-    const blob = await res.blob();
+    // v2.112 (modo rápido): caché persistente en el dispositivo (Cache
+    // Storage) con el archivo REAL tal cual, sin recomprimir ni achicar:
+    // la calidad es idéntica, solo se evita volver a bajarlo en la próxima
+    // visita. Un POST nunca se cachea solo por HTTP, por eso se hace a mano.
+    let blob = null;
+    const lab = proxyLabEnabled() && typeof caches !== 'undefined';
+    if (lab) blob = await _labCacheGet(fileId);
+    if (!blob) {
+      const res = await sharedAlbumProxyCall(folderDriveId, 'getMediaBytes', { fileId });
+      if (!res.ok) return '';
+      blob = await res.blob();
+      if (lab) _labCachePut(fileId, blob);
+    }
     const url = URL.createObjectURL(blob);
     _imgCache[cacheKey] = url;
     return url;

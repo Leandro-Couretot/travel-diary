@@ -1566,6 +1566,14 @@ audio { width: 100%; height: 32px; }
         <button type="button" class="btn btn-secondary" style="width:100%;padding:0.4rem;font-size:0.78rem;" onclick="sendTestIssue()">Enviar falla de prueba</button>
         <div class="help-tip" id="debug-issue-result">Guarda una fila de prueba en el registro de fallas y muestra su código.</div>
       </div>
+      <div style="margin-top:0.6rem;">
+        <button type="button" class="btn btn-secondary" style="width:100%;padding:0.4rem;font-size:0.78rem;" onclick="toggleLabFast()">Modo rápido de álbumes compartidos: <span id="debug-labfast-status">...</span></button>
+        <div class="help-tip">Solo tu cuenta. Carga el álbum en un solo pedido y guarda en el teléfono las fotos que ya viste (sin achicarlas). Apagalo para comparar.</div>
+      </div>
+      <div style="margin-top:0.6rem;">
+        <button type="button" class="btn btn-secondary" style="width:100%;padding:0.4rem;font-size:0.78rem;" onclick="openThumbLab()">Laboratorio de miniaturas</button>
+        <div class="help-tip">Compara tiempo, peso y nitidez de una foto de un álbum compartido: original vs. miniaturas de Drive.</div>
+      </div>
     </div>
     <div class="help-version">
       Versión <span id="app-version-label">1.77</span> ·
@@ -1596,7 +1604,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.111';
+const APP_VERSION = '2.112';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4605,6 +4613,127 @@ function sendTestIssue() {
     if (el) el.textContent = 'No se pudo enviar: ' + e.message;
   }
 }
+// v2.112: interruptor del "modo rápido" (ver proxyLabEnabled() en drive.js).
+function toggleLabFast() {
+  try { localStorage.setItem('td_lab_fast', localStorage.getItem('td_lab_fast') === '0' ? '1' : '0'); } catch (e) {}
+  updateLabFastStatus();
+}
+function updateLabFastStatus() {
+  const el = document.getElementById('debug-labfast-status');
+  if (el) el.textContent = proxyLabEnabled() ? 'ACTIVADO' : 'apagado';
+}
+
+// v2.112: laboratorio de miniaturas (solo cuenta del dev; el servidor también
+// lo exige, ver LAB_ALLOWED_EMAILS en shared-album-proxy.js). Mide en el
+// teléfono real y muestra las imágenes lado a lado para juzgar nitidez a ojo.
+let _labUrls = [];
+function closeThumbLab() {
+  const ov = document.getElementById('thumb-lab-overlay');
+  if (ov) ov.remove();
+  _labUrls.forEach(u => URL.revokeObjectURL(u));
+  _labUrls = [];
+}
+async function openThumbLab() {
+  closeThumbLab();
+  const ov = document.createElement('div');
+  ov.id = 'thumb-lab-overlay';
+  ov.className = 'modal-overlay open';
+  ov.style.zIndex = '400';
+  ov.innerHTML = '<div class="modal" style="max-width:520px;max-height:88vh;"><div class="modal-header"><div class="modal-title">Laboratorio de miniaturas</div><button class="modal-close" onclick="closeThumbLab()">×</button></div><div class="modal-body"><div style="display:flex;gap:0.5rem;"><select id="lab-album" class="form-input" style="flex:1;"></select><button type="button" class="btn btn-primary" onclick="runThumbLab()">Probar</button></div><pre id="lab-log" style="white-space:pre-wrap;font-size:0.72rem;margin-top:0.6rem;"></pre><div id="lab-imgs"></div></div></div>';
+  document.body.appendChild(ov);
+  const sel = document.getElementById('lab-album');
+  try {
+    const data = await loadSharedAlbums();
+    (data.sharedAlbums || []).forEach(a => {
+      const o = document.createElement('option');
+      o.value = a.folderDriveId; o.textContent = a.name || a.folderDriveId;
+      sel.appendChild(o);
+    });
+    if (!sel.options.length) document.getElementById('lab-log').textContent = 'No tenés álbumes compartidos para probar.';
+  } catch (e) { document.getElementById('lab-log').textContent = 'No se pudieron leer los álbumes compartidos: ' + e.message; }
+}
+async function runThumbLab() {
+  const sel = document.getElementById('lab-album');
+  const log = document.getElementById('lab-log');
+  const imgs = document.getElementById('lab-imgs');
+  if (!sel || !sel.value) return;
+  const folder = sel.value;
+  imgs.innerHTML = '';
+  _labUrls.forEach(u => URL.revokeObjectURL(u)); _labUrls = [];
+  const lines = [];
+  const say = (t) => { lines.push(t); log.textContent = lines.join('\n'); };
+  const ms = (t0) => Math.round(performance.now() - t0) + ' ms';
+  const dims = (blob) => new Promise(r => {
+    const u = URL.createObjectURL(blob);
+    const im = new Image();
+    im.onload = () => { URL.revokeObjectURL(u); r(im.naturalWidth + 'x' + im.naturalHeight); };
+    im.onerror = () => { URL.revokeObjectURL(u); r('?'); };
+    im.src = u;
+  });
+  const timing = (res) => res.headers.get('Server-Timing') || '(sin Server-Timing)';
+  try {
+    // 1) Costo de un pedido liviano vs. el manifest completo
+    let t = performance.now();
+    let r = await sharedAlbumProxyCall(folder, 'listFolders', { parentId: folder });
+    say('listFolders (1 pedido): ' + ms(t) + ' | ' + timing(r));
+    t = performance.now();
+    r = await sharedAlbumProxyCall(folder, 'getAlbumManifest', {});
+    if (!r.ok) { say('manifest FALLÓ: ' + r.status); return; }
+    const manifest = await r.json();
+    say('manifest (' + (manifest.days || []).length + ' días en 1 pedido): ' + ms(t) + ' | ' + timing(r));
+    // 2) Elegir una foto
+    let photo = null;
+    for (const d of (manifest.days || [])) {
+      const m = d.json ? (d.json.media || []).find(x => x.type === 'image' && x.driveFileId) : null;
+      if (m) { photo = m.driveFileId; break; }
+      const f = d.files ? d.files.find(x => (x.mimeType || '').startsWith('image/')) : null;
+      if (f) { photo = f.id; break; }
+    }
+    if (!photo) { say('No encontré ninguna foto en el álbum.'); return; }
+    // 3) Original
+    t = performance.now();
+    r = await sharedAlbumProxyCall(folder, 'getMediaBytes', { fileId: photo });
+    const full = await r.blob();
+    say('ORIGINAL: ' + ms(t) + ', ' + Math.round(full.size / 1024) + ' KB, ' + await dims(full) + ' | ' + timing(r));
+    // 4) Info de miniatura
+    r = await sharedAlbumProxyCall(folder, 'labThumbnailInfo', { fileId: photo });
+    const info = r.ok ? await r.json() : null;
+    say('thumbnailLink: ' + (info && info.thumbnailLink ? 'sí' : 'NO') + (info ? ' | original ' + info.width + 'x' + info.height : ' (error ' + r.status + ')'));
+    // 5) Miniaturas por el servidor
+    const blobs = { full };
+    for (const px of [400, 1200]) {
+      t = performance.now();
+      r = await sharedAlbumProxyCall(folder, 'labThumbnailBytes', { fileId: photo, px });
+      if (!r.ok) { say('miniatura s' + px + ' FALLÓ: ' + r.status); continue; }
+      const b = await r.blob();
+      blobs[px] = b;
+      say('MINIATURA s' + px + ' vía servidor: ' + ms(t) + ', ' + Math.round(b.size / 1024) + ' KB, ' + await dims(b) + ' | con token dueña: ' + (r.headers.get('X-Lab-Auth-Used') === '1' ? 'sí' : 'no') + ' | ' + timing(r));
+    }
+    // 6) Carga directa del navegador (sin pasar por el servidor)
+    if (info && info.thumbnailLink) {
+      const link = info.thumbnailLink.replace(/=s\d+$/, '=s400');
+      t = performance.now();
+      const ok = await new Promise(res => {
+        const im = new Image();
+        im.onload = () => res('carga OK ' + im.naturalWidth + 'x' + im.naturalHeight);
+        im.onerror = () => res('FALLA (no carga sin credenciales)');
+        setTimeout(() => res('TIMEOUT 8s'), 8000);
+        im.src = link;
+      });
+      say('Directo del navegador (=s400): ' + ok + ' en ' + ms(t));
+    }
+    // 7) Comparación visual: mismo tamaño en pantalla
+    const mk = (label, blob) => {
+      if (!blob) return '';
+      const u = URL.createObjectURL(blob); _labUrls.push(u);
+      return '<div style="margin-top:0.6rem;"><div style="font-size:0.72rem;">' + label + '</div><img src="' + u + '" style="width:100%;border-radius:6px;"></div>';
+    };
+    imgs.innerHTML = mk('Original (referencia)', blobs.full) + mk('Miniatura s1200', blobs[1200]) + mk('Miniatura s400 (como en una grilla)', blobs[400]);
+    say('Listo. Compará la nitidez de las imágenes de abajo (hacé zoom con los dedos).');
+  } catch (e) {
+    say('ERROR: ' + e.message);
+  }
+}
 function updateDebugPlanStatus() {
   // v1.60: la sección entera solo se muestra para la cuenta del dev
   // (isDebugPlanAllowed(), billing.js) — para cualquier otra cuenta el
@@ -4612,6 +4741,7 @@ function updateDebugPlanStatus() {
   // botón sería una promesa vacía.
   const section = document.getElementById('debug-plan-section');
   if (section) section.style.display = isDebugPlanAllowed() ? '' : 'none';
+  updateLabFastStatus();
   const el = document.getElementById('debug-plan-status');
   if (!el) return;
   const override = getDebugPlanOverride();
