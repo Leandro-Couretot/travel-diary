@@ -1490,7 +1490,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-body">
       <div id="bulk-step-drop">
         <div class="bulk-drop-zone" id="bulk-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
-        <input type="file" id="bulk-file-input" accept="image/*,video/*" multiple style="display:none;">
+        <input type="file" id="bulk-file-input" accept="image/*,video/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,.heic,.heif" multiple style="display:none;">
         <button type="button" class="btn btn-secondary" style="width:100%;margin-top:0.6rem;" id="bulk-import-drive-btn" onclick="importFromDrive()"><span data-icon="drive"></span> Importar desde Drive</button>
       </div>
       <div id="bulk-step-review" style="display:none;">
@@ -1511,7 +1511,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-body">
       <div id="bulk-diary-step-drop">
         <div class="bulk-drop-zone" id="bulk-diary-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
-        <input type="file" id="bulk-diary-file-input" accept="image/*,video/*" multiple style="display:none;">
+        <input type="file" id="bulk-diary-file-input" accept="image/*,video/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,.heic,.heif" multiple style="display:none;">
         <button type="button" class="btn btn-secondary" style="width:100%;margin-top:0.6rem;" id="bulk-diary-import-drive-btn" onclick="importFromDriveDiary()"><span data-icon="drive"></span> Importar desde Drive</button>
       </div>
       <div id="bulk-diary-step-review" style="display:none;">
@@ -1604,7 +1604,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.112';
+const APP_VERSION = '2.113';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -5264,7 +5264,7 @@ function renderDiaryPage() {
         <div class="drop-text"><strong>Subí fotos, videos o audios</strong></div>
         <div class="drop-sub">jpg, png, heic · mp4, mov · mp3, m4a · arrastrá o tocá acá</div>
       </div>
-      <input type="file" id="file-input" accept="image/*,audio/*,video/*" multiple>
+      <input type="file" id="file-input" accept="image/*,video/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,.heic,.heif,audio/*" multiple>
       <div class="recorder-row" id="recorder-row">
         <button class="btn-record" id="btn-record">${icon('mic')}</button>
         <div class="recorder-info">

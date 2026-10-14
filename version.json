@@ -1,4 +1,4 @@
 {
-  "version": "2.112",
-  "changelog": "Mejoras internas para que los álbumes compartidos carguen más rápido."
+  "version": "2.113",
+  "changelog": "Ahora se pueden elegir videos (.mp4, .mov) al importar desde Google Drive en el iPhone."
 }
