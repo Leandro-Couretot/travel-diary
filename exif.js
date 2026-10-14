@@ -12,7 +12,7 @@ async function getFileDateStr(file) {
     const type = file.type || '';
     const isVideo = type.startsWith('video/') || /\.(mp4|mov|m4v)$/.test(name);
     const isHeic = type.startsWith('image/heic') || type.startsWith('image/heif') || /\.(heic|heif)$/.test(name);
-    if (type.startsWith('image/jpeg') || type.startsWith('image/jpg')) {
+    if (type.startsWith('image/jpeg') || type.startsWith('image/jpg') || /\.(jpe?g)$/.test(name)) {
       const date = await readJpegExifDate(file);
       if (date) return date;
     }
@@ -196,19 +196,23 @@ function parseExifSegment(view) {
   if (getU16(2) !== 0x002A) return null;
   const ifdOffset = getU32(4);
 
-  // Read IFD0
-  const date = readIFDForDate(getU16, getU32, getString, ifdOffset, le, view, tiffOffset);
-  if (date) return date;
-
-  // Try SubIFD (ExifIFD) — tag 0x8769
+  // v2.115: prioridad de tags. Antes se leía primero IFD0 aceptando también
+  // DateTime (0x0132), que es la fecha de ÚLTIMA MODIFICACIÓN del archivo
+  // (la pone cualquier editor/app que re-guarda la foto, a veces "hoy").
+  // La fecha real de la toma es DateTimeOriginal/Digitized (0x9003/0x9004),
+  // que vive en el ExifIFD; DateTime queda solo como último recurso.
   const subIfdOffset = findTag(getU16, getU32, ifdOffset, 0x8769);
+  const CAPTURE_TAGS = [0x9003, 0x9004];
   if (subIfdOffset) {
-    return readIFDForDate(getU16, getU32, getString, subIfdOffset, le, view, tiffOffset);
+    const d1 = readIFDForDate(getU16, getU32, getString, subIfdOffset, le, view, tiffOffset, CAPTURE_TAGS);
+    if (d1) return d1;
   }
-  return null;
+  const d2 = readIFDForDate(getU16, getU32, getString, ifdOffset, le, view, tiffOffset, CAPTURE_TAGS);
+  if (d2) return d2;
+  return readIFDForDate(getU16, getU32, getString, ifdOffset, le, view, tiffOffset, [0x0132]);
 }
 
-function readIFDForDate(getU16, getU32, getString, ifdOffset, le, view, tiffOffset) {
+function readIFDForDate(getU16, getU32, getString, ifdOffset, le, view, tiffOffset, tags) {
   if (ifdOffset + 2 > view.byteLength) return null;
   const count = getU16(ifdOffset);
   for (let i = 0; i < count; i++) {
@@ -216,7 +220,8 @@ function readIFDForDate(getU16, getU32, getString, ifdOffset, le, view, tiffOffs
     if (entryOffset + 12 > view.byteLength) break;
     const tag = getU16(entryOffset);
     // DateTimeOriginal = 0x9003, DateTimeDigitized = 0x9004, DateTime = 0x0132
-    if (tag === 0x9003 || tag === 0x9004 || tag === 0x0132) {
+    // (qué tags se aceptan lo decide el llamador, ver parseExifSegment)
+    if (tags.includes(tag)) {
       const type = getU16(entryOffset + 2);
       const count = getU32(entryOffset + 4);
       const valueOffset = getU32(entryOffset + 8);
