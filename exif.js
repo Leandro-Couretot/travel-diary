@@ -8,15 +8,30 @@
  */
 async function getFileDateStr(file) {
   try {
-    if (file.type.startsWith('image/jpeg') || file.type.startsWith('image/jpg')) {
+    const name = (file.name || '').toLowerCase();
+    const type = file.type || '';
+    const isVideo = type.startsWith('video/') || /\.(mp4|mov|m4v)$/.test(name);
+    const isHeic = type.startsWith('image/heic') || type.startsWith('image/heif') || /\.(heic|heif)$/.test(name);
+    if (type.startsWith('image/jpeg') || type.startsWith('image/jpg')) {
       const date = await readJpegExifDate(file);
       if (date) return date;
     }
-    if (file.type.startsWith('image/heic') || file.type.startsWith('image/heif')) {
-      const date = await readJpegExifDate(file); // HEIC also uses EXIF
+    if (isHeic) {
+      // v2.114: HEIC (el formato de foto de iPhone) NO es un JPEG: su EXIF
+      // vive dentro de un contenedor ISO-BMFF, así que readJpegExifDate()
+      // siempre devolvía null y la foto caía a lastModified (la fecha en que
+      // se bajó el archivo, no la de la foto).
+      const date = await readHeicExifDate(file);
       if (date) return date;
     }
-    if (file.type.startsWith('video/') || file.type.startsWith('image/')) {
+    if (isVideo) {
+      // v2.114: la fecha real de grabación de un MP4/MOV vive en el átomo
+      // `mvhd` (creation_time) dentro del propio archivo. lastModified de un
+      // video bajado de Drive suele ser el momento de la descarga ("hoy").
+      const date = await readMp4CreationDate((start, len) => readSlice(file, start, len), file.size);
+      if (date) return date;
+    }
+    if (type.startsWith('video/') || type.startsWith('image/') || isVideo || isHeic) {
       // Fallback: use file lastModified (not ideal but better than nothing)
       if (file.lastModified) {
         // Bug real (v2.13, ver CLAUDE.md): toISOString() da la fecha en
@@ -24,15 +39,96 @@ async function getFileDateStr(file) {
         // en un huso negativo (Argentina, UTC-3) podía quedar fechado al
         // día SIGUIENTE. Se arma la fecha con los componentes locales del
         // propio Date, nunca con su representación UTC.
-        const d = new Date(file.lastModified);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
+        return _localDateFromMs(file.lastModified);
       }
     }
   } catch(e) {
     console.warn('EXIF read error:', e);
+  }
+  return null;
+}
+
+function _localDateFromMs(ms) {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * v2.114: fecha de grabación de un video MP4/MOV/M4V leyendo el átomo `mvhd`
+ * (creation_time: segundos desde 1904-01-01 UTC) del contenedor ISO-BMFF.
+ * `readRange(start, len)` devuelve un ArrayBuffer (de un File local o de un
+ * pedido con Range a Drive), así que sirve para los dos caminos de importación.
+ * Recorre solo las cabeceras de los átomos de primer nivel (saltando `mdat`,
+ * que es lo pesado): son unas pocas lecturas de 16 bytes más una de ~64 bytes
+ * dentro de `moov`. La fecha se devuelve en el huso local del navegador.
+ * Devuelve null si no es un MP4/MOV válido o si la fecha es 0/absurda.
+ */
+async function readMp4CreationDate(readRange, totalSize) {
+  const EPOCH_1904_TO_1970 = 2082844800; // segundos
+  let offset = 0;
+  for (let i = 0; i < 40; i++) {
+    if (totalSize && offset + 8 > totalSize) return null;
+    const head = await readRange(offset, 16);
+    if (!head || head.byteLength < 8) return null;
+    const v = new DataView(head);
+    let size = v.getUint32(0);
+    const type = String.fromCharCode(v.getUint8(4), v.getUint8(5), v.getUint8(6), v.getUint8(7));
+    let headerLen = 8;
+    if (size === 1) {
+      if (head.byteLength < 16) return null;
+      size = v.getUint32(8) * 4294967296 + v.getUint32(12);
+      headerLen = 16;
+    } else if (size === 0) {
+      size = totalSize ? totalSize - offset : 0; // "hasta el final del archivo"
+    }
+    if (type === 'moov') {
+      // mvhd es el primer hijo de moov: header(8) + version/flags(4) + fechas.
+      const body = await readRange(offset + headerLen, 40);
+      if (!body || body.byteLength < 20) return null;
+      const b = new DataView(body);
+      const childType = String.fromCharCode(b.getUint8(4), b.getUint8(5), b.getUint8(6), b.getUint8(7));
+      if (childType !== 'mvhd') return null;
+      const version = b.getUint8(8);
+      let secs;
+      if (version === 1) {
+        if (body.byteLength < 20 + 4) return null;
+        secs = b.getUint32(12) * 4294967296 + b.getUint32(16);
+      } else {
+        secs = b.getUint32(12);
+      }
+      if (!secs) return null;
+      const ms = (secs - EPOCH_1904_TO_1970) * 1000;
+      const y = new Date(ms).getUTCFullYear();
+      if (!(ms > 0) || y < 2000 || ms > Date.now() + 86400000) return null;
+      return _localDateFromMs(ms);
+    }
+    if (!size || size < headerLen) return null;
+    offset += size;
+  }
+  return null;
+}
+
+/**
+ * v2.114: EXIF de una foto HEIC/HEIF (iPhone). El EXIF va dentro de un item del
+ * contenedor ISO-BMFF; en la práctica queda al principio del archivo, así que
+ * alcanza con buscar la firma "Exif\0\0" + cabecera TIFF ("MM\0*" o "II*\0")
+ * en los primeros 512 KB y reusar el mismo parser que ya usamos para JPEG.
+ */
+async function readHeicExifDate(file) {
+  const buf = await readSlice(file, 0, 524288);
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i + 12 < bytes.length; i++) {
+    if (bytes[i] === 0x45 && bytes[i + 1] === 0x78 && bytes[i + 2] === 0x69 && bytes[i + 3] === 0x66 &&
+        bytes[i + 4] === 0 && bytes[i + 5] === 0) {
+      const a = bytes[i + 6], b = bytes[i + 7], c = bytes[i + 8], d = bytes[i + 9];
+      const tiffOk = (a === 0x4D && b === 0x4D && c === 0 && d === 0x2A) || (a === 0x49 && b === 0x49 && c === 0x2A && d === 0);
+      if (!tiffOk) continue;
+      const view = new DataView(buf, i, Math.min(65536, bytes.length - i));
+      try { const date = parseExifSegment(view); if (date) return date; } catch {}
+    }
   }
   return null;
 }

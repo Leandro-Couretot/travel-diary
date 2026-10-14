@@ -829,9 +829,34 @@ async function openDrivePhotoPicker(onOpened) {
 // sin bajar bytes: `imageMediaMetadata.time` (la fecha EXIF original, si
 // Drive la pudo leer) y `createdTime` como respaldo.
 async function getDriveFileImportMeta(fileId) {
-  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,createdTime,imageMediaMetadata(time)`);
+  const res = await driveReq('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,createdTime,modifiedTime,size,imageMediaMetadata(time)`);
   if (!res.ok) throw new Error('No se pudo leer la información del archivo elegido');
   return await res.json();
+}
+
+// v2.114: fecha real de grabación de un video de Drive. La API no la expone
+// (videoMediaMetadata solo trae ancho/alto/duración), pero está dentro del
+// propio archivo (átomo `mvhd`, ver readMp4CreationDate() en exif.js). Se
+// leen solo unos pocos bytes con pedidos Range, nunca el video entero.
+// Best-effort: si el pedido falla (CORS, red, formato raro) devuelve null y
+// quien llama cae a createdTime/modifiedTime.
+async function getDriveVideoCreationDate(fileId, size) {
+  const total = Number(size) || 0;
+  const readRange = async (start, len) => {
+    const end = total ? Math.min(start + len, total) - 1 : start + len - 1;
+    if (total && start > end) return new ArrayBuffer(0);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { 'Authorization': `Bearer ${driveToken}`, 'Range': `bytes=${start}-${end}` },
+        signal: controller.signal,
+      });
+      if (!res.ok && res.status !== 206) throw new Error('range_failed');
+      return await res.arrayBuffer();
+    } finally { clearTimeout(timer); }
+  };
+  try { return await readMp4CreationDate(readRange, total); } catch { return null; }
 }
 
 // Copia `fileId` (un archivo que no creó la app — elegido a mano por el

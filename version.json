@@ -1,4 +1,4 @@
 {
-  "version": "2.113",
-  "changelog": "Ahora se pueden elegir videos (.mp4, .mov) al importar desde Google Drive en el iPhone."
+  "version": "2.114",
+  "changelog": "Los videos y las fotos de iPhone ahora toman la fecha real en que se grabaron, no la del día que los importás."
 }

@@ -1604,7 +1604,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.113';
+const APP_VERSION = '2.114';
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -4126,7 +4126,11 @@ function driveImportDateStr(meta) {
     const m = /^(\d{4}):(\d{2}):(\d{2})/.exec(t);
     if (m && m[1] !== '0000') return `${m[1]}-${m[2]}-${m[3]}`;
   }
-  if (meta.createdTime) return localDateStr(new Date(meta.createdTime));
+  // v2.114: `createdTime` en Drive es cuándo se SUBIÓ el archivo (a veces
+  // "hoy"); `modifiedTime` suele conservar la fecha original del archivo
+  // cuando se subió desde la compu/web. Se toma la más vieja de las dos.
+  const times = [meta.createdTime, meta.modifiedTime].filter(Boolean).map(t => new Date(t).getTime()).filter(n => !isNaN(n));
+  if (times.length) return localDateStr(new Date(Math.min(...times)));
   return null;
 }
 
@@ -4139,7 +4143,14 @@ async function groupDrivePickerItems(items) {
   const dated = {}; const undated = [];
   await Promise.all(items.map(async item => {
     let date = null;
-    try { date = driveImportDateStr(await getDriveFileImportMeta(item.id)); } catch {}
+    try {
+      const meta = await getDriveFileImportMeta(item.id);
+      // v2.114: un video no trae fecha EXIF en la API de Drive; la fecha real
+      // de grabación está dentro del archivo (mvhd) y se lee con pedidos Range.
+      const isVideo = (item.mimeType || '').startsWith('video/');
+      if (isVideo) { try { date = await getDriveVideoCreationDate(item.id, meta.size); } catch {} }
+      if (!date) date = driveImportDateStr(meta);
+    } catch {}
     const pseudo = { name: item.name, type: item.mimeType, _driveImport: true, _driveFileId: item.id };
     if (date) { if (!dated[date]) dated[date] = []; dated[date].push(pseudo); }
     else undated.push(pseudo);
