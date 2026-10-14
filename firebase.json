@@ -23,6 +23,7 @@
       { "source": "/api/shared-album/invite/join", "function": "sharedAlbumInviteJoin" },
       { "source": "/api/shared-album/invite/revoke", "function": "sharedAlbumInviteRevoke" },
       { "source": "/api/shared-album/invite/list", "function": "sharedAlbumInviteList" },
+      { "source": "/api/share-invitations", "function": "shareInvitations" },
       { "source": "/:slug", "function": "campaignLink" }
     ],
     "headers": [

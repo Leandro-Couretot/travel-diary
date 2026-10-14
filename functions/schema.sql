@@ -215,12 +215,37 @@ create table if not exists travel_diary.shared_album_members (
   primary key (folder_drive_id, guest_google_sub)
 );
 
+-- Invitaciones pendientes a álbumes compartidos por mail (v2.116) — ver
+-- CLAUDE.md. Cuando una dueña comparte un álbum (Lector/Co-propietario) con un
+-- mail, se registra acá para que el invitado se entere DENTRO de la app
+-- (menú del avatar → Notificaciones) sin depender de que la dueña le pase el
+-- link a mano. El permiso real de Drive sigue siendo la única autorización de
+-- acceso; esta tabla solo avisa. `guest_email` siempre en minúscula.
+create table if not exists travel_diary.share_invitations (
+  id               uuid primary key default gen_random_uuid(),
+  guest_email      text not null,
+  folder_drive_id  text not null,
+  album_name       text not null,
+  date_from        text,
+  date_to          text,
+  role             text not null default 'reader',
+  owner_google_sub text not null,
+  owner_email      text,
+  owner_name       text,
+  status           text not null default 'pending' check (status in ('pending','accepted','dismissed')),
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (guest_email, folder_drive_id)
+);
+create index if not exists share_invitations_guest_idx on travel_diary.share_invitations (guest_email, status);
+
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 alter table travel_diary.usage_events enable row level security;
 alter table travel_diary.error_log enable row level security;
 alter table travel_diary.campaign_links enable row level security;
 alter table travel_diary.shared_album_owner enable row level security;
+alter table travel_diary.share_invitations enable row level security;
 alter table travel_diary.shared_album_invites enable row level security;
 alter table travel_diary.shared_album_members enable row level security;
 -- Sin policies = solo la service_role key (usada por las Cloud Functions)

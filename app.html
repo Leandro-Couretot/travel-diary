@@ -323,6 +323,17 @@ img { transition: opacity 0.25s ease; }
 }
 .fab-btn:hover { background: var(--accent); }
 
+.account-btn { position: relative; background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; border-radius: 50%; }
+.header-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: var(--accent-light); color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+.account-badge { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--red); border: 2px solid var(--surface); }
+.account-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--red); color: #fff; font-size: 0.7rem; line-height: 18px; text-align: center; }
+.notif-item { padding: 0.8rem 0; border-bottom: 1px solid var(--ink-faint); }
+.notif-item:last-child { border-bottom: none; }
+.notif-text { font-size: 0.9rem; color: var(--ink); line-height: 1.45; }
+.notif-msg { font-size: 0.8rem; color: var(--red); margin-top: 0.3rem; }
+.notif-msg:empty { display: none; }
+.notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.notif-actions .btn { flex: 1; min-width: 0; }
 .sheet-overlay {
   display: none; position: fixed; inset: 0; background: rgba(26,26,24,0.45);
   z-index: 200; align-items: flex-end; justify-content: center;
@@ -1300,6 +1311,36 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
+<!-- v2.116: menú de la cuenta (avatar del header de Home) y lista de
+     notificaciones (álbumes compartidos pendientes de aceptar). -->
+<div class="sheet-overlay" id="modal-account-sheet">
+  <div class="bottom-sheet">
+    <div class="bottom-sheet-handle"></div>
+    <button class="bottom-sheet-row" onclick="openNotificationsFromSheet()">
+      <span class="bottom-sheet-icon" data-icon="share"></span>
+      <span class="bottom-sheet-text">
+        <span class="bottom-sheet-label">Notificaciones <span class="account-count" id="account-sheet-count" style="display:none;"></span></span>
+        <span class="bottom-sheet-sub" id="account-sheet-notif-sub">Álbumes que te compartieron</span>
+      </span>
+    </button>
+    <div class="bottom-sheet-divider"></div>
+    <button class="bottom-sheet-row" onclick="closeAccountSheet(); openConsentPrefsModal();">
+      <span class="bottom-sheet-icon" data-icon="check"></span>
+      <span class="bottom-sheet-text">
+        <span class="bottom-sheet-label">Preferencias de cookies</span>
+        <span class="bottom-sheet-sub">Elegí qué medición y difusión aceptás</span>
+      </span>
+    </button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-notifications">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Notificaciones</div><button class="modal-close" onclick="closeNotificationsModal()">×</button></div>
+    <div class="modal-body"><div id="notifications-list"></div></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-book-layout">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Layout de la página</div><button class="modal-close" onclick="closeBookLayoutModal()">×</button></div>
@@ -1604,7 +1645,8 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.115';
+const APP_VERSION = '2.116';
+let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -1994,11 +2036,17 @@ function renderHomeHeader() {
   // refreshSubscriptionStatus() lo resuelven en paralelo, sin bloquear) — sin
   // foto no se arma ningún <img>, para no repetir el bug del ícono roto de
   // v1.27 (mejor un hueco chico que un ícono de "imagen sin cargar").
-  const avatarHtml = currentUserPicture
-    ? `<img class="header-avatar" src="${escHtml(currentUserPicture)}" alt="${escHtml(currentUserName || 'Cuenta conectada')}" title="${escHtml(currentUserName || '')}" referrerpolicy="no-referrer" onerror="this.remove()">`
+  // v2.116: el avatar pasa a ser un botón que abre el menú de la cuenta
+  // (Notificaciones / Preferencias de cookies). Sin foto todavía, igual hay
+  // botón (con la inicial del nombre o un ícono) para no perder la entrada.
+  const inner = currentUserPicture
+    ? `<img class="header-avatar" src="${escHtml(currentUserPicture)}" alt="${escHtml(currentUserName || 'Cuenta conectada')}" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : `<span class="header-avatar header-avatar-fallback">${currentUserName ? escHtml(currentUserName.trim().charAt(0).toUpperCase()) : '·'}</span>`;
+  const accountBtn = isDriveConnected()
+    ? `<button class="account-btn" id="account-btn" onclick="openAccountSheet()" title="Tu cuenta" aria-label="Menú de la cuenta">${inner}<span class="account-badge" id="account-badge" style="display:${pendingInvitations.length ? 'block' : 'none'};"></span></button>`
     : '';
   document.getElementById('header-actions').innerHTML = `
-    ${avatarHtml}
+    ${accountBtn}
     <span style="font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;">v${APP_VERSION}</span>
     <button class="btn-nav" onclick="openHelp()" title="Ayuda">?</button>`;
 }
@@ -2101,6 +2149,10 @@ function decidePostLoginOnboarding(isNewUser) {
 // esto — queda fija como el punto de corte real.
 const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
+  { version: '2.116', items: [
+    'Tocá tu foto de perfil, arriba a la derecha: ahí vas a ver las notificaciones y tus preferencias de cookies.',
+    'Cuando alguien te comparta un álbum, te avisamos dentro de la app y lo aceptás con un toque.',
+  ]},
   { version: '2.103', items: [
     '"Importar desde Drive" ahora funciona en iPhone: se abre el selector de archivos del teléfono y desde "Explorar" elegís Google Drive.',
   ]},
@@ -2163,6 +2215,120 @@ function showFirstAlbumTipModal() {
     onCta: () => openNewAlbumModal(),
   });
 }
+// ─── Notificaciones de álbumes compartidos (v2.116) ──────────────
+// Cuando alguien comparte un álbum con tu mail (Lector/Co-propietario), queda
+// una invitación pendiente en Supabase (ver functions/share-invitations.js).
+// Se lee al abrir Home y se muestra en el menú del avatar (badge) y en un
+// aviso al entrar. Aceptar usa el mismo joinSharedAlbum() de siempre (incluye
+// el cupo gratis: si ya está lleno, el álbum entra archivado).
+let invitationsNoticeShown = false; // un solo aviso al entrar por carga de página
+
+function updateAccountBadge() {
+  const n = pendingInvitations.length;
+  const badge = document.getElementById('account-badge');
+  if (badge) badge.style.display = n ? 'block' : 'none';
+  const cnt = document.getElementById('account-sheet-count');
+  if (cnt) { cnt.textContent = n; cnt.style.display = n ? 'inline-block' : 'none'; }
+  const sub = document.getElementById('account-sheet-notif-sub');
+  if (sub) sub.textContent = n ? (n === 1 ? '1 álbum te espera' : `${n} álbumes te esperan`) : 'No tenés nada pendiente';
+}
+
+async function refreshPendingInvitations(sharedAlbumsList) {
+  if (!isDriveConnected()) return;
+  const token = await waitForSessionToken(6000);
+  if (!token) return;
+  const list = await listShareInvitations();
+  const joined = new Set((sharedAlbumsList || []).map(a => a.folderDriveId));
+  // Ya está en tus compartidos (por ejemplo, aceptaste con el link): se da por
+  // resuelta en silencio, para que no quede una notificación fantasma.
+  pendingInvitations = list.filter(inv => {
+    if (joined.has(inv.folderDriveId)) { resolveShareInvitation(inv.folderDriveId, 'accepted'); return false; }
+    return true;
+  });
+  updateAccountBadge();
+  if (pendingInvitations.length && !invitationsNoticeShown) {
+    invitationsNoticeShown = true;
+    // No pisar un popup de onboarding/novedades que ya esté en pantalla: el
+    // badge del avatar queda igual como recordatorio.
+    const busy = document.querySelector('.modal-overlay.open, .sheet-overlay.open');
+    if (busy || currentView !== 'home') return;
+    const n = pendingInvitations.length;
+    showOnboardingInfoModal({
+      title: n === 1 ? 'Te compartieron un álbum' : `Te compartieron ${n} álbumes`,
+      itemsHtml: `<div class="help-item"><span class="help-item-dot">${icon('share')}</span><span>${n === 1
+        ? `<strong>${escHtml(pendingInvitations[0].ownerName || pendingInvitations[0].ownerEmail || 'Alguien')}</strong> compartió <em>${escHtml(pendingInvitations[0].albumName)}</em> con vos.`
+        : 'Tenés álbumes esperando que los aceptes.'}</span></div>`,
+      ctaLabel: 'Ver',
+      onCta: () => openNotificationsModal(),
+    });
+  }
+}
+
+function openAccountSheet() {
+  updateAccountBadge();
+  document.getElementById('modal-account-sheet').classList.add('open');
+}
+function closeAccountSheet() { document.getElementById('modal-account-sheet').classList.remove('open'); }
+function openNotificationsFromSheet() { closeAccountSheet(); openNotificationsModal(); }
+
+function renderNotificationsList() {
+  const el = document.getElementById('notifications-list');
+  if (!pendingInvitations.length) {
+    el.innerHTML = '<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">No tenés nada pendiente. Cuando alguien te comparta un álbum, te va a aparecer acá.</p>';
+    return;
+  }
+  el.innerHTML = pendingInvitations.map((inv, i) => {
+    const who = escHtml(inv.ownerName || inv.ownerEmail || 'Alguien');
+    const roleTxt = inv.role === 'writer' ? 'Podés editarlo' : 'Podés verlo';
+    return `<div class="notif-item" id="notif-${i}">
+      <div class="notif-text"><strong>${who}</strong> te compartió <em>${escHtml(inv.albumName)}</em>. ${roleTxt}.</div>
+      <div class="notif-msg" id="notif-msg-${i}"></div>
+      <div class="notif-actions">
+        <button class="btn btn-primary" id="notif-accept-${i}" onclick="acceptInvitation(${i})">Aceptar</button>
+        <button class="btn btn-secondary" id="notif-dismiss-${i}" onclick="dismissInvitation(${i})">Descartar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function openNotificationsModal() {
+  renderNotificationsList();
+  document.getElementById('modal-notifications').classList.add('open');
+}
+function closeNotificationsModal() { document.getElementById('modal-notifications').classList.remove('open'); }
+
+async function acceptInvitation(i) {
+  const inv = pendingInvitations[i];
+  if (!inv) return;
+  const accept = document.getElementById('notif-accept-' + i);
+  const dismiss = document.getElementById('notif-dismiss-' + i);
+  const msg = document.getElementById('notif-msg-' + i);
+  accept.disabled = true; dismiss.disabled = true; accept.textContent = 'Agregando...';
+  try {
+    const result = await joinSharedAlbum(inv.folderDriveId, inv.albumName, inv.dateFrom, inv.dateTo, isPaidUser(), FREE_ALBUM_LIMIT);
+    resolveShareInvitation(inv.folderDriveId, 'accepted');
+    pendingInvitations = pendingInvitations.filter(x => x.folderDriveId !== inv.folderDriveId);
+    updateAccountBadge();
+    const archived = !result.alreadyJoined && result.archivedByQuota;
+    document.getElementById('notif-' + i).innerHTML = `<div class="notif-text"><em>${escHtml(inv.albumName)}</em>: ${archived
+      ? `agregado, pero quedó en "Archivados" porque ya llegaste al cupo gratis de ${FREE_ALBUM_LIMIT} álbumes. No se pierde nada.`
+      : 'agregado a tus álbumes.'}</div>`;
+    if (currentView === 'home') renderAlbums();
+  } catch (e) {
+    msg.textContent = 'No se pudo agregar: ' + e.message;
+    accept.disabled = false; dismiss.disabled = false; accept.textContent = 'Aceptar';
+  }
+}
+async function dismissInvitation(i) {
+  const inv = pendingInvitations[i];
+  if (!inv) return;
+  resolveShareInvitation(inv.folderDriveId, 'dismissed');
+  pendingInvitations = pendingInvitations.filter(x => x.folderDriveId !== inv.folderDriveId);
+  updateAccountBadge();
+  renderNotificationsList();
+}
+document.getElementById('modal-account-sheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeAccountSheet(); });
+document.getElementById('modal-notifications').addEventListener('click', e => { if (e.target === e.currentTarget) closeNotificationsModal(); });
+
 // Único modal reusado por los 3 popups de arriba (bienvenida / primer
 // álbum / novedades) — misma idea que customConfirm(), arma el contenido
 // a mano en vez de tener 3 modales estáticos casi idénticos en el HTML.
@@ -2764,6 +2930,8 @@ async function renderAlbums() {
     const v = pendingOnboardingIsNewUser; pendingOnboardingIsNewUser = null;
     maybeShowPostLoginOnboarding(v);
   }
+  // v2.116: invitaciones a álbumes compartidos (fire-and-forget, nunca bloquea Home).
+  refreshPendingInvitations(allSharedAlbums).catch(() => {});
 
   if (coverObserver) coverObserver.disconnect();
   coverObserver = new IntersectionObserver((entries, obs) => {
@@ -3954,6 +4122,7 @@ async function submitShare() {
     }
     trackEvent('album_shared', { role: shareRole });
     if (!isSharedTarget) registerSharedAlbumOwner(folderId); // ya registrada — es la dueña real quien se registró la primera vez que compartió
+    registerShareInvitation(email, folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo, shareRole);
     const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
     const roleLabel = shareRole === 'writer' ? 'edición' : 'lectura';
     try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }
@@ -3971,6 +4140,7 @@ async function submitShare() {
       if (applied) {
         trackEvent('album_shared', { role: shareRole });
         registerSharedAlbumOwner(folderId);
+        registerShareInvitation(email, folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo, shareRole);
         const link = generateShareLink(folderId, shareTargetAlbum.name, shareTargetAlbum.dateFrom, shareTargetAlbum.dateTo);
         const roleLabel = shareRole === 'writer' ? 'edición' : 'lectura';
         try { await navigator.clipboard.writeText(link); okEl.textContent = `✓ Compartido con ${email} (permiso de ${roleLabel}). Link copiado al portapapeles.`; }

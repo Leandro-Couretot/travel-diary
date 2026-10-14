@@ -1,4 +1,4 @@
 {
-  "version": "2.115",
-  "changelog": "Las fotos ahora toman la fecha en que se sacaron, no la de la última vez que se editaron."
+  "version": "2.116",
+  "changelog": "Nuevo menú en tu foto de perfil: notificaciones de álbumes compartidos y preferencias de cookies."
 }

@@ -1540,6 +1540,34 @@ async function registerSharedAlbumOwner(folderDriveId) {
   } catch (e) { console.warn('No se pudo registrar la titularidad del álbum compartido:', e); }
 }
 
+// v2.116: invitaciones pendientes a álbumes compartidos (ver CLAUDE.md →
+// "Notificaciones de álbumes compartidos"). Todo best-effort: un fallo acá
+// nunca puede romper el compartir en sí ni la carga de Home.
+async function _shareInvitationsCall(payload) {
+  const res = await fetch('/api/share-invitations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('share-invitations ' + res.status);
+  return res.json();
+}
+async function registerShareInvitation(guestEmail, folderDriveId, albumName, dateFrom, dateTo, role) {
+  try {
+    await _shareInvitationsCall({ action: 'create', guestEmail, folderDriveId, albumName, dateFrom: dateFrom || null, dateTo: dateTo || null, role });
+  } catch (e) { console.warn('No se pudo registrar la invitación pendiente:', e); }
+}
+async function listShareInvitations() {
+  try {
+    const data = await _shareInvitationsCall({ action: 'list' });
+    return data.invitations || [];
+  } catch (e) { console.warn('No se pudieron leer las invitaciones pendientes:', e); return []; }
+}
+async function resolveShareInvitation(folderDriveId, status) {
+  try { await _shareInvitationsCall({ action: 'resolve', folderDriveId, status }); }
+  catch (e) { console.warn('No se pudo actualizar la invitación:', e); }
+}
+
 // v2.53: un DriveChildAccessError no siempre significa que Drive rechazó
 // TODO el pedido — en la práctica se vio un caso real donde el permiso de
 // la CARPETA se crea igual (queda compartida de verdad) aunque la API
