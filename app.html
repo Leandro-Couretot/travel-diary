@@ -1323,14 +1323,6 @@ audio { width: 100%; height: 32px; }
         <span class="bottom-sheet-sub" id="account-sheet-notif-sub">Álbumes que te compartieron</span>
       </span>
     </button>
-    <div class="bottom-sheet-divider"></div>
-    <button class="bottom-sheet-row" onclick="closeAccountSheet(); openConsentPrefsModal();">
-      <span class="bottom-sheet-icon" data-icon="check"></span>
-      <span class="bottom-sheet-text">
-        <span class="bottom-sheet-label">Preferencias de cookies</span>
-        <span class="bottom-sheet-sub">Elegí qué medición y difusión aceptás</span>
-      </span>
-    </button>
   </div>
 </div>
 
@@ -1645,7 +1637,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.116';
+const APP_VERSION = '2.117';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
