@@ -203,7 +203,9 @@ img { transition: opacity 0.25s ease; }
 .album-info { padding: 1rem 1.25rem 1.25rem; }
 .album-name { font-family: 'DM Serif Display', serif; font-size: 1.2rem; letter-spacing: -0.01em; margin-bottom: 0.3rem; line-height: 1.2; }
 .album-dates { font-size: 0.75rem; color: var(--ink-muted); letter-spacing: 0.04em; }
-.album-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
+.album-meta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.35rem 0.5rem; min-width: 0; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ink-faint); }
+.album-meta-owner { display: flex; align-items: center; gap: 0.4rem; min-width: 0; max-width: 100%; margin-left: auto; }
+.album-owner-email { font-size: 0.7rem; color: var(--ink-faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .album-days-count { font-size: 0.75rem; color: var(--ink-muted); }
 .album-arrow { font-size: 0.9rem; color: var(--ink-faint); transition: color 0.15s, transform 0.15s; }
 .album-card.archived { cursor: default; }
@@ -220,7 +222,7 @@ img { transition: opacity 0.25s ease; }
   white-space: normal; text-align: center; line-height: 1.25;
 }
 .album-card:hover .album-arrow { color: var(--accent); transform: translateX(3px); }
-.album-card-wrapper { position: relative; }
+.album-card-wrapper { position: relative; min-width: 0; }
 .album-menu-btn {
   position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
   background: rgba(0,0,0,0.4); border: none; border-radius: 4px;
@@ -297,7 +299,7 @@ img { transition: opacity 0.25s ease; }
 @keyframes skeletonShimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 @media (max-width: 500px) {
   #view-home main { padding: 2rem 1rem 5rem; }
-  .albums-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .albums-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .album-info { padding: 0.75rem 1rem 1rem; }
 }
 
@@ -1629,7 +1631,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.118';
+const APP_VERSION = '2.119';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -3154,8 +3156,8 @@ function buildSharedAlbumCard(album, idx, grid) {
       <div class="album-dates" id="dates-sh-${escHtml(album.folderDriveId)}">${album.dateFrom ? formatDate(album.dateFrom) : ''} ${album.dateTo ? ('a ' + formatDate(album.dateTo)) : ''}</div>
       <div class="album-meta">
         <div class="album-days-count" id="summary-sh-${escHtml(album.folderDriveId)}">...</div>
-        <div style="display:flex;align-items:center;gap:0.4rem;">
-          <div class="album-days-count" style="font-size:0.7rem;color:var(--ink-faint);">${escHtml(album.ownerEmail || '')}</div>
+        <div class="album-meta-owner">
+          <div class="album-owner-email">${escHtml(album.ownerEmail || '')}</div>
           <div class="album-arrow">→</div>
         </div>
       </div>

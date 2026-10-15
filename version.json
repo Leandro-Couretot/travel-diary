@@ -1,4 +1,4 @@
 {
-  "version": "2.118",
-  "changelog": "Si te comparten un álbum, aparece un globito con contador sobre tu foto de perfil; al tocarlo se abren las notificaciones."
+  "version": "2.119",
+  "changelog": "Arreglamos las tarjetas de álbumes compartidos que se salían de la pantalla en algunos celulares."
 }
