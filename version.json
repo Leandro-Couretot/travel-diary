@@ -1,4 +1,4 @@
 {
-  "version": "2.117",
-  "changelog": "El menú de tu foto de perfil queda solo con Notificaciones; las preferencias de cookies siguen en Ayuda."
+  "version": "2.118",
+  "changelog": "Si te comparten un álbum, aparece un globito con contador sobre tu foto de perfil; al tocarlo se abren las notificaciones."
 }

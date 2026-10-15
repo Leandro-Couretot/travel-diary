@@ -325,8 +325,13 @@ img { transition: opacity 0.25s ease; }
 
 .account-btn { position: relative; background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; border-radius: 50%; }
 .header-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: var(--accent-light); color: var(--accent); font-size: 0.85rem; font-weight: 600; }
-.account-badge { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--red); border: 2px solid var(--surface); }
-.account-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--red); color: #fff; font-size: 0.7rem; line-height: 18px; text-align: center; }
+/* v2.118: contador rojo con pulso sobre el avatar + globito de aviso debajo */
+.account-badge { position: absolute; top: -6px; right: -7px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--red); color: #fff; border: 2px solid var(--surface); font-size: 0.65rem; font-weight: 600; line-height: 14px; text-align: center; animation: badgePulse 2s ease-out infinite; }
+@keyframes badgePulse { 0% { box-shadow: 0 0 0 0 rgba(192,57,43,0.55); } 70%, 100% { box-shadow: 0 0 0 8px rgba(192,57,43,0); } }
+.account-bubble { position: absolute; top: calc(100% + 12px); right: -6px; width: max-content; max-width: 210px; background: var(--ink); color: var(--bg); font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 400; line-height: 1.35; text-align: left; padding: 0.5rem 0.8rem; border-radius: 10px; box-shadow: var(--shadow-lg); cursor: pointer; z-index: 101; animation: bubbleIn 0.4s ease both; }
+.account-bubble::before { content: ''; position: absolute; top: -5px; right: 16px; width: 10px; height: 10px; background: var(--ink); transform: rotate(45deg); }
+@keyframes bubbleIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .account-badge, .account-bubble { animation: none; } }
 .notif-item { padding: 0.8rem 0; border-bottom: 1px solid var(--ink-faint); }
 .notif-item:last-child { border-bottom: none; }
 .notif-text { font-size: 0.9rem; color: var(--ink); line-height: 1.45; }
@@ -1311,21 +1316,8 @@ audio { width: 100%; height: 32px; }
   </div>
 </div>
 
-<!-- v2.116: menú de la cuenta (avatar del header de Home) y lista de
-     notificaciones (álbumes compartidos pendientes de aceptar). -->
-<div class="sheet-overlay" id="modal-account-sheet">
-  <div class="bottom-sheet">
-    <div class="bottom-sheet-handle"></div>
-    <button class="bottom-sheet-row" onclick="openNotificationsFromSheet()">
-      <span class="bottom-sheet-icon" data-icon="share"></span>
-      <span class="bottom-sheet-text">
-        <span class="bottom-sheet-label">Notificaciones <span class="account-count" id="account-sheet-count" style="display:none;"></span></span>
-        <span class="bottom-sheet-sub" id="account-sheet-notif-sub">Álbumes que te compartieron</span>
-      </span>
-    </button>
-  </div>
-</div>
-
+<!-- v2.116/v2.118: notificaciones (álbumes compartidos pendientes de aceptar).
+     Se abre tocando el avatar del header de Home (o el globito de aviso). -->
 <div class="modal-overlay" id="modal-notifications">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Notificaciones</div><button class="modal-close" onclick="closeNotificationsModal()">×</button></div>
@@ -1637,8 +1629,10 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.117';
+const APP_VERSION = '2.118';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
+let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
+let invitationsBubbleTimer = null;
 document.getElementById('app-version-label').textContent = APP_VERSION;
 
 // ═══════════════════════════════════════════════════════════
@@ -2035,7 +2029,7 @@ function renderHomeHeader() {
     ? `<img class="header-avatar" src="${escHtml(currentUserPicture)}" alt="${escHtml(currentUserName || 'Cuenta conectada')}" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="header-avatar header-avatar-fallback">${currentUserName ? escHtml(currentUserName.trim().charAt(0).toUpperCase()) : '·'}</span>`;
   const accountBtn = isDriveConnected()
-    ? `<button class="account-btn" id="account-btn" onclick="openAccountSheet()" title="Tu cuenta" aria-label="Menú de la cuenta">${inner}<span class="account-badge" id="account-badge" style="display:${pendingInvitations.length ? 'block' : 'none'};"></span></button>`
+    ? `<button class="account-btn" id="account-btn" onclick="openNotificationsModal()" title="Notificaciones" aria-label="Notificaciones">${inner}<span class="account-badge" id="account-badge" style="display:${pendingInvitations.length ? 'block' : 'none'};">${pendingInvitations.length}</span><span class="account-bubble" id="account-bubble" style="display:${pendingInvitations.length && invitationsBubbleOn ? 'block' : 'none'};">${escHtml(invitationsBubbleText())}</span></button>`
     : '';
   document.getElementById('header-actions').innerHTML = `
     ${accountBtn}
@@ -2142,8 +2136,8 @@ function decidePostLoginOnboarding(isNewUser) {
 const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
   { version: '2.116', items: [
-    'Tocá tu foto de perfil, arriba a la derecha: ahí vas a ver las notificaciones y tus preferencias de cookies.',
-    'Cuando alguien te comparta un álbum, te avisamos dentro de la app y lo aceptás con un toque.',
+    'Cuando alguien te comparta un álbum, te avisamos con un globito sobre tu foto de perfil, arriba a la derecha.',
+    'Tocala para ver las notificaciones y aceptar el álbum con un toque.',
   ]},
   { version: '2.103', items: [
     '"Importar desde Drive" ahora funciona en iPhone: se abre el selector de archivos del teléfono y desde "Explorar" elegís Google Drive.',
@@ -2213,16 +2207,38 @@ function showFirstAlbumTipModal() {
 // Se lee al abrir Home y se muestra en el menú del avatar (badge) y en un
 // aviso al entrar. Aceptar usa el mismo joinSharedAlbum() de siempre (incluye
 // el cupo gratis: si ya está lleno, el álbum entra archivado).
-let invitationsNoticeShown = false; // un solo aviso al entrar por carga de página
+let invitationsNoticeShown = false; // un solo globito al entrar por carga de página
 
+function invitationsBubbleText() {
+  const n = pendingInvitations.length;
+  return n === 1 ? 'Te compartieron un álbum. Tocá para verlo' : `Te compartieron ${n} álbumes. Tocá para verlos`;
+}
+
+// v2.118: el avatar muestra un contador rojo con pulso mientras haya invitaciones
+// pendientes, y al entrar aparece un globito que apunta a él unos segundos.
+// Tocar el avatar (o el globito) abre directo la lista de notificaciones.
 function updateAccountBadge() {
   const n = pendingInvitations.length;
   const badge = document.getElementById('account-badge');
-  if (badge) badge.style.display = n ? 'block' : 'none';
-  const cnt = document.getElementById('account-sheet-count');
-  if (cnt) { cnt.textContent = n; cnt.style.display = n ? 'inline-block' : 'none'; }
-  const sub = document.getElementById('account-sheet-notif-sub');
-  if (sub) sub.textContent = n ? (n === 1 ? '1 álbum te espera' : `${n} álbumes te esperan`) : 'No tenés nada pendiente';
+  if (badge) { badge.textContent = n; badge.style.display = n ? 'block' : 'none'; }
+  const bubble = document.getElementById('account-bubble');
+  if (bubble) {
+    bubble.textContent = invitationsBubbleText();
+    bubble.style.display = n && invitationsBubbleOn ? 'block' : 'none';
+  }
+  if (!n) hideInvitationsBubble();
+}
+function showInvitationsBubble() {
+  invitationsBubbleOn = true;
+  clearTimeout(invitationsBubbleTimer);
+  invitationsBubbleTimer = setTimeout(hideInvitationsBubble, 10000);
+  updateAccountBadge();
+}
+function hideInvitationsBubble() {
+  invitationsBubbleOn = false;
+  clearTimeout(invitationsBubbleTimer);
+  const bubble = document.getElementById('account-bubble');
+  if (bubble) bubble.style.display = 'none';
 }
 
 async function refreshPendingInvitations(sharedAlbumsList) {
@@ -2238,30 +2254,13 @@ async function refreshPendingInvitations(sharedAlbumsList) {
     return true;
   });
   updateAccountBadge();
-  if (pendingInvitations.length && !invitationsNoticeShown) {
+  // Globito no invasivo (reemplaza al popup de v2.116, que interrumpía): una
+  // sola vez por carga de página, y solo si el usuario está mirando Home.
+  if (pendingInvitations.length && !invitationsNoticeShown && currentView === 'home') {
     invitationsNoticeShown = true;
-    // No pisar un popup de onboarding/novedades que ya esté en pantalla: el
-    // badge del avatar queda igual como recordatorio.
-    const busy = document.querySelector('.modal-overlay.open, .sheet-overlay.open');
-    if (busy || currentView !== 'home') return;
-    const n = pendingInvitations.length;
-    showOnboardingInfoModal({
-      title: n === 1 ? 'Te compartieron un álbum' : `Te compartieron ${n} álbumes`,
-      itemsHtml: `<div class="help-item"><span class="help-item-dot">${icon('share')}</span><span>${n === 1
-        ? `<strong>${escHtml(pendingInvitations[0].ownerName || pendingInvitations[0].ownerEmail || 'Alguien')}</strong> compartió <em>${escHtml(pendingInvitations[0].albumName)}</em> con vos.`
-        : 'Tenés álbumes esperando que los aceptes.'}</span></div>`,
-      ctaLabel: 'Ver',
-      onCta: () => openNotificationsModal(),
-    });
+    showInvitationsBubble();
   }
 }
-
-function openAccountSheet() {
-  updateAccountBadge();
-  document.getElementById('modal-account-sheet').classList.add('open');
-}
-function closeAccountSheet() { document.getElementById('modal-account-sheet').classList.remove('open'); }
-function openNotificationsFromSheet() { closeAccountSheet(); openNotificationsModal(); }
 
 function renderNotificationsList() {
   const el = document.getElementById('notifications-list');
@@ -2283,6 +2282,7 @@ function renderNotificationsList() {
   }).join('');
 }
 function openNotificationsModal() {
+  hideInvitationsBubble();
   renderNotificationsList();
   document.getElementById('modal-notifications').classList.add('open');
 }
@@ -2318,7 +2318,6 @@ async function dismissInvitation(i) {
   updateAccountBadge();
   renderNotificationsList();
 }
-document.getElementById('modal-account-sheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeAccountSheet(); });
 document.getElementById('modal-notifications').addEventListener('click', e => { if (e.target === e.currentTarget) closeNotificationsModal(); });
 
 // Único modal reusado por los 3 popups de arriba (bienvenida / primer
