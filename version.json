@@ -1,1 +1,4 @@
-{"version":"2.121","changelog":"Los videos sin fecha de grabación ya no se guardan en \"hoy\" sin avisar: te pedimos que elijas el día."}
+{
+  "version": "2.122",
+  "changelog": "Iniciar sesión con Google es más rápido y ahora muestra una pantalla de espera en vez de quedarse en la portada."
+}

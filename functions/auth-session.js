@@ -56,16 +56,19 @@ async function exchangeCodeForTokens(code) {
 // intercambio de código (nuevo) o lo mandó el frontend directo (legacy, ver
 // más abajo).
 async function resolveGoogleIdentity(accessToken) {
-  const tokenInfoRes = await fetch(
-    `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
-  );
+  // v2.122: tokeninfo y userinfo no dependen entre sí (los dos solo
+  // necesitan el access_token) — se piden en paralelo en vez de uno atrás
+  // del otro. Se mantiene el mismo orden de chequeo de errores de siempre.
+  const [tokenInfoRes, userInfoRes] = await Promise.all([
+    fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`),
+    fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+  ]);
   if (!tokenInfoRes.ok) throw new AuthError(401, 'invalid_token');
   const tokenInfo = await tokenInfoRes.json();
   if (tokenInfo.aud !== GOOGLE_CLIENT_ID.value()) throw new AuthError(401, 'token_wrong_audience');
 
-  const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
   if (!userInfoRes.ok) throw new AuthError(401, 'userinfo_failed');
   const userInfo = await userInfoRes.json();
   const emailVerified = userInfo.email_verified === true || userInfo.email_verified === 'true';
@@ -97,6 +100,9 @@ exports.authSession = onRequest(
   },
   async (req, res) => {
     if (req.method !== 'POST') {
+      // Un GET acá es el pedido de calentamiento del cliente (ver
+      // prewarmAuthBackend() en billing.js): solo hace falta que la
+      // instancia exista y esté lista para cuando llegue el POST real.
       res.status(405).json({ error: 'method_not_allowed' });
       return;
     }
@@ -108,6 +114,7 @@ exports.authSession = onRequest(
       return;
     }
 
+    const tStart = Date.now(); // solo para el log de tiempos de abajo
     try {
       let driveAccessToken = legacyAccessToken;
       let driveExpiresIn = null;
@@ -133,11 +140,24 @@ exports.authSession = onRequest(
       //    distingue solo), y eso es lo que dispara el evento
       //    signup_completed de la Fase 2 de GROWTH_PLAN.md.
       const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
-      const { data: existing } = await supabase
-        .from('subscriptions')
-        .select('google_sub, terms_version')
-        .eq('google_sub', userInfo.sub)
-        .maybeSingle();
+      // v2.122: la fila existente y el último changelog visto (ver más
+      // abajo) dependen solo del `sub`, no uno del otro — se piden juntos
+      // en vez de en dos viajes a Supabase seguidos.
+      const [{ data: existing }, { data: lastChangelogRow }] = await Promise.all([
+        supabase
+          .from('subscriptions')
+          .select('google_sub, terms_version')
+          .eq('google_sub', userInfo.sub)
+          .maybeSingle(),
+        supabase
+          .from('usage_events')
+          .select('event_props')
+          .eq('google_sub', userInfo.sub)
+          .eq('event_name', 'changelog_seen')
+          .order('occurred_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
       const isNewUser = !existing;
 
       const upsertRow = { google_sub: userInfo.sub, email: userInfo.email };
@@ -187,14 +207,7 @@ exports.authSession = onRequest(
       // en localStorage, para que siga a la cuenta entre dispositivos. Sin
       // ninguna fila todavía (cuenta anterior a este mecanismo, o recién
       // creada) queda `null` — el cliente decide qué hacer con eso.
-      const { data: lastChangelogRow } = await supabase
-        .from('usage_events')
-        .select('event_props')
-        .eq('google_sub', userInfo.sub)
-        .eq('event_name', 'changelog_seen')
-        .order('occurred_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // (la consulta en sí se hace arriba, en paralelo con `existing`)
       const lastChangelogSeen = (lastChangelogRow && lastChangelogRow.event_props && lastChangelogRow.event_props.version) || null;
 
       // Se genera ANTES de saber si es nuevo porque el ID en sí no es
@@ -224,6 +237,7 @@ exports.authSession = onRequest(
         });
       }
 
+      console.log('auth-session ms total:', Date.now() - tStart, 'isNewUser:', isNewUser, 'viaCode:', !!code);
       const token = signSession(SESSION_JWT_SECRET.value(), {
         sub: userInfo.sub, email: userInfo.email, picture: userInfo.picture, name: userInfo.name,
       });

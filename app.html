@@ -283,6 +283,13 @@ img { transition: opacity 0.25s ease; }
 .connect-state p { font-size: 0.9rem; color: var(--ink-muted); max-width: 340px; margin: 0 auto 2rem; line-height: 1.7; }
 .loading-albums { display: flex; align-items: center; justify-content: center; padding: 4rem; gap: 0.75rem; color: var(--ink-muted); font-size: 0.875rem; }
 .spinner { width: 18px; height: 18px; border: 2px solid var(--ink-faint); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+/* v2.122: pantalla de "Conectando..." apenas vuelve el popup de Google */
+.connecting-state { text-align: center; padding: 5rem 2rem; }
+.connecting-state h2 { font-family: 'DM Serif Display', serif; font-size: 1.75rem; letter-spacing: -0.02em; margin-bottom: 1.5rem; }
+.connecting-spinner { width: 38px; height: 38px; margin: 0 auto 1.25rem; border: 3px solid var(--ink-faint); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+.connecting-step { font-size: 0.95rem; color: var(--ink); min-height: 1.4em; }
+.connecting-slow { font-size: 0.8rem; color: var(--ink-muted); margin-top: 0.75rem; min-height: 1.2em; }
+@media (prefers-reduced-motion: reduce) { .connecting-spinner { animation-duration: 2.4s; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 /* Esqueleto de carga de Home (v2.15) — reemplaza el spinner+texto mientras
    se resuelven los álbumes: no acorta la espera real, pero se siente menos
@@ -1631,7 +1638,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.121';
+const APP_VERSION = '2.122';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2557,7 +2564,7 @@ function tryEagerSilentRefresh() {
 // fallback implícito si el code client no llegó a armarse) — resuelve la
 // carpeta raíz y despacha a join/álbumes según corresponda.
 async function afterDriveConnected() {
-  rootFolderId = await getOrCreateFolderMigrating(ROOT_FOLDER, ROOT_FOLDER_OLD, 'root');
+  rootFolderId = await resolveRootFolderId(); // usa el ID cacheado si sirve (v2.15) y lo guarda para la próxima
   if (_onConnected) { await _onConnected(); return; }
   const sp2 = new URLSearchParams(location.search);
   const jId = sp2.get('join');
@@ -2579,8 +2586,12 @@ function buildCodeClient() {
     access_type: 'offline', prompt: 'consent', state: newAuthState(),
     callback: async (response) => {
       if (!response || !response.code) return; // usuario cerró el popup o lo rechazó — nada que hacer, sigue viendo la pantalla de conectar
+      // v2.122: antes la landing quedaba a la vista varios segundos mientras
+      // se validaba la cuenta y se abría Drive — ahora se reemplaza al toque.
+      renderConnecting('Verificando tu cuenta de Google...');
       const sessionData = await establishSessionWithCode(response.code);
       if (!sessionData || !sessionData.driveAccessToken) {
+        renderLoginEntryScreen();
         alert('No se pudo completar la conexión con Google. Probá de nuevo.');
         return;
       }
@@ -2594,8 +2605,12 @@ function buildCodeClient() {
       // repetirla.
       if (currentView === 'home') { renderHomeHeader(); renderHomeGreetingName(); }
       maybeShowPostLoginOnboarding(lastSignupWasNew);
-      await maybeEnforceAlbumLimit();
+      setConnectingStep('Abriendo tu Google Drive...');
+      // v2.122: el límite de álbumes ya no se espera antes de mostrar Home
+      // (eran 1+ viajes a Drive de más antes de ver nada). Corre después
+      // y re-renderiza solo si de verdad archivó/desarchivó algo.
       await afterDriveConnected();
+      maybeEnforceAlbumLimit();
     },
     error_callback: (err) => { console.warn('Drive auth (code): popup cancelado o falló', err); },
   });
@@ -2703,6 +2718,9 @@ function handleDriveBtn() {
   if (window._codeClient) {
     buildCodeClient(); // state fresco en cada intento, ver initGoogleAuth()
     window._codeClient.requestCode();
+    // Después de requestCode() a propósito: el popup tiene que abrirse
+    // dentro del gesto del usuario, sin nada asíncrono antes.
+    if (typeof prewarmAuthBackend === 'function') prewarmAuthBackend();
   } else if (window._tokenClient) {
     // GIS todavía no terminó de armar el code client (raro) — cae al flujo
     // viejo para no dejar al usuario sin ningún botón funcional; esta
@@ -2740,6 +2758,42 @@ function renderDisconnected() {
     </div>`;
 }
 
+// v2.122: pantalla de espera entre que vuelve el popup de Google y que
+// aparece Home (validar la cuenta en el servidor + abrir Drive). Antes se
+// seguía viendo la landing con el botón de login durante varios segundos,
+// parecía que no había pasado nada.
+let connectingSlowTimer = null;
+function renderConnecting(step) {
+  if (currentView !== 'home') return;
+  const header = document.getElementById('app-header');
+  if (header) header.style.display = 'none';
+  clearTimeout(connectingSlowTimer);
+  document.getElementById('home-main').innerHTML = `
+    <div class="connecting-state fade-up">
+      <h2>Legado</h2>
+      <div class="connecting-spinner" aria-hidden="true"></div>
+      <div class="connecting-step" id="connecting-step" role="status" aria-live="polite"></div>
+      <div class="connecting-slow" id="connecting-slow"></div>
+    </div>`;
+  setConnectingStep(step);
+  connectingSlowTimer = setTimeout(() => {
+    const el = document.getElementById('connecting-slow');
+    if (el) el.textContent = 'Está tardando un poco más de lo normal, ya casi...';
+  }, 7000);
+}
+function setConnectingStep(text) {
+  const el = document.getElementById('connecting-step');
+  if (el) el.textContent = text;
+}
+// Vuelve a la pantalla de entrada que corresponda si la conexión falló.
+function renderLoginEntryScreen() {
+  clearTimeout(connectingSlowTimer);
+  const sp = new URLSearchParams(location.search);
+  if (sp.get('contrib')) { renderContributorJoinPending(); return; }
+  if (sp.get('join')) { renderJoinPending(decodeURIComponent(sp.get('name') || '')); return; }
+  renderDisconnected();
+}
+
 // Modal explicativo (Fase 1 de GROWTH_PLAN.md): antes se pedía Google Drive
 // de entrada; ahora se explica brevemente la app primero y recién ahí se
 // pide conectar. handleDriveBtn() no cambió en nada, solo se lo invoca
@@ -2758,6 +2812,7 @@ function openOnboardingModal() {
   document.getElementById('modal-onboarding').classList.add('open');
   trackEvent('onboarding_viewed');
   trackMetaPixelCustomEvent('ClickLandingCTA');
+  if (typeof prewarmAuthBackend === 'function') prewarmAuthBackend(); // v2.122: despierta authSession mientras se lee el modal
 }
 function closeOnboardingModal() {
   document.getElementById('modal-onboarding').classList.remove('open');

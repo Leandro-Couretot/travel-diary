@@ -70,6 +70,26 @@ async function appCheckHeaders() {
   }
 }
 
+// v2.122: precalienta el login — la Cloud Function authSession no tiene
+// instancias mínimas (costo cero en reposo), así que el primer login tras un
+// rato sin tráfico paga un arranque en frío de varios segundos; además el
+// primer token de App Check obliga a cargar reCAPTCHA Enterprise. Ambas
+// esperas se pueden adelantar mientras el usuario lee el modal de login o
+// completa el popup de Google (que ya le toma varios segundos): un GET
+// vacío despierta la instancia (responde 405 al toque) y pedir el token de
+// App Check lo deja cacheado para el POST real. Fire-and-forget; nunca
+// puede romper nada.
+let _authPrewarmedAt = 0;
+function prewarmAuthBackend() {
+  if (Date.now() - _authPrewarmedAt < 120000) return;
+  _authPrewarmedAt = Date.now();
+  try {
+    appCheckHeaders()
+      .then(h => fetch('/api/auth/session', { method: 'GET', headers: h }).catch(() => {}))
+      .catch(() => {});
+  } catch (e) {}
+}
+
 // Variante que devuelve el token en sí (no un header) para sendBeacon()
 // (flushTrackEvents), que no puede mandar headers custom — mismo criterio
 // que ya usa session_token en el body como fallback para ese caso.
