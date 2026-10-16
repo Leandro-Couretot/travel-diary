@@ -331,13 +331,14 @@ async function listDayFolders(albumFolderId, viaProxy = false) {
 // solo la carga masiva lo pasa hoy, para el donut de progreso real por
 // archivo (ver runBulkUpload() en app.html). Sin pasarlo, comportamiento
 // 100% idéntico al de siempre (fetch vía driveReq). Con proxyAlbumId
-// (álbum compartido, Contribuidor) todavía no hay progreso real — queda
-// como límite conocido, ver CLAUDE.md.
+// (álbum compartido, Contribuidor) desde v2.123 también hay progreso real
+// (subida directa a Google); si cae al camino de base64 llama a
+// onProgress(null) = "enviando…" sin porcentaje.
 // v2.62: `proxyAlbumId` opcional, mismo criterio de arriba — sube el
 // archivo con el token de la DUEÑA del álbum vía el proxy en vez del
 // token del invitado.
 async function uploadFile(blob, name, folderId, existingId = null, description = null, proxyAlbumId = null, onProgress = null) {
-  if (proxyAlbumId) return await uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId);
+  if (proxyAlbumId) return await uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId, onProgress);
   const meta = { name };
   if (description) meta.description = description;
   if (!existingId) meta.parents = [folderId];
@@ -2072,7 +2073,129 @@ async function getOrCreateFolderViaProxy(name, parentId, proxyAlbumId) {
   if (!res.ok) await _proxyWriteThrow(res, 'No se pudo crear la carpeta del día');
   return (await res.json()).id;
 }
-async function uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId) {
+// ── v2.123: subida DIRECTA a Google (resumable) para álbumes compartidos ──
+// Antes todo archivo viajaba como base64 dentro de un JSON a la Cloud Function
+// (~33% más pesado, techo de ~32 MB, y cada archivo pagaba la validación
+// completa de permisos). Ahora el servidor solo INICIA la sesión de subida
+// con el token de la dueña (acción `startResumableUpload`, sin bytes) y el
+// navegador sube el archivo directo a Google en tramos, con progreso real y
+// reintento por tramo. Si algo de esto no anda (función vieja sin esta acción,
+// CORS, red), se cae al camino anterior de base64 — nunca se pierde la subida.
+const RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024; // Google exige múltiplos de 256 KiB salvo el último
+const RESUMABLE_MAX_ATTEMPTS = 4;
+const BASE64_FALLBACK_MAX_BYTES = 20 * 1048576; // por encima, base64 supera el techo de Cloud Run
+let _resumableFailStreak = 0;     // fallos estructurales seguidos (sin ningún byte subido)
+let _resumableDisabled = false;   // tras 2 seguidos, se deja de intentar en esta sesión de la página
+
+function _putResumableChunk(url, blob, start, end, total, onBytes) {
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    // end === start significa "preguntar cuánto llevás recibido" (sin cuerpo)
+    xhr.setRequestHeader('Content-Range', end === start ? `bytes */${total}` : `bytes ${start}-${end - 1}/${total}`);
+    xhr.timeout = 120000;
+    if (xhr.upload && onBytes) xhr.upload.onprogress = e => { if (e.lengthComputable) onBytes(start + e.loaded); };
+    xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText, range: xhr.getResponseHeader('Range') });
+    xhr.onerror = () => resolve({ status: 0 });
+    xhr.ontimeout = () => resolve({ status: 0, timeout: true });
+    xhr.send(end === start ? null : blob.slice(start, end));
+  });
+}
+function _rangeToOffset(rangeHeader) {
+  const m = /bytes=0-(\d+)/.exec(rangeHeader || '');
+  return m ? parseInt(m[1], 10) + 1 : null;
+}
+function _resumableFallbackError(msg, extra) {
+  const err = new Error(msg);
+  err.resumableFallback = true;
+  Object.assign(err, extra || {});
+  return err;
+}
+
+async function _uploadViaResumable(blob, name, folderId, existingId, description, proxyAlbumId, onProgress) {
+  const total = blob.size;
+  let initRes;
+  try {
+    initRes = await sharedAlbumProxyCall(proxyAlbumId, 'startResumableUpload', {
+      parentId: folderId, name, mimeType: blob.type || 'application/octet-stream',
+      size: total, existingId: existingId || undefined, description, origin: location.origin,
+    });
+  } catch (netErr) {
+    throw _resumableFallbackError('No se pudo iniciar la subida directa', { structural: true });
+  }
+  if (!initRes.ok) {
+    const body = await _proxyErrorBody(initRes);
+    // Errores reales de permisos/cuota: se muestran tal cual, el camino de
+    // base64 daría exactamente el mismo resultado.
+    if (_isQuotaExceeded(body?.detail)) throw new DriveQuotaExceededError();
+    if (['not_authorized', 'read_only', 'owner_not_migrated', 'owner_token_invalid', 'not_shared'].includes(body?.error)) await _proxyWriteThrow(initRes, 'No se pudo subir el archivo a Drive');
+    throw _resumableFallbackError('La subida directa no está disponible', { structural: true });
+  }
+  const uploadUrl = (await initRes.json()).uploadUrl;
+  if (!uploadUrl) throw _resumableFallbackError('La subida directa no devolvió una URL', { structural: true });
+
+  const report = bytes => { if (onProgress) onProgress(Math.min(99, Math.round((bytes / total) * 100))); };
+  let offset = 0, attempts = 0, anyProgress = false;
+  while (true) {
+    const end = Math.min(offset + RESUMABLE_CHUNK_BYTES, total);
+    const r = await _putResumableChunk(uploadUrl, blob, offset, end, total, report);
+    if (r.status === 200 || r.status === 201) {
+      let file = null;
+      try { file = JSON.parse(r.text); } catch (_) {}
+      if (!file || !file.id) throw new Error('Drive no devolvió el archivo subido');
+      if (onProgress) onProgress(100);
+      _resumableFailStreak = 0;
+      return file.id;
+    }
+    if (r.status === 308) {
+      anyProgress = true; attempts = 0;
+      const confirmed = _rangeToOffset(r.range);
+      offset = confirmed != null ? confirmed : end; // sin cabecera Range legible, se asume el tramo completo
+      report(offset);
+      continue;
+    }
+    // Quedó sin resolver: cuota excedida u otro error definitivo de Google
+    if (r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) {
+      let info = null;
+      try { info = JSON.parse(r.text).error; } catch (_) {}
+      if (_isQuotaExceeded(info)) throw new DriveQuotaExceededError();
+      throw _resumableFallbackError(info?.message || 'Drive rechazó la subida', { httpStatus: r.status });
+    }
+    // Red caída, timeout o 5xx: reintento con espera y consulta de cuánto recibió Google
+    attempts++;
+    if (attempts >= RESUMABLE_MAX_ATTEMPTS) {
+      if (!anyProgress) { _resumableFailStreak++; if (_resumableFailStreak >= 2) _resumableDisabled = true; }
+      throw _resumableFallbackError('Se cortó la subida directa', { networkError: true, structural: !anyProgress });
+    }
+    await new Promise(res => setTimeout(res, 1000 * attempts));
+    const q = await _putResumableChunk(uploadUrl, blob, offset, offset, total, null);
+    if (q.status === 200 || q.status === 201) {
+      let file = null; try { file = JSON.parse(q.text); } catch (_) {}
+      if (file && file.id) { if (onProgress) onProgress(100); _resumableFailStreak = 0; return file.id; }
+    } else if (q.status === 308) {
+      const confirmed = _rangeToOffset(q.range);
+      if (confirmed != null) offset = confirmed;
+    }
+  }
+}
+
+async function uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId, onProgress = null) {
+  if (!_resumableDisabled && typeof XMLHttpRequest !== 'undefined') {
+    try {
+      return await _uploadViaResumable(blob, name, folderId, existingId, description, proxyAlbumId, onProgress);
+    } catch (e) {
+      if (!e || !e.resumableFallback) throw e;
+      if (e.structural && !e.networkError) { _resumableFailStreak++; if (_resumableFailStreak >= 2) _resumableDisabled = true; }
+      // Un archivo grande no entra por base64 (techo de Cloud Run): se informa el motivo real.
+      if (blob.size > BASE64_FALLBACK_MAX_BYTES) {
+        const sizeMb = Math.round((blob.size / 1048576) * 10) / 10;
+        const err = new Error(`No se pudo subir el archivo (${sizeMb} MB) a este álbum compartido. Revisá tu conexión y probá de nuevo.`);
+        err.sizeMb = sizeMb; err.networkError = !!e.networkError; err.originalMessage = e.message;
+        throw err;
+      }
+    }
+  }
+  if (onProgress) onProgress(null); // sin porcentaje real: la UI muestra "enviando…"
   const dataBase64 = await _blobToBase64(blob);
   const sizeMb = Math.round((blob.size / 1048576) * 10) / 10;
   let res;

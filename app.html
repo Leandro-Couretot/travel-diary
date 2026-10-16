@@ -796,6 +796,11 @@ audio { width: 100%; height: 32px; }
   transition: background 0.2s linear;
 }
 .bulk-upload-donut svg { width: 11px; height: 11px; }
+/* v2.123: estados distintos — "en cola" (todavía no empezó, atenuado) vs
+   "preparando/enviando" (en curso pero sin porcentaje real, aro girando). */
+.bulk-upload-item.queued { opacity: 0.55; }
+.bulk-upload-donut.working { background: none; border: 2px solid var(--ink-faint); border-top-color: var(--accent); box-sizing: border-box; animation: spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .bulk-upload-donut.working { animation: none; border-top-color: var(--accent); } }
 .bulk-upload-donut.done { background: var(--accent); }
 .bulk-upload-donut.failed { background: var(--red); }
 .bulk-upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1638,7 +1643,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.122';
+const APP_VERSION = '2.123';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -4546,6 +4551,13 @@ function renderBulkReview() {
 // y, si algo falla a mitad de camino, guarda igual lo que sí se subió
 // y deja un botón para reintentar solo lo que faltó.
 const BULK_UPLOAD_CONCURRENCY = 5;
+// v2.123: en álbumes compartidos (pasan por el proxy) se sube de a menos a la
+// vez — cada archivo arranca una sesión en la Cloud Function, y con 5 en
+// paralelo (más arranques en frío) todos terminaban lentos.
+const BULK_UPLOAD_CONCURRENCY_SHARED = 3;
+// Desde esta cantidad de archivos en un álbum compartido se avisa que puede
+// tardar (aviso suave, no bloquea nada).
+const BULK_SHARED_BIG_BATCH = 15;
 let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
 let bulkFinishFn = null; // v2.120: cierra el modal y navega (botón "Listo" o auto-cierre, lo que pase primero)
 function finishBulkUpload() { if (bulkFinishFn) bulkFinishFn(); }
@@ -4581,6 +4593,8 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   // arrancar una nueva (tanto en un reintento como si el modal se reabrió).
   const prevStallNote = listEl && document.getElementById(`${listEl.id}-stall`);
   if (prevStallNote) prevStallNote.remove();
+  const prevBigNote = listEl && document.getElementById(`${listEl.id}-bignote`);
+  if (prevBigNote) prevBigNote.remove();
 
   const dates = Object.keys(groupsByDate).sort();
   const dayFolderIds = {};
@@ -4610,8 +4624,16 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
       <div class="bulk-upload-item" id="${listEl.id}-item-${i}">
         <div class="bulk-upload-donut" id="${listEl.id}-donut-${i}"></div>
         <div class="bulk-upload-name">${escHtml(t.file.name)}</div>
-        <div class="bulk-upload-pct" id="${listEl.id}-pct-${i}">esperando</div>
+        <div class="bulk-upload-pct" id="${listEl.id}-pct-${i}">en cola</div>
       </div>`).join('');
+    tasks.forEach((t, i) => { const it = document.getElementById(`${listEl.id}-item-${i}`); if (it) it.classList.add('queued'); });
+    // v2.123: aviso suave para lotes grandes en álbumes compartidos.
+    if (proxyAlbumId && total > BULK_SHARED_BIG_BATCH) {
+      const big = document.createElement('div');
+      big.id = `${listEl.id}-bignote`; big.className = 'bulk-upload-stall-note';
+      big.textContent = `Son ${total} archivos en un álbum compartido, puede tardar unos minutos. Subimos de a ${BULK_UPLOAD_CONCURRENCY_SHARED} a la vez: los que dicen "en cola" esperan su turno. No cierres la app.`;
+      listEl.insertAdjacentElement('beforebegin', big);
+    }
   }
   const setItemState = (i, state, pct) => {
     if (!listEl) return;
@@ -4619,7 +4641,15 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     const pctEl = document.getElementById(`${listEl.id}-pct-${i}`);
     const itemEl = document.getElementById(`${listEl.id}-item-${i}`);
     if (!donut || !pctEl) return;
-    if (state === 'uploading') {
+    if (itemEl) itemEl.classList.remove('queued');
+    if (state === 'preparing' || (state === 'uploading' && pct == null)) {
+      // En curso pero sin porcentaje real todavía (comprimiendo la foto, o
+      // enviando por el camino sin progreso): aro girando + texto.
+      donut.className = 'bulk-upload-donut working';
+      donut.style.background = '';
+      donut.innerHTML = '';
+      pctEl.textContent = state === 'preparing' ? 'preparando' : 'enviando';
+    } else if (state === 'uploading') {
       donut.className = 'bulk-upload-donut';
       donut.style.background = `conic-gradient(var(--accent) ${pct}%, var(--ink-faint) 0)`;
       donut.innerHTML = '';
@@ -4653,8 +4683,8 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     }
   }, 5000) : null;
 
-  const results = await runWithConcurrency(tasks, BULK_UPLOAD_CONCURRENCY, async ({ date, file }, i) => {
-    setItemState(i, 'uploading', 0);
+  const results = await runWithConcurrency(tasks, proxyAlbumId ? BULK_UPLOAD_CONCURRENCY_SHARED : BULK_UPLOAD_CONCURRENCY, async ({ date, file }, i) => {
+    setItemState(i, 'preparing');
     const t0 = Date.now();
     try {
     const isImg = file.type.startsWith('image/');

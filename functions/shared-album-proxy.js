@@ -36,7 +36,20 @@ const GUEST_PERMISSION_TTL_MS = 15 * 60 * 1000;
 // `contributorAppendMedia`/`contributorTrashOwnMedia`, que hacen el merge
 // del lado del servidor y nunca aceptan el contenido completo de un
 // archivo de parte del cliente.
-const CONTRIBUTOR_WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
+const CONTRIBUTOR_WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'startResumableUpload', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
+
+// v2.123 — Subida directa a Google (resumable). Orígenes desde los que se
+// acepta iniciar una sesión: Google solo habilita CORS en la URL de la
+// sesión para el `Origin` con el que se la inició, así que el servidor
+// necesita saber cuál es (lo manda el cliente en `params.origin`) — y se
+// valida contra esta lista para que nadie pida una sesión "para" un sitio
+// ajeno.
+const RESUMABLE_ALLOWED_ORIGINS = new Set([
+  'https://legadofamiliar.com.ar',
+  'https://family-fotos-491610.web.app',
+  'https://family-fotos-491610.firebaseapp.com',
+  'https://leandro-couretot.github.io',
+]);
 
 // v2.61 — Proxy de lectura para álbumes compartidos.
 //
@@ -343,7 +356,7 @@ const EDITOR_ROLES = new Set(['owner', 'organizer', 'fileOrganizer', 'writer']);
 // principio del archivo, sección v2.67. v2.70: las dos acciones nuevas de
 // Contribuidor también pasan por este gate (aunque su propio subconjunto
 // permitido — CONTRIBUTOR_WRITE_ACTIONS — sea más chico).
-const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'writeJson', 'trashFile', 'shareFolder', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
+const WRITE_ACTIONS = new Set(['getOrCreateFolder', 'uploadMedia', 'startResumableUpload', 'writeJson', 'trashFile', 'shareFolder', 'contributorAppendMedia', 'contributorTrashOwnMedia']);
 
 async function guestRole(folderDriveId, guestEmail, ownerAccessToken) {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${folderDriveId}?fields=trashed,permissions(emailAddress,role)`, ownerAccessToken);
@@ -618,6 +631,33 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     return;
   }
 
+  // v2.123 — Subida directa a Google: el servidor solo INICIA la sesión
+  // resumable con el token de la dueña (una llamada chica, sin bytes de
+  // archivo) y le devuelve al navegador la URL de la sesión; el archivo viaja
+  // directo del navegador a Google, sin pasar por esta función (sin base64,
+  // sin el techo de ~32 MB de Cloud Run, y con progreso real). La URL de la
+  // sesión es la única credencial que recibe el cliente y sirve solo para
+  // subir ESE archivo, ya validado contra el árbol del álbum.
+  if (action === 'startResumableUpload') {
+    const { parentId, name, mimeType, size, existingId, description } = params;
+    const origin = typeof params.origin === 'string' ? params.origin : '';
+    if (!name || !Number.isFinite(size) || size <= 0 || !RESUMABLE_ALLOWED_ORIGINS.has(origin)) { res.status(400).json({ error: 'bad_request' }); return; }
+    const targetOk = existingId
+      ? await isDescendant(existingId, folderDriveId, ownerAccessToken)
+      : (parentId && await isDescendant(parentId, folderDriveId, ownerAccessToken));
+    if (!targetOk) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const meta = { name };
+    if (description) meta.description = description;
+    if (!existingId) meta.parents = [parentId];
+    const url = existingId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=resumable&fields=id`
+      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id';
+    const init = await driveStartResumableSession(url, existingId ? 'PATCH' : 'POST', meta, mimeType, size, origin, ownerAccessToken);
+    if (!init.ok) { res.status(502).json({ error: 'drive_error', detail: init.detail || null }); return; }
+    res.status(200).json({ uploadUrl: init.location });
+    return;
+  }
+
   if (action === 'writeJson') {
     const { parentId, newName, oldNames, content, description } = params;
     if (!parentId || !newName || content === undefined || !(await isDescendant(parentId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
@@ -795,6 +835,43 @@ async function driveUploadMultipart(existingId, name, parentId, description, buf
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
   return fetch(url, { method: existingId ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${ownerAccessToken}` }, body: form });
+}
+
+// v2.123: inicia una sesión de subida resumable. Se usa el módulo `https`
+// de Node en vez de fetch() porque la cabecera `Origin` tiene que viajar en
+// este pedido (Google la usa para habilitar CORS en la URL de la sesión) y
+// fetch() puede descartarla por ser una cabecera "prohibida" en navegadores.
+// Devuelve { ok, location } o { ok:false, detail } con el error real de Drive.
+function driveStartResumableSession(url, method, meta, mimeType, size, origin, ownerAccessToken) {
+  const https = require('https');
+  const body = Buffer.from(JSON.stringify(meta), 'utf8');
+  return new Promise(resolve => {
+    const u = new URL(url);
+    const req = https.request({
+      method, hostname: u.hostname, path: u.pathname + u.search,
+      headers: {
+        Authorization: `Bearer ${ownerAccessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Content-Length': body.length,
+        'X-Upload-Content-Type': mimeType || 'application/octet-stream',
+        'X-Upload-Content-Length': String(size),
+        Origin: origin,
+      },
+    }, r => {
+      const chunks = [];
+      r.on('data', c => chunks.push(c));
+      r.on('end', () => {
+        if (r.statusCode >= 200 && r.statusCode < 300 && r.headers.location) { resolve({ ok: true, location: r.headers.location }); return; }
+        let detail = null;
+        try { detail = JSON.parse(Buffer.concat(chunks).toString('utf8')).error || null; } catch (_) {}
+        resolve({ ok: false, detail });
+      });
+    });
+    req.on('error', () => resolve({ ok: false, detail: null }));
+    req.setTimeout(30000, () => { req.destroy(); resolve({ ok: false, detail: null }); });
+    req.write(body);
+    req.end();
+  });
 }
 
 // Reenvía el error real de Drive (útil para que el cliente pueda detectar
