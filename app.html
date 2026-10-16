@@ -1631,7 +1631,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.119';
+const APP_VERSION = '2.120';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -4492,6 +4492,8 @@ function renderBulkReview() {
 // y deja un botón para reintentar solo lo que faltó.
 const BULK_UPLOAD_CONCURRENCY = 5;
 let bulkRetryCtx = null; // { albumFolderId, tasks, progressEl, onSuccess }
+let bulkFinishFn = null; // v2.120: cierra el modal y navega (botón "Listo" o auto-cierre, lo que pase primero)
+function finishBulkUpload() { if (bulkFinishFn) bulkFinishFn(); }
 
 // v2.62: `proxyAlbumId` opcional (último parámetro) — carga masiva dentro
 // de un álbum compartido donde el invitado es editor (ver confirmBulkDiary())
@@ -4652,11 +4654,30 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     });
   }
 
-  for (const date of Object.keys(newMediaByDate)) {
-    const day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId) || { title: '', notes: '', media: [] };
-    day.media.push(...newMediaByDate[date]);
-    await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
-    invalidateDayCache(albumFolderId, date);
+  // v2.120: los archivos ya están subidos, pero falta anotarlos en el day.json
+  // de cada fecha — en un álbum compartido eso pasa por el proxy y puede
+  // tardar. Antes el texto seguía diciendo "Subiendo... N/N" con todos los ✓,
+  // así que parecía terminado y el modal no se cerraba (reporte real). Ahora
+  // se avisa que es otra etapa, y las fechas se guardan en paralelo (son
+  // carpetas distintas, no se pisan entre sí).
+  const datesToSave = Object.keys(newMediaByDate);
+  if (datesToSave.length) {
+    progressEl.className = 'bulk-progress';
+    progressEl.innerHTML = '<span class="btn-spinner"></span> Guardando en el álbum... (ya casi, no cierres la app)';
+    const tSave = Date.now();
+    const saveResults = await Promise.allSettled(datesToSave.map(async date => {
+      const day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId) || { title: '', notes: '', media: [] };
+      day.media.push(...newMediaByDate[date]);
+      await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
+      invalidateDayCache(albumFolderId, date);
+    }));
+    const saveElapsed = Date.now() - tSave;
+    const saveFailed = saveResults.find(r => r.status === 'rejected');
+    if (saveFailed) {
+      logIssue('upload_error', 'bulk_save_day', { error: saveFailed.reason || {}, props: { via_proxy: !!proxyAlbumId, dates: datesToSave.length, elapsed_ms: saveElapsed } });
+      throw saveFailed.reason;
+    }
+    if (saveElapsed > SLOW_UPLOAD_MS) logIssue('slow', 'bulk_save_day', { message: 'guardado de día lento', props: { via_proxy: !!proxyAlbumId, dates: datesToSave.length, total, elapsed_ms: saveElapsed } });
   }
 
   if (failedTasks.length) {
@@ -4672,10 +4693,15 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     progressEl.className = 'bulk-progress error';
     bulkRetryCtx = { albumFolderId, tasks: failedTasks, progressEl, onSuccess, proxyAlbumId };
   } else {
-    progressEl.textContent = `✓ ${total} archivo${total > 1 ? 's' : ''} guardado${total > 1 ? 's' : ''} correctamente`;
+    // v2.120: mensaje final bien visible + botón "Listo" para cerrar ya,
+    // sin depender solo del auto-cierre (que se puede perder si el celular
+    // pausa la página). `finish` es idempotente: lo que pase primero gana.
+    progressEl.innerHTML = `✓ ${total} archivo${total > 1 ? 's' : ''} guardado${total > 1 ? 's' : ''} correctamente <button type="button" class="btn btn-primary" style="display:block;width:100%;margin-top:0.6rem;" onclick="finishBulkUpload()">Listo</button>`;
     progressEl.className = 'bulk-progress';
     bulkRetryCtx = null;
-    onSuccess();
+    let finished = false;
+    bulkFinishFn = () => { if (finished) return; finished = true; bulkFinishFn = null; onSuccess(); };
+    setTimeout(() => { if (bulkFinishFn) bulkFinishFn(); }, 1500);
   }
   if (hintEl) hintEl.style.display = 'none';
 }
@@ -4715,10 +4741,8 @@ async function confirmBulkUpload() {
     // (YYYY-MM-DD), así que el orden alfabético ya es cronológico.
     const lastDate = Object.keys(allGroups).sort().pop();
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
-      setTimeout(() => {
-        closeBulkUpload();
-        navigateTo('diary', { albumId: album.id, name: album.name, shared: false, targetDate: lastDate });
-      }, 1500);
+      closeBulkUpload();
+      navigateTo('diary', { albumId: album.id, name: album.name, shared: false, targetDate: lastDate });
     });
   } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
   btn.disabled = false;
@@ -7897,17 +7921,15 @@ async function confirmBulkDiary() {
     // v2.62: álbum compartido con permiso de editor → sube con el token
     // de la dueña vía el proxy, mismo criterio que saveCurrentDay().
     await runBulkUpload(albumFolderId, allGroups, progress, () => {
-      setTimeout(() => {
-        closeBulkDiary();
-        // allDates se resetea siempre antes de volver — si la carga trajo
-        // una fecha nueva (sin carpeta de día previa), renderBook()/loadDay()
-        // necesitan volver a listar las carpetas de Drive para verla; con
-        // la lista vieja en memoria, esa fecha quedaría invisible hasta la
-        // próxima navegación (bug real, encontrado antes de shippear).
-        allDates = [];
-        if (bulkDiaryOriginTab === 'book') { switchTab('book'); }
-        else { switchTab('day'); loadDay(lastDate); }
-      }, 1500);
+      closeBulkDiary();
+      // allDates se resetea siempre antes de volver — si la carga trajo
+      // una fecha nueva (sin carpeta de día previa), renderBook()/loadDay()
+      // necesitan volver a listar las carpetas de Drive para verla; con
+      // la lista vieja en memoria, esa fecha quedaría invisible hasta la
+      // próxima navegación (bug real, encontrado antes de shippear).
+      allDates = [];
+      if (bulkDiaryOriginTab === 'book') { switchTab('book'); }
+      else { switchTab('day'); loadDay(lastDate); }
     }, isSharedAlbum ? albumFolderId : null);
   } catch(e) { progress.textContent = 'Error: ' + e.message; progress.className = 'bulk-progress error'; }
   btn.disabled = false;

@@ -1,4 +1,1 @@
-{
-  "version": "2.119",
-  "changelog": "Arreglamos las tarjetas de álbumes compartidos que se salían de la pantalla en algunos celulares."
-}
+{"version":"2.120","changelog":"La carga masiva ahora avisa cuando está guardando en el álbum y tiene un botón \"Listo\" al terminar."}
