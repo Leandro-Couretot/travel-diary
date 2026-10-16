@@ -1168,8 +1168,10 @@ audio { width: 100%; height: 32px; }
 <div class="view" id="view-diary">
   <div class="diary-tabs" id="diary-tabs">
     <button class="diary-tab active" data-tab="list" onclick="switchTab('list')">Galería</button>
-    <button class="diary-tab" data-tab="day" onclick="switchTab('day')">Día</button>
-    <button class="diary-tab" data-tab="month" onclick="switchTab('month')">Mes</button>
+    <!-- v2.126: Día no tiene botón propio; se entra tocando un día en Calendario
+         (mientras se ve un día, "Calendario" queda marcado). -->
+    <button class="diary-tab" data-tab="day" onclick="switchTab('day')" style="display:none;">Día</button>
+    <button class="diary-tab" data-tab="month" onclick="switchTab('month')">Calendario</button>
     <button class="diary-tab" data-tab="book" onclick="switchTab('book')">Fotolibro</button>
   </div>
   <input type="date" id="date-input" style="position:absolute;opacity:0;pointer-events:none;top:110px;right:1rem;">
@@ -1591,7 +1593,7 @@ audio { width: 100%; height: 32px; }
     </div>
     <div class="help-section"><div class="help-section-title"><span data-icon="calendar"></span> El diario</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Navegá entre días con las flechas o tocando la fecha.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tabs: <strong>Día</strong> para editar, <strong>Mes</strong> para el calendario, <strong>Galería</strong> para buscar una foto puntual, <strong>Libro</strong> para el fotolibro.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tabs: <strong>Galería</strong> con todas las fotos y videos, <strong>Calendario</strong> para ver el álbum por fecha (tocá un día para abrirlo y escribir notas), <strong>Fotolibro</strong> para armar el libro.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Arrastrá la manija para reordenar.</span></div>
       <div class="help-tip">Acordate de tocar <strong>Guardar día</strong> antes de cambiar de día.</div>
     </div>
@@ -1657,7 +1659,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.125';
+const APP_VERSION = '2.126';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -5309,7 +5311,7 @@ async function bootstrapDiaryPage() {
   // escribirle una nota ahí mismo), se respeta Día como tab inicial — ese
   // caso sigue queriendo la UI de edición de siempre, no la galería.
   currentTab = diaryTargetDate ? 'day' : 'list';
-  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === currentTab));
+  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === diaryTabButtonFor(currentTab)));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${currentTab}`));
   try {
     if (!isSharedAlbum) {
@@ -5535,11 +5537,14 @@ async function uploadContributorMedia(fileListRaw) {
   }
 }
 
+// v2.126: la tab Día está oculta y se llega desde Calendario, así que
+// mientras se ve un día el botón marcado es "Calendario".
+function diaryTabButtonFor(tab) { return tab === 'day' ? 'month' : tab; }
 function switchTab(tab) {
   closeDiaryFabSheet();
   if (selectionMode) exitSelectionMode();
   currentTab = tab;
-  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.diary-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === diaryTabButtonFor(tab)));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
   if (tab === 'list')  renderListTab();
   if (tab === 'month') renderCalendar();
@@ -5561,12 +5566,9 @@ function renderDiaryPage() {
       <textarea id="day-notes" placeholder="¿Qué pasó hoy? ¿Qué sentiste? ¿Qué querés recordar..." ${albumCanEdit ? '' : 'readonly'}></textarea>
     </div>
     <div class="upload-section" style="${albumCanEdit ? '' : 'display:none;'}">
-      <div class="drop-zone" id="drop-zone">
-        <div class="drop-icon">${icon('clip')}</div>
-        <div class="drop-text"><strong>Subí fotos, videos o audios</strong></div>
-        <div class="drop-sub">jpg, png, heic · mp4, mov · mp3, m4a · arrastrá o tocá acá</div>
-      </div>
-      <input type="file" id="file-input" accept="image/*,video/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,.heic,.heif,audio/*" multiple>
+      <!-- v2.126: sin la caja grande de subir archivos (ocupaba mucho); se
+           agregan fotos al día desde el botón + ("Agregar fotos a este día"). -->
+      <input type="file" id="file-input" accept="image/*,video/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,.heic,.heif,audio/*" multiple style="display:none;">
       <div class="recorder-row" id="recorder-row">
         <button class="btn-record" id="btn-record">${icon('mic')}</button>
         <div class="recorder-info">
@@ -8489,6 +8491,10 @@ function diaryFabSheetRowsHtml() {
   // individuales a la que aplicarle este modo.
   const canSelect = currentTab === 'day' || currentTab === 'list';
   return `
+    ${currentTab === 'day' && albumCanEdit ? `<button class="bottom-sheet-row" onclick="document.getElementById('file-input').click();closeDiaryFabSheet()">
+      <span class="bottom-sheet-icon">${icon('upload')}</span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos a este día</span></span>
+    </button>` : ''}
     ${canSelect ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(enterSelectionMode,50)">
       <span class="bottom-sheet-icon">${icon('select')}</span>
       <span class="bottom-sheet-text"><span class="bottom-sheet-label">Seleccionar fotos</span></span>
@@ -8745,12 +8751,8 @@ function navigate(delta) { if (dirty && !confirm('Tenés cambios sin guardar. ¿
 function bindDiaryEvents() {
   document.getElementById('day-title').addEventListener('input', e => { currentDay.title = e.target.value; autoResize(e.target); markDirty(); });
   document.getElementById('day-notes').addEventListener('input', e => { currentDay.notes = e.target.value; autoResize(e.target); markDirty(); });
-  const dropZone = document.getElementById('drop-zone'); const fileInput = document.getElementById('file-input');
-  dropZone.addEventListener('click', () => fileInput.click());
-  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); processFiles(e.dataTransfer.files); });
-  fileInput.addEventListener('change', e => processFiles(e.target.files));
+  const fileInput = document.getElementById('file-input');
+  fileInput.addEventListener('change', e => { const files = Array.from(e.target.files || []); e.target.value = ''; if (files.length) processFiles(files); });
 }
 
 // ─── Static event listeners ───────────────────────────────
