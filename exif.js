@@ -29,7 +29,18 @@ async function getFileDateStr(file) {
       // `mvhd` (creation_time) dentro del propio archivo. lastModified de un
       // video bajado de Drive suele ser el momento de la descarga ("hoy").
       const date = await readMp4CreationDate((start, len) => readSlice(file, start, len), file.size);
-      if (date) return date;
+      if (date) { _logVideoDate(file, 'mvhd', date); return date; }
+      // v2.121: reporte real (iPhone, video elegido de la Fototeca): quedaban
+      // fechados "hoy". iOS re-exporta el video al entregarlo al navegador y
+      // el archivo llega sin fecha de grabación; entonces lastModified es el
+      // momento de la exportación, o sea hoy. Si el video no trae mvhd y
+      // lastModified cae en el día de hoy, esa fecha no es confiable: se lo
+      // deja "sin fecha" para que la persona elija el día (el modal ya lo
+      // avisa en rojo) en vez de guardarlo en hoy sin decir nada.
+      const lmDate = file.lastModified ? _localDateFromMs(file.lastModified) : null;
+      const untrusted = !!lmDate && lmDate === _localDateFromMs(Date.now());
+      _logVideoDate(file, untrusted ? 'sin_fecha' : 'lastModified', lmDate);
+      if (untrusted) return null;
     }
     if (type.startsWith('video/') || type.startsWith('image/') || isVideo || isHeic) {
       // Fallback: use file lastModified (not ideal but better than nothing)
@@ -46,6 +57,25 @@ async function getFileDateStr(file) {
     console.warn('EXIF read error:', e);
   }
   return null;
+}
+
+// v2.121: diagnóstico de la fecha de un video (sin nombre de archivo, nunca
+// contenido): de dónde salió, qué dio el átomo mvhd y cuánto difiere de
+// lastModified. Va a error_log (kind 'info') para ver qué llega de un iPhone.
+function _logVideoDate(file, source, date) {
+  try {
+    if (typeof logIssue !== 'function') return;
+    const lm = file.lastModified || 0;
+    logIssue('info', 'video_date_source', {
+      message: 'fecha de video: ' + source,
+      props: {
+        source, mvhd_reason: _mp4Dbg.reason, mvhd_secs: _mp4Dbg.secs,
+        used_date: date || null, last_modified_date: lm ? _localDateFromMs(lm) : null,
+        last_modified_age_s: lm ? Math.round((Date.now() - lm) / 1000) : null,
+        file_type: file.type || null, file_size_mb: Math.round(((file.size || 0) / 1048576) * 10) / 10,
+      },
+    });
+  } catch (e) {}
 }
 
 function _localDateFromMs(ms) {
@@ -66,8 +96,12 @@ function _localDateFromMs(ms) {
  * dentro de `moov`. La fecha se devuelve en el huso local del navegador.
  * Devuelve null si no es un MP4/MOV válido o si la fecha es 0/absurda.
  */
+// v2.121: motivo del último resultado (solo para diagnóstico: por qué un video
+// no dio fecha). No cambia lo que devuelve la función.
+let _mp4Dbg = { reason: null, secs: null };
 async function readMp4CreationDate(readRange, totalSize) {
   const EPOCH_1904_TO_1970 = 2082844800; // segundos
+  _mp4Dbg = { reason: 'no_moov', secs: null };
   let offset = 0;
   for (let i = 0; i < 40; i++) {
     if (totalSize && offset + 8 > totalSize) return null;
@@ -90,7 +124,7 @@ async function readMp4CreationDate(readRange, totalSize) {
       if (!body || body.byteLength < 20) return null;
       const b = new DataView(body);
       const childType = String.fromCharCode(b.getUint8(4), b.getUint8(5), b.getUint8(6), b.getUint8(7));
-      if (childType !== 'mvhd') return null;
+      if (childType !== 'mvhd') { _mp4Dbg.reason = 'no_mvhd'; return null; }
       const version = b.getUint8(8);
       let secs;
       if (version === 1) {
@@ -99,10 +133,12 @@ async function readMp4CreationDate(readRange, totalSize) {
       } else {
         secs = b.getUint32(12);
       }
-      if (!secs) return null;
+      _mp4Dbg.secs = secs || 0;
+      if (!secs) { _mp4Dbg.reason = 'zero'; return null; }
       const ms = (secs - EPOCH_1904_TO_1970) * 1000;
       const y = new Date(ms).getUTCFullYear();
-      if (!(ms > 0) || y < 2000 || ms > Date.now() + 86400000) return null;
+      if (!(ms > 0) || y < 2000 || ms > Date.now() + 86400000) { _mp4Dbg.reason = 'out_of_range'; return null; }
+      _mp4Dbg.reason = 'ok';
       return _localDateFromMs(ms);
     }
     if (!size || size < headerLen) return null;
