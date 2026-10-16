@@ -1643,7 +1643,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.123';
+const APP_VERSION = '2.124';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -4572,8 +4572,9 @@ function finishBulkUpload() { if (bulkFinishFn) bulkFinishFn(); }
 const SLOW_UPLOAD_MS = 25000;
 // Datos para el registro técnico de una subida: tipo/tamaño/tiempo, NUNCA el
 // nombre del archivo (puede ser personal).
-function _uploadIssueProps(file, i, total, t0, proxyAlbumId) {
+function _uploadIssueProps(file, i, total, t0, proxyAlbumId, uploadPath) {
   const p = {
+    upload_path: uploadPath || (file._driveImport ? 'drive_copy' : (proxyAlbumId ? 'direct' : 'own')),
     file_type: file.type || null,
     file_size_mb: Math.round(((file.size || 0) / 1048576) * 10) / 10,
     drive_import: !!file._driveImport,
@@ -4686,6 +4687,9 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
   const results = await runWithConcurrency(tasks, proxyAlbumId ? BULK_UPLOAD_CONCURRENCY_SHARED : BULK_UPLOAD_CONCURRENCY, async ({ date, file }, i) => {
     setItemState(i, 'preparing');
     const t0 = Date.now();
+    // v2.124: camino real usado ('direct' = subida directa a Google, 'base64' =
+    // cayó al proxy viejo; uploadFile avisa onProgress(null) en ese caso).
+    let uploadPath = null;
     try {
     const isImg = file.type.startsWith('image/');
     let fileId;
@@ -4700,7 +4704,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     } else {
       let blob = file;
       if (isImg) { const data = await compressImageFile(file); blob = base64ToBlob(data); }
-      fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId, pct => setItemState(i, 'uploading', pct));
+      fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId, pct => { if (pct === null) uploadPath = 'base64'; setItemState(i, 'uploading', pct); });
     }
     if (!newMediaByDate[date]) newMediaByDate[date] = [];
     newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
@@ -4709,9 +4713,9 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     // v2.110: una subida que salió bien pero tardó mucho también se registra
     // (sin nombre de archivo, solo tipo/tamaño/tiempo) — es la señal de que
     // algo anda lento antes de que llegue a fallar.
-    if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'bulk_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, total, t0, proxyAlbumId) });
+    if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'bulk_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, total, t0, proxyAlbumId, uploadPath) });
     } catch (e) {
-      try { e._issueProps = _uploadIssueProps(file, i, total, t0, proxyAlbumId); } catch (_) {}
+      try { e._issueProps = _uploadIssueProps(file, i, total, t0, proxyAlbumId, uploadPath); } catch (_) {}
       throw e;
     }
   });

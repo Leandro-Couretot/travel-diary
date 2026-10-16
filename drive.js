@@ -2121,7 +2121,7 @@ async function _uploadViaResumable(blob, name, folderId, existingId, description
       size: total, existingId: existingId || undefined, description, origin: location.origin,
     });
   } catch (netErr) {
-    throw _resumableFallbackError('No se pudo iniciar la subida directa', { structural: true });
+    throw _resumableFallbackError('No se pudo iniciar la subida directa', { structural: true, stage: 'init_network', originalMessage: netErr && netErr.message });
   }
   if (!initRes.ok) {
     const body = await _proxyErrorBody(initRes);
@@ -2129,10 +2129,10 @@ async function _uploadViaResumable(blob, name, folderId, existingId, description
     // base64 daría exactamente el mismo resultado.
     if (_isQuotaExceeded(body?.detail)) throw new DriveQuotaExceededError();
     if (['not_authorized', 'read_only', 'owner_not_migrated', 'owner_token_invalid', 'not_shared'].includes(body?.error)) await _proxyWriteThrow(initRes, 'No se pudo subir el archivo a Drive');
-    throw _resumableFallbackError('La subida directa no está disponible', { structural: true });
+    throw _resumableFallbackError('La subida directa no está disponible', { structural: true, stage: 'init', httpStatus: initRes.status, proxyCode: body?.error || null, driveReason: body?.detail?.errors?.[0]?.reason || null });
   }
   const uploadUrl = (await initRes.json()).uploadUrl;
-  if (!uploadUrl) throw _resumableFallbackError('La subida directa no devolvió una URL', { structural: true });
+  if (!uploadUrl) throw _resumableFallbackError('La subida directa no devolvió una URL', { structural: true, stage: 'init_no_url' });
 
   const report = bytes => { if (onProgress) onProgress(Math.min(99, Math.round((bytes / total) * 100))); };
   let offset = 0, attempts = 0, anyProgress = false;
@@ -2159,13 +2159,13 @@ async function _uploadViaResumable(blob, name, folderId, existingId, description
       let info = null;
       try { info = JSON.parse(r.text).error; } catch (_) {}
       if (_isQuotaExceeded(info)) throw new DriveQuotaExceededError();
-      throw _resumableFallbackError(info?.message || 'Drive rechazó la subida', { httpStatus: r.status });
+      throw _resumableFallbackError(info?.message || 'Drive rechazó la subida', { httpStatus: r.status, stage: 'chunk_rejected', offset, driveReason: info?.errors?.[0]?.reason || null });
     }
     // Red caída, timeout o 5xx: reintento con espera y consulta de cuánto recibió Google
     attempts++;
     if (attempts >= RESUMABLE_MAX_ATTEMPTS) {
       if (!anyProgress) { _resumableFailStreak++; if (_resumableFailStreak >= 2) _resumableDisabled = true; }
-      throw _resumableFallbackError('Se cortó la subida directa', { networkError: true, structural: !anyProgress });
+      throw _resumableFallbackError('Se cortó la subida directa', { networkError: true, structural: !anyProgress, stage: 'chunk_network', offset, httpStatus: r.status, timeout: !!r.timeout, anyProgress });
     }
     await new Promise(res => setTimeout(res, 1000 * attempts));
     const q = await _putResumableChunk(uploadUrl, blob, offset, offset, total, null);
@@ -2179,6 +2179,28 @@ async function _uploadViaResumable(blob, name, folderId, existingId, description
   }
 }
 
+// v2.124: la caída al camino de base64 se registra en error_log (fila 'info',
+// context 'resumable_fallback') — sin esto, una subida directa que falla y se
+// salva por base64 no dejaba ningún rastro, y no había forma de saber si la
+// subida directa anda en el teléfono real. Nunca el nombre del archivo.
+function _logResumableFallback(e, blob) {
+  try {
+    if (typeof logIssue !== 'function') return;
+    logIssue('info', 'resumable_fallback', {
+      message: String(e.message || '').slice(0, 200),
+      props: {
+        stage: e.stage || null, http_status: e.httpStatus ?? null, proxy_code: e.proxyCode || null,
+        drive_reason: e.driveReason || null, network_error: !!e.networkError, timeout: !!e.timeout,
+        offset_mb: e.offset != null ? Math.round((e.offset / 1048576) * 10) / 10 : null,
+        any_progress: !!e.anyProgress,
+        file_type: blob.type || null, file_size_mb: Math.round((blob.size / 1048576) * 10) / 10,
+        will_fallback: blob.size <= BASE64_FALLBACK_MAX_BYTES, now_disabled: _resumableDisabled,
+        original_message: e.originalMessage ? String(e.originalMessage).slice(0, 200) : null,
+      },
+    });
+  } catch (_) {}
+}
+
 async function uploadFileViaProxy(blob, name, folderId, existingId, description, proxyAlbumId, onProgress = null) {
   if (!_resumableDisabled && typeof XMLHttpRequest !== 'undefined') {
     try {
@@ -2186,6 +2208,7 @@ async function uploadFileViaProxy(blob, name, folderId, existingId, description,
     } catch (e) {
       if (!e || !e.resumableFallback) throw e;
       if (e.structural && !e.networkError) { _resumableFailStreak++; if (_resumableFailStreak >= 2) _resumableDisabled = true; }
+      _logResumableFallback(e, blob);
       // Un archivo grande no entra por base64 (techo de Cloud Run): se informa el motivo real.
       if (blob.size > BASE64_FALLBACK_MAX_BYTES) {
         const sizeMb = Math.round((blob.size / 1048576) * 10) / 10;
