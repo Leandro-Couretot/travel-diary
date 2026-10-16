@@ -2347,7 +2347,9 @@ async function listDayFoldersViaProxy(albumFolderId) {
   // El manifest se usa UNA vez por álbum por carga de la app (trae todo y
   // puebla _dayCache). Las llamadas siguientes usan el listado liviano de
   // siempre (1 pedido) para ver días nuevos creados después.
-  if (proxyLabEnabled() && !_manifestLoaded.has(albumFolderId)) {
+  // v2.126: habilitado para todas las cuentas (antes solo la del dev, v2.112).
+  // Si el servidor falla, cae al camino de siempre.
+  if (!_manifestLoaded.has(albumFolderId)) {
     try {
       const dates = await loadAlbumManifestViaProxy(albumFolderId);
       _manifestLoaded.add(albumFolderId);
@@ -2482,6 +2484,22 @@ async function fetchAuthImgUrlViaProxy(folderDriveId, fileId) {
     return '';
   }
 }
+// v2.126: miniatura chica vía el proxy (acción getThumbnail) — decenas de KB
+// en vez del archivo completo. Se cachea por sesión igual que el resto.
+async function fetchThumbUrlViaProxy(folderDriveId, fileId, px) {
+  const cacheKey = `pthumb_${fileId}_${px}`;
+  if (_imgCache[cacheKey]) return _imgCache[cacheKey];
+  try {
+    const res = await sharedAlbumProxyCall(folderDriveId, 'getThumbnail', { fileId, px });
+    if (!res.ok) return '';
+    const url = URL.createObjectURL(await res.blob());
+    _imgCache[cacheKey] = url;
+    return url;
+  } catch (e) {
+    console.warn('Error pidiendo miniatura (álbum compartido, vía proxy):', e);
+    return '';
+  }
+}
 async function fetchFileAsDataUrlViaProxy(folderDriveId, fileId) {
   const res = await sharedAlbumProxyCall(folderDriveId, 'getMediaBytes', { fileId });
   if (!res.ok) throw new Error('Este archivo ya no está disponible en Drive');
@@ -2568,6 +2586,21 @@ const MEDIA_UNAVAILABLE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '</svg>'
 );
 
+// v2.125: placeholder para un VIDEO sin miniatura disponible (Drive todavía
+// no la generó, o falló) — recuadro oscuro; el ícono de play lo pone la vista.
+// Nunca se baja el video completo solo para mostrar una miniatura.
+const VIDEO_THUMB_PLACEHOLDER_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#2b2925"/></svg>'
+);
+function _applyVideoPlaceholder(imgEl) {
+  imgEl.src = VIDEO_THUMB_PLACEHOLDER_SVG;
+  imgEl.classList.add('video-thumb-missing');
+}
+function _sizedThumbLink(link, width) {
+  if (!link || !width) return link;
+  return /=s\d+$/.test(link) ? link.replace(/=s\d+$/, `=s${width}`) : `${link}=s${width}`;
+}
+
 // Último recurso de la cascada de miniatura (ver setAuthImg): descarga el
 // archivo completo, o si ni eso funciona (borrado/sin acceso) muestra el
 // placeholder de "no disponible" en vez del ícono roto del navegador.
@@ -2626,8 +2659,14 @@ const THUMBNAIL_LINK_MAX_WIDTH = 1000;
 // que fallarían siempre. Sin este parámetro, comportamiento 100% idéntico
 // al de siempre — todos los call-sites existentes (álbumes propios) no lo
 // pasan.
-function setAuthImg(imgEl, fileId, size = 'w800', proxyFolderId = null) {
+// v2.125: `opts.isVideo` — miniatura de un VIDEO: la cascada nunca baja el
+// archivo completo (sería el video entero); si no hay miniatura, recuadro
+// oscuro. v2.126: en álbumes compartidos, un pedido chico (grilla) o de video
+// usa la miniatura vía proxy (getThumbnail) antes que el archivo completo.
+function setAuthImg(imgEl, fileId, size = 'w800', proxyFolderId = null, opts = {}) {
   if (!fileId || !imgEl) return;
+  const isVideo = !!(opts && opts.isVideo);
+  imgEl.classList.remove('video-thumb-missing');
   // Evita el ícono nativo de "imagen rota/cargando" del navegador durante el
   // instante entre insertar el <img> sin src todavía cargado y que la miniatura
   // de Drive (o su fallback) termine de llegar — se saca solo con onload, sea
@@ -2653,7 +2692,27 @@ function setAuthImg(imgEl, fileId, size = 'w800', proxyFolderId = null) {
   imgEl.onerror = async () => {
     imgEl.onerror = null; // evitar loop en este primer nivel
     if (proxyFolderId) {
+      if (isVideo || !skipThumbnailLinkLevel) {
+        const small = await fetchThumbUrlViaProxy(proxyFolderId, fileId, Math.min(requestedWidth || 200, 1600));
+        if (small) {
+          imgEl.onerror = async () => {
+            imgEl.onerror = null;
+            if (isVideo) _applyVideoPlaceholder(imgEl);
+            else await applyFullFileFallbackViaProxy(imgEl, fileId, proxyFolderId);
+          };
+          imgEl.src = small;
+          return;
+        }
+        if (isVideo) { _applyVideoPlaceholder(imgEl); return; }
+      }
       await applyFullFileFallbackViaProxy(imgEl, fileId, proxyFolderId);
+      return;
+    }
+    if (isVideo) {
+      const link = await fetchThumbnailLinkUrl(fileId);
+      if (!link) { _applyVideoPlaceholder(imgEl); return; }
+      imgEl.onerror = () => { imgEl.onerror = null; _applyVideoPlaceholder(imgEl); };
+      imgEl.src = _sizedThumbLink(link, requestedWidth);
       return;
     }
     if (skipThumbnailLinkLevel) {

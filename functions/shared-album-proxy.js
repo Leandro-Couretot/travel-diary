@@ -585,6 +585,33 @@ async function dispatchAction(action, params, folderDriveId, ownerAccessToken, r
     return;
   }
 
+  // v2.126 — Miniatura chica (producción, cualquier rol). Para grillas y para
+  // la vista previa de un video: en vez de bajar el archivo completo por el
+  // proxy cuando la miniatura directa de Drive falla en el navegador (PWA en
+  // iPhone, Contribuidores), se devuelve la miniatura que Drive ya generó, al
+  // tamaño pedido (decenas de KB). Mismo mecanismo que labThumbnailBytes,
+  // probado en v2.112. Las vistas grandes de fotos siguen usando el archivo
+  // real (getMediaBytes) para no perder calidad.
+  if (action === 'getThumbnail') {
+    const fileId = params.fileId;
+    const px = Math.min(Math.max(parseInt(params.px, 10) || 200, 64), 1600);
+    if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }
+    const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`, ownerAccessToken);
+    if (!dr.ok) { res.status(404).json({ error: 'not_found' }); return; }
+    const link = (await dr.json()).thumbnailLink;
+    if (!link) { res.status(404).json({ error: 'no_thumbnail' }); return; }
+    mark(res, 'meta');
+    const sized = /=s\d+$/.test(link) ? link.replace(/=s\d+$/, `=s${px}`) : `${link}=s${px}`;
+    let tr = await fetch(sized);
+    if (!tr.ok) tr = await driveFetch(sized, ownerAccessToken);
+    if (!tr.ok) { res.status(502).json({ error: 'thumb_fetch_failed' }); return; }
+    const contentType = tr.headers.get('content-type') || 'image/jpeg';
+    const buf = Buffer.from(await tr.arrayBuffer());
+    mark(res, 'thumb');
+    res.status(200).set('Content-Type', contentType).send(buf);
+    return;
+  }
+
   if (action === 'getMediaBytes') {
     const fileId = params.fileId;
     if (!fileId || !(await isDescendant(fileId, folderDriveId, ownerAccessToken))) { res.status(403).json({ error: 'not_authorized' }); return; }

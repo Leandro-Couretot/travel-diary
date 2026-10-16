@@ -477,6 +477,8 @@ audio { width: 100%; height: 32px; }
 .list-photo-item { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 4px; cursor: pointer; background: var(--accent-light); }
 .list-photo-item.active { outline: 2px solid var(--accent); outline-offset: -2px; }
 .list-photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.list-photo-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.list-photo-play svg { width: 14px; height: 14px; margin-left: 2px; }
 .list-photo-date { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.3rem 0.4rem 0.25rem; background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); color: white; font-size: 0.6rem; letter-spacing: 0.02em; pointer-events: none; }
 .list-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-muted); font-size: 0.875rem; }
 /* Rol Contribuidor (v2.74, Paso 5): solo visible sobre una foto que el
@@ -620,6 +622,13 @@ audio { width: 100%; height: 32px; }
 .lightbox-btn:hover { background: rgba(255,255,255,0.25); }
 .lightbox-btn:disabled { opacity: 0.15; pointer-events: none; }
 .lightbox-prev { left: 0.75rem; }
+/* v2.125: carrusel de Galería — videos dentro del visor */
+.lightbox-stage { position: relative; display: flex; align-items: center; justify-content: center; max-width: 100%; }
+.lightbox-video { max-width: 100%; max-height: 85vh; display: none; background: #000; }
+.lightbox-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border-radius: 50%; border: none; background: rgba(0,0,0,0.55); color: #fff; display: none; align-items: center; justify-content: center; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.72rem; }
+.lightbox-play svg { width: 30px; height: 30px; margin-left: 4px; }
+.lightbox-play.loading { width: auto; height: auto; padding: 0.6rem 1rem; border-radius: 20px; }
+.lightbox-goto-day { position: absolute; bottom: 2.5rem; left: 1rem; background: rgba(255,255,255,0.15); border: none; color: white; padding: 0.5rem 1rem; border-radius: 20px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; cursor: pointer; display: none; }
 .lightbox-next { right: 0.75rem; }
 
 /* Album overlay */
@@ -1207,8 +1216,13 @@ audio { width: 100%; height: 32px; }
 <div class="lightbox" id="lightbox">
   <button class="lightbox-close" id="lightbox-close">✕</button>
   <button class="lightbox-btn lightbox-prev" id="lightbox-prev">←</button>
-  <img class="lightbox-img" id="lightbox-img" src="" alt="">
+  <div class="lightbox-stage">
+    <img class="lightbox-img" id="lightbox-img" src="" alt="">
+    <video class="lightbox-video" id="lightbox-video" controls playsinline preload="none"></video>
+    <button class="lightbox-play" id="lightbox-play" aria-label="Reproducir video"></button>
+  </div>
   <button class="lightbox-btn lightbox-next" id="lightbox-next">→</button>
+  <button class="lightbox-goto-day" id="lightbox-goto-day">Ver el día</button>
   <div class="lightbox-caption" id="lightbox-caption"></div>
   <div class="lightbox-counter" id="lightbox-counter"></div>
   <button id="lightbox-share" style="position:absolute;bottom:2.5rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:white;padding:0.5rem 1rem;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:0.82rem;cursor:pointer;"><span data-icon="share"></span> Compartir</button>
@@ -1643,7 +1657,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.124';
+const APP_VERSION = '2.125';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2406,9 +2420,10 @@ function scheduleCoverLoad(imgEl, fileId, size, idx, proxyFolderId = null) {
 // navegador y dejaba fotos en blanco durante mucho tiempo. Igual que
 // scheduleCoverLoad(): las primeras EAGER_GALLERY_COUNT piden su miniatura
 // ya mismo, el resto recién al entrar en pantalla.
-function scheduleGalleryImgLoad(imgEl, fileId, size, idx, proxyFolderId = null) {
-  if (idx < EAGER_GALLERY_COUNT) { setAuthImg(imgEl, fileId, size, proxyFolderId); return; }
+function scheduleGalleryImgLoad(imgEl, fileId, size, idx, proxyFolderId = null, isVideo = false) {
+  if (idx < EAGER_GALLERY_COUNT) { setAuthImg(imgEl, fileId, size, proxyFolderId, { isVideo }); return; }
   imgEl.dataset.galleryFileId = fileId;
+  if (isVideo) imgEl.dataset.galleryIsVideo = '1';
   imgEl.dataset.gallerySize = size;
   if (proxyFolderId) imgEl.dataset.galleryProxyFolderId = proxyFolderId;
   galleryImgObserver.observe(imgEl);
@@ -5438,7 +5453,7 @@ async function renderContributorGallery() {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       obs.unobserve(entry.target);
-      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize, entry.target.dataset.galleryProxyFolderId || null);
+      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize, entry.target.dataset.galleryProxyFolderId || null, { isVideo: entry.target.dataset.galleryIsVideo === '1' });
     });
   }, { rootMargin: '300px 0px' });
   allPhotos.forEach((p, i) => {
@@ -5977,12 +5992,12 @@ async function renderListTab() {
   const perDay = await Promise.all(allDates.slice().reverse().map(async date => {
     const day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum).catch(() => null) || { media: [] };
     return (day.media || [])
-      .filter(m => m.type === 'image' && m.driveFileId)
-      .map(m => ({ driveFileId: m.driveFileId, date, name: m.name }));
+      .filter(m => (m.type === 'image' || m.type === 'video') && m.driveFileId)
+      .map(m => ({ type: m.type, driveFileId: m.driveFileId, date, name: m.name, caption: m.caption || '' }));
   }));
   if (albumFolderId !== navFolderId) return;
   const allPhotos = perDay.flat();
-  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos en este álbum</div>'; return; }
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos ni videos en este álbum</div>'; return; }
   galleryPhotos = allPhotos; // fuente para el modo selección (shareSelected/deleteSelectedGallery) — ver "SELECTION MODE"
 
   wrap.innerHTML = '';
@@ -5995,14 +6010,14 @@ async function renderListTab() {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       obs.unobserve(entry.target);
-      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize, entry.target.dataset.galleryProxyFolderId || null);
+      setAuthImg(entry.target, entry.target.dataset.galleryFileId, entry.target.dataset.gallerySize, entry.target.dataset.galleryProxyFolderId || null, { isVideo: entry.target.dataset.galleryIsVideo === '1' });
     });
   }, { rootMargin: '300px 0px' });
   allPhotos.forEach((p, i) => {
     const item = document.createElement('div');
     item.className = 'list-photo-item' + (p.date === currentDate ? ' active' : '');
     item.dataset.idx = i;
-    item.innerHTML = `<div class="selection-check">✓</div><img class="list-photo-img" alt=""><div class="list-photo-date">${formatDate(p.date)}</div>`;
+    item.innerHTML = `<div class="selection-check">✓</div><img class="list-photo-img" alt="">${p.type === 'video' ? `<div class="list-photo-play">${icon('play')}</div>` : ''}<div class="list-photo-date">${formatDate(p.date)}</div>`;
     // Un único listener, consciente del modo — en vez de sumar un
     // segundo listener de selección encima (como sí hace enterSelectionMode()
     // con .media-card, que nunca tenía uno previo): acá ya había un click
@@ -6012,10 +6027,11 @@ async function renderListTab() {
     // navegador deja resuelto durante todo el despacho del evento.
     item.addEventListener('click', e => {
       if (selectionMode) { onSelectionCardClick(e); return; }
-      if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
-      switchTab('day'); loadDay(p.date);
+      // v2.125: tocar abre el carrusel (fotos y videos de todo el álbum) en
+      // vez de llevar a la tab Día. "Ver el día" queda como botón adentro.
+      openGalleryViewer(i);
     });
-    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, isSharedAlbum ? albumFolderId : null);
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, isSharedAlbum ? albumFolderId : null, p.type === 'video');
     grid.appendChild(item);
   });
   wrap.appendChild(grid);
@@ -8088,14 +8104,71 @@ function albumSwipeEnd(e) { const diff = albumSwipeX - e.changedTouches[0].clien
 
 // ─── Lightbox ─────────────────────────────────────────────
 let lbImages = [], lbIdx = 0, lbSwipeX = 0;
+// v2.125: el visor sirve a dos orígenes. 'day' = fotos del día abierto (como
+// siempre). 'gallery' = carrusel de Galería: fotos Y videos de todo el álbum,
+// en el orden de la grilla, con botón "Ver el día".
+let lbSource = 'day';
+let lbVideoUrl = null;   // blob: URL del video abierto (se revoca al salir)
+let lbVideoToken = 0;    // invalida una descarga de video que llega tarde
 function openLightbox(mediaIdx) {
+  lbSource = 'day';
   lbImages = currentDay.media.map((m, i) => ({ ...m, mediaIdx: i })).filter(m => m.type === 'image');
   lbIdx = lbImages.findIndex(m => m.mediaIdx === mediaIdx); if (lbIdx < 0) lbIdx = 0;
   document.getElementById('lightbox').classList.add('open'); renderLightbox();
 }
-function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+function openGalleryViewer(idx) {
+  lbSource = 'gallery';
+  lbImages = galleryPhotos.slice();
+  lbIdx = Math.max(0, Math.min(idx, lbImages.length - 1));
+  document.getElementById('lightbox').classList.add('open'); renderLightbox();
+}
+function lbResetVideo() {
+  lbVideoToken++;
+  const video = document.getElementById('lightbox-video');
+  if (video) { try { video.pause(); } catch (_) {} video.removeAttribute('src'); try { video.load(); } catch (_) {} video.style.display = 'none'; }
+  if (lbVideoUrl) { URL.revokeObjectURL(lbVideoUrl); lbVideoUrl = null; }
+  const play = document.getElementById('lightbox-play');
+  if (play) { play.style.display = 'none'; play.classList.remove('loading'); play.innerHTML = icon('play'); play.disabled = false; }
+}
+function closeLightbox() { lbResetVideo(); document.getElementById('lightbox').classList.remove('open'); }
+// El video se descarga recién cuando la persona toca play (nunca para
+// mostrar la miniatura ni al pasar de largo).
+async function lbPlayVideo() {
+  const item = lbImages[lbIdx];
+  if (!item || item.type !== 'video' || !item.driveFileId) return;
+  const play = document.getElementById('lightbox-play');
+  const token = ++lbVideoToken;
+  play.classList.add('loading'); play.disabled = true; play.textContent = 'Cargando video...';
+  try {
+    const url = await fetchFileAsDataUrl(item.driveFileId, isSharedAlbum ? albumFolderId : null);
+    if (token !== lbVideoToken) { URL.revokeObjectURL(url); return; }
+    lbVideoUrl = url;
+    const video = document.getElementById('lightbox-video');
+    document.getElementById('lightbox-img').style.display = 'none';
+    play.style.display = 'none';
+    video.src = url; video.style.display = 'block';
+    const p = video.play(); if (p && p.catch) p.catch(() => {});
+  } catch (e) {
+    if (token !== lbVideoToken) return;
+    play.classList.remove('loading'); play.disabled = false; play.innerHTML = icon('play');
+    alert(e && e.message ? e.message : 'No se pudo cargar el video.');
+  }
+}
+// Precarga en segundo plano la foto anterior y la siguiente del carrusel
+// (solo fotos: un video nunca se precarga).
+function lbPreloadNeighbors() {
+  if (lbSource !== 'gallery') return;
+  [lbIdx - 1, lbIdx + 1].forEach(j => {
+    const it = lbImages[j];
+    if (!it || it.type !== 'image' || !it.driveFileId) return;
+    setAuthImg(new Image(), it.driveFileId, 'w2000', isSharedAlbum ? albumFolderId : null);
+  });
+}
 function renderLightbox() {
+  lbResetVideo();
   const item = lbImages[lbIdx]; const img = document.getElementById('lightbox-img');
+  if (!item) return;
+  img.style.display = '';
   if (item.data) {
     // Sin setAuthImg() de por medio (la foto ya está en memoria) — acá sí
     // hace falta el fade manual, con su propio onload sin nadie que lo pise.
@@ -8111,12 +8184,32 @@ function renderLightbox() {
     // alcanza con limpiar cualquier opacity inline que haya quedado de una
     // apertura anterior con item.data.
     img.style.opacity = '';
-    setAuthImg(img, item.driveFileId, 'w2000', isSharedAlbum ? albumFolderId : null);
+    if (item.type === 'video') {
+      // Vista previa del video: la miniatura de Drive (nunca el video entero)
+      // + botón de play que recién ahí lo descarga.
+      setAuthImg(img, item.driveFileId, 'w1200', isSharedAlbum ? albumFolderId : null, { isVideo: true });
+      const play = document.getElementById('lightbox-play');
+      play.style.display = 'flex';
+    } else {
+      setAuthImg(img, item.driveFileId, 'w2000', isSharedAlbum ? albumFolderId : null);
+    }
   }
-  document.getElementById('lightbox-caption').textContent = item.caption || '';
+  const caption = lbSource === 'gallery'
+    ? [item.date ? formatDate(item.date) : '', item.caption || ''].filter(Boolean).join(' · ')
+    : (item.caption || '');
+  document.getElementById('lightbox-caption').textContent = caption;
   document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
   document.getElementById('lightbox-prev').disabled = lbIdx === 0;
   document.getElementById('lightbox-next').disabled = lbIdx === lbImages.length - 1;
+  document.getElementById('lightbox-goto-day').style.display = lbSource === 'gallery' && item.date ? 'block' : 'none';
+  lbPreloadNeighbors();
+}
+function lbGotoDay() {
+  const item = lbImages[lbIdx];
+  if (!item || !item.date) return;
+  if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
+  closeLightbox();
+  switchTab('day'); loadDay(item.date);
 }
 function lbNav(delta) { const next = lbIdx + delta; if (next < 0 || next >= lbImages.length) return; lbIdx = next; renderLightbox(); }
 
@@ -8676,9 +8769,12 @@ document.getElementById('lightbox-close').addEventListener('click', closeLightbo
 document.getElementById('lightbox-prev').addEventListener('click', () => lbNav(-1));
 document.getElementById('lightbox-next').addEventListener('click', () => lbNav(1));
 document.getElementById('lightbox-share').addEventListener('click', () => shareMediaItem(lbImages[lbIdx]));
+document.getElementById('lightbox-play').addEventListener('click', e => { e.stopPropagation(); lbPlayVideo(); });
+document.getElementById('lightbox-goto-day').addEventListener('click', e => { e.stopPropagation(); lbGotoDay(); });
+document.getElementById('lightbox-play').innerHTML = icon('play');
 document.getElementById('lightbox').addEventListener('click', e => { if (e.target === e.currentTarget) closeLightbox(); });
 document.getElementById('lightbox').addEventListener('touchstart', e => { lbSwipeX = e.touches[0].clientX; }, { passive: true });
-document.getElementById('lightbox').addEventListener('touchend', e => { const diff = lbSwipeX - e.changedTouches[0].clientX; if (Math.abs(diff) > 50) lbNav(diff > 0 ? 1 : -1); });
+document.getElementById('lightbox').addEventListener('touchend', e => { if (e.target && e.target.id === 'lightbox-video' && !e.target.paused) return; const diff = lbSwipeX - e.changedTouches[0].clientX; if (Math.abs(diff) > 50) lbNav(diff > 0 ? 1 : -1); });
 document.getElementById('slideshow-close').addEventListener('click', closeSlideshow);
 document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
 document.getElementById('modal-new-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewAlbumModal(); });
