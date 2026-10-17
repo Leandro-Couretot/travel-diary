@@ -631,34 +631,6 @@ audio { width: 100%; height: 32px; }
 .lightbox-goto-day { position: absolute; bottom: 2.5rem; left: 1rem; background: rgba(255,255,255,0.15); border: none; color: white; padding: 0.5rem 1rem; border-radius: 20px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; cursor: pointer; display: none; }
 .lightbox-next { right: 0.75rem; }
 
-/* Album overlay */
-.album-overlay { display: none; position: fixed; inset: 0; background: #0e0e0c; z-index: 300; flex-direction: column; }
-.album-overlay.open { display: flex; }
-.album-topbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; background: rgba(14,14,12,0.9); backdrop-filter: blur(10px); flex-shrink: 0; }
-.album-topbar-info { flex: 1; display: flex; flex-direction: column; gap: 0.1rem; overflow: hidden; }
-.album-topbar-date { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.4); }
-.album-topbar-count { font-size: 0.78rem; color: rgba(255,255,255,0.5); }
-.album-body { flex: 1; overflow: hidden; position: relative; }
-.album-page { height: 100%; display: flex; flex-direction: column; }
-.album-hero { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #0e0e0c; }
-.album-hero img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-.album-hero-empty { font-family: 'DM Serif Display', serif; font-size: 5rem; color: rgba(255,255,255,0.08); }
-.album-photo-nav { position: absolute; inset: 0; display: flex; }
-.album-photo-prev, .album-photo-next { flex: 1; cursor: pointer; }
-.album-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: 1.5rem 1.25rem 1rem; background: linear-gradient(transparent, rgba(0,0,0,0.7)); font-size: 0.85rem; color: rgba(255,255,255,0.85); line-height: 1.5; }
-.album-dots { position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; }
-.album-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.3); transition: background 0.2s; }
-.album-dot.active { background: white; }
-.album-content { flex-shrink: 0; padding: 1rem 1.25rem 0.5rem; background: #0e0e0c; border-top: 1px solid rgba(255,255,255,0.08); }
-.album-day-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.35); margin-bottom: 0.25rem; }
-.album-title { font-family: 'DM Serif Display', serif; font-size: 1.25rem; color: white; line-height: 1.2; }
-.album-title.no-title { color: rgba(255,255,255,0.25); font-style: italic; }
-.album-notes { font-size: 0.82rem; color: rgba(255,255,255,0.55); margin-top: 0.4rem; line-height: 1.6; max-height: 3.5em; overflow: hidden; }
-.album-strip { display: flex; gap: 4px; padding: 0.5rem 1.25rem 1rem; overflow-x: auto; flex-shrink: 0; background: #0e0e0c; }
-.album-strip::-webkit-scrollbar { display: none; }
-.album-strip-thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 3px; cursor: pointer; opacity: 0.5; transition: opacity 0.15s; flex-shrink: 0; }
-.album-strip-thumb.active { opacity: 1; }
-
 /* Slideshow */
 .slideshow-overlay { display: none; position: fixed; inset: 0; background: #000; z-index: 500; flex-direction: column; align-items: center; justify-content: center; }
 .slideshow-overlay.open { display: flex; }
@@ -1235,30 +1207,6 @@ audio { width: 100%; height: 32px; }
   <button id="lightbox-share" style="position:absolute;bottom:2.5rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:white;padding:0.5rem 1rem;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:0.82rem;cursor:pointer;"><span data-icon="share"></span> Compartir</button>
 </div>
 
-<div class="album-overlay" id="album-overlay">
-  <div class="album-topbar">
-    <button class="btn-nav" id="album-btn-prev" onclick="albumNav(-1)" style="color:white;border-color:rgba(255,255,255,0.2);">←</button>
-    <div class="album-topbar-info">
-      <div class="album-topbar-date" id="album-date"></div>
-      <div class="album-topbar-count" id="album-count"></div>
-    </div>
-    <button class="btn-nav" id="album-btn-edit" style="color:white;border-color:rgba(255,255,255,0.2);">✏</button>
-    <button class="btn-nav" onclick="closeAlbum()" style="color:white;border-color:rgba(255,255,255,0.2);">✕</button>
-    <button class="btn-nav" id="album-btn-next" onclick="albumNav(1)" style="color:white;border-color:rgba(255,255,255,0.2);">→</button>
-  </div>
-  <div class="album-body" ontouchstart="albumSwipeStart(event)" ontouchend="albumSwipeEnd(event)">
-    <div class="album-page" id="album-page">
-      <div class="album-hero" id="album-hero"></div>
-      <div class="album-content">
-        <div class="album-day-label" id="album-label"></div>
-        <div class="album-title" id="album-title"></div>
-        <div class="album-notes" id="album-notes"></div>
-      </div>
-      <div class="album-strip" id="album-strip"></div>
-    </div>
-  </div>
-</div>
-
 <div class="slideshow-overlay" id="slideshow-overlay">
   <img class="slideshow-media" id="slideshow-img" src="" alt="" style="display:none;">
   <video class="slideshow-video" id="slideshow-video" playsinline style="display:none;"></video>
@@ -1666,7 +1614,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.128';
+const APP_VERSION = '2.129';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -8049,68 +7997,6 @@ async function confirmBulkDiary() {
   btn.disabled = false;
 }
 
-// ─── Album overlay ────────────────────────────────────────
-let albumDays = [], albumIdx = 0, albumPhotoIdx = 0, albumSwipeX = 0;
-// v2.66: `albumFolderId`/`isSharedAlbum` son el estado de módulo del
-// diario ya vigente (esta función solo se llama desde adentro del diario,
-// vía el FAB unificado — ver diaryFabSheetRowsHtml()) — antes no se los
-// pasaba a listDayFolders()/loadDayFromDrive(), así que un álbum compartido
-// intentaba leer con el token del invitado y siempre fallaba en silencio
-// (ver CLAUDE.md → "El scope drive.file no da acceso al contenido de una
-// carpeta compartida").
-async function openAlbum() {
-  let dates = [];
-  try { dates = await listDayFolders(albumFolderId, isSharedAlbum); } catch(e) { alert('Error al cargar el álbum desde Drive'); return; }
-  if (!dates.length) { alert('Todavía no hay días guardados.'); return; }
-  const all = [];
-  for (const d of dates) { const day = await loadDayFromDrive(albumFolderId, d, isSharedAlbum); all.push({ date: d, ...(day || emptyDay()) }); }
-  albumDays = all; albumIdx = Math.max(0, albumDays.findIndex(d => d.date === currentDate)); albumPhotoIdx = 0;
-  document.getElementById('album-overlay').classList.add('open'); renderAlbumPage();
-}
-function closeAlbum() { document.getElementById('album-overlay').classList.remove('open'); }
-
-function renderAlbumPage() {
-  const day = albumDays[albumIdx]; const images = (day.media || []).filter(m => m.type === 'image'); const photo = images[albumPhotoIdx] || null;
-  document.getElementById('album-date').textContent  = formatDateLong(day.date);
-  document.getElementById('album-count').textContent = `${albumIdx + 1} / ${albumDays.length}`;
-  document.getElementById('album-btn-edit').onclick  = () => { closeAlbum(); loadDay(day.date); };
-  document.getElementById('album-btn-prev').disabled = albumIdx === 0;
-  document.getElementById('album-btn-next').disabled = albumIdx === albumDays.length - 1;
-  const heroEl = document.getElementById('album-hero');
-  if (photo) {
-    const caption = photo.caption ? `<div class="album-caption">${escHtml(photo.caption)}</div>` : '';
-    const dots = images.length > 1 ? `<div class="album-dots">${images.map((_, i) => `<div class="album-dot${i === albumPhotoIdx ? ' active' : ''}"></div>`).join('')}</div>` : '';
-    heroEl.innerHTML = `<img id="album-hero-img" alt=""><div class="album-photo-nav"><div class="album-photo-prev" onclick="albumPhotoNav(-1)"></div><div class="album-photo-next" onclick="albumPhotoNav(1)"></div></div>${caption}${dots}`;
-    const heroImg = document.getElementById('album-hero-img');
-    if (photo.data) heroImg.src = photo.data; else if (photo.driveFileId) setAuthImg(heroImg, photo.driveFileId, 'w1200', isSharedAlbum ? albumFolderId : null);
-  } else { heroEl.innerHTML = `<div class="album-hero-empty">L</div>`; }
-  document.getElementById('album-label').textContent = formatDate(day.date);
-  const titleEl = document.getElementById('album-title'); titleEl.textContent = day.title || 'Sin título'; titleEl.className = 'album-title' + (day.title ? '' : ' no-title');
-  document.getElementById('album-notes').textContent = day.notes || '';
-  const strip = document.getElementById('album-strip');
-  if (images.length > 1) {
-    strip.style.display = 'flex';
-    strip.innerHTML = images.map((img, i) => `<img class="album-strip-thumb${i === albumPhotoIdx ? ' active' : ''}" id="strip-${i}" onclick="albumGoPhoto(${i})">`).join('');
-    images.forEach((img, i) => { const imgEl = document.getElementById(`strip-${i}`); if (!imgEl) return; if (img.data) imgEl.src = img.data; else if (img.driveFileId) setAuthImg(imgEl, img.driveFileId, 'w200', isSharedAlbum ? albumFolderId : null); });
-  } else { strip.style.display = 'none'; }
-}
-
-function albumNav(delta) {
-  const newIdx = albumIdx + delta;
-  if (newIdx < 0 || newIdx >= albumDays.length) return;
-  const page = document.getElementById('album-page');
-  page.style.transition = 'opacity 0.18s ease, transform 0.18s ease'; page.style.opacity = '0'; page.style.transform = `translateX(${delta > 0 ? '-24px' : '24px'})`;
-  setTimeout(() => {
-    albumIdx = newIdx; albumPhotoIdx = 0; renderAlbumPage();
-    page.style.transition = 'none'; page.style.opacity = '0'; page.style.transform = `translateX(${delta > 0 ? '24px' : '-24px'})`;
-    requestAnimationFrame(() => { page.style.transition = 'opacity 0.18s ease, transform 0.18s ease'; page.style.opacity = '1'; page.style.transform = 'translateX(0)'; });
-  }, 180);
-}
-function albumPhotoNav(delta) { const images = (albumDays[albumIdx].media || []).filter(m => m.type === 'image'); const newIdx = albumPhotoIdx + delta; if (newIdx < 0 || newIdx >= images.length) return; albumPhotoIdx = newIdx; renderAlbumPage(); }
-function albumGoPhoto(idx) { albumPhotoIdx = idx; renderAlbumPage(); }
-function albumSwipeStart(e) { albumSwipeX = e.touches[0].clientX; }
-function albumSwipeEnd(e) { const diff = albumSwipeX - e.changedTouches[0].clientX; if (Math.abs(diff) > 55) albumNav(diff > 0 ? 1 : -1); }
-
 // ─── Lightbox ─────────────────────────────────────────────
 let lbImages = [], lbIdx = 0, lbSwipeX = 0;
 // v2.125: el visor sirve a dos orígenes. 'day' = fotos del día abierto (como
@@ -8885,7 +8771,7 @@ document.getElementById('slideshow-pause').addEventListener('click', toggleSsPau
   });
 })();
 // v2.128: "Reproducir álbum" del "+" del diario usa el mismo slideshow que
-// la card de Home (antes abría otra vista, openAlbum()).
+// la card de Home (antes abría otra vista por días, eliminada en v2.129).
 function playCurrentAlbum() {
   if (isSharedAlbum) startSlideshow({ _shared: true, _folderId: albumFolderId });
   else startSlideshow({ id: albumId });
@@ -8920,7 +8806,6 @@ document.getElementById('contrib-file-input').addEventListener('change', e => { 
 
 document.addEventListener('keydown', e => {
   if (document.getElementById('lightbox').classList.contains('open')) { if (e.key === 'ArrowLeft') lbNav(-1); if (e.key === 'ArrowRight') lbNav(1); if (e.key === 'Escape') closeLightbox(); return; }
-  if (document.getElementById('album-overlay').classList.contains('open')) { if (e.key === 'ArrowLeft') albumNav(-1); if (e.key === 'ArrowRight') albumNav(1); if (e.key === 'Escape') closeAlbum(); return; }
   if (currentView === 'diary' && (e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveCurrentDay(); }
 });
 
