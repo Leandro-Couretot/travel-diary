@@ -1,1 +1,1 @@
-{"version":"2.130","changelog":"En el botón + de un álbum, 'Volver a mis álbumes' ahora está al final de la lista."}
+{"version":"2.131","changelog":"Si la app se cierra sola en segundo plano, al volver a abrirla te lleva al álbum y a la sección donde estabas."}

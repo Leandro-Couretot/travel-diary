@@ -1614,7 +1614,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.130';
+const APP_VERSION = '2.131';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -1933,6 +1933,52 @@ function markTermsAccepted() {
 // ═══════════════════════════════════════════════════════════
 let currentView = 'home'; // 'home' | 'diary'
 
+// v2.131: volver adonde estabas. En la PWA instalada, iOS cierra la app
+// cuando pasa un rato en segundo plano (más rápido si se estaba usando
+// mucha memoria, por ejemplo con muchas fotos del fotolibro en pantalla).
+// Al volver a abrirla arranca de cero, y como la navegación no usa la URL
+// (convención #1), siempre aterrizaba en Home. Se guarda en localStorage
+// el álbum, la tab y el día que se estaban mirando (preferencia por
+// dispositivo, nunca contenido) y al arrancar en frío se vuelve ahí si
+// pasó poco tiempo. Volver a Home a mano lo borra.
+const LAST_LOCATION_KEY = 'td_last_location';
+const LAST_LOCATION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+let lastDiaryParams = null;
+let diaryRestoreTab = null;
+function saveLastLocation() {
+  if (currentView !== 'diary' || !lastDiaryParams) return;
+  try {
+    localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({
+      ...lastDiaryParams, tab: currentTab, date: currentTab === 'day' ? currentDate : null, ts: Date.now()
+    }));
+  } catch {}
+}
+function clearLastLocation() {
+  try { localStorage.removeItem(LAST_LOCATION_KEY); } catch {}
+}
+function readLastLocation() {
+  try {
+    const loc = JSON.parse(localStorage.getItem(LAST_LOCATION_KEY) || 'null');
+    if (!loc || !loc.ts || Date.now() - loc.ts > LAST_LOCATION_MAX_AGE_MS) return null;
+    if (loc.shared ? !loc.folderId : !loc.albumId) return null;
+    return loc;
+  } catch { return null; }
+}
+// Se llama solo en un arranque en frío ya conectado, sin links de
+// invitación de por medio. Devuelve true si navegó al diario.
+function maybeRestoreLastLocation() {
+  const loc = readLastLocation();
+  if (!loc) return false;
+  const tab = ['list', 'day', 'month', 'book'].includes(loc.tab) ? loc.tab : null;
+  navigateTo('diary', {
+    albumId: loc.albumId, name: loc.name, shared: !!loc.shared, folderId: loc.folderId,
+    dateFrom: loc.dateFrom, dateTo: loc.dateTo,
+    targetDate: tab === 'day' ? loc.date : null,
+    restoreTab: tab === 'month' || tab === 'book' ? tab : null,
+  });
+  return true;
+}
+
 function navigateTo(view, params = {}) {
   document.getElementById(`view-${currentView}`).classList.remove('active');
   currentView = view;
@@ -1942,6 +1988,8 @@ function navigateTo(view, params = {}) {
   if (view === 'home') {
     document.querySelector('.save-bar').style.display = 'none';
     dirty = false;
+    lastDiaryParams = null;
+    clearLastLocation();
     document.getElementById('header-subtitle').textContent = '';
     renderHomeHeader();
     renderAlbums();
@@ -1953,6 +2001,11 @@ function navigateTo(view, params = {}) {
     diaryTargetDate = params.targetDate || null;
     sharedAlbumDateFrom = params.dateFrom || null;
     sharedAlbumDateTo   = params.dateTo || null;
+    diaryRestoreTab = params.restoreTab || null;
+    lastDiaryParams = {
+      albumId: albumId, name: params.name || null, shared: isSharedAlbum, folderId: albumFolderId,
+      dateFrom: sharedAlbumDateFrom, dateTo: sharedAlbumDateTo,
+    };
     document.getElementById('header-subtitle').textContent = params.name || 'diario';
     renderDiaryHeader();
     bootstrapDiaryPage();
@@ -2674,6 +2727,7 @@ async function initGoogleAuth() {
     if (sessionToken) refreshSubscriptionAndEnforceLimit(); else establishSessionAndEnforceLimit(driveToken); // en paralelo
     if (contribToken) { await handleContributorJoin(contribToken, contribVia); return; }
     if (joinId) { await handleJoin(joinId, joinName, joinFrom, joinTo); return; }
+    if (maybeRestoreLastLocation()) return;
     await renderAlbums(); await checkMigratable();
   }, () => {
     if (contribToken) { renderContributorJoinPending(); return; }
@@ -5322,7 +5376,7 @@ async function bootstrapDiaryPage() {
     // maybeReconcileAudioUsage() — y esa sí sigue acotada a álbumes editables.
     usageState = await loadUsage();
     if (albumCanEdit) maybeReconcileAudioUsage();
-    if (isContributor) { await renderContributorDiaryPage(); return; }
+    if (isContributor) { diaryRestoreTab = null; saveLastLocation(); await renderContributorDiaryPage(); return; }
     // v2.22: si `navigateTo('diary', {targetDate})` pidió un día puntual
     // (ej. el último día de una carga masiva recién terminada), se respeta
     // ese día en vez de dejar que resolveStartDate() elija el suyo — se
@@ -5333,8 +5387,16 @@ async function bootstrapDiaryPage() {
     diaryTargetDate = null;
     renderDiaryPage();
     await loadDay(currentDate);
-    if (!landOnDay) renderListTab();
+    // v2.131: al volver a abrir la app, retomar Calendario/Fotolibro si era
+    // donde se estaba (Galería y Día ya quedan resueltos arriba).
+    const restoreTab = diaryRestoreTab;
+    diaryRestoreTab = null;
+    if (restoreTab && currentView === 'diary') switchTab(restoreTab);
+    else if (!landOnDay) renderListTab();
+    saveLastLocation();
   } catch(e) {
+    diaryRestoreTab = null;
+    clearLastLocation(); // si el álbum ya no existe, la próxima apertura va a Home
     document.getElementById('day-editor').innerHTML = `<div class="page-loading">Error: ${escHtml(e.message)}</div>`;
   }
 }
@@ -5506,6 +5568,7 @@ function switchTab(tab) {
   if (tab === 'book')  renderBook();
   trackEvent('tab_viewed', { tab });
   trackDiaryTabPageview(tab);
+  saveLastLocation();
 }
 
 function renderDiaryPage() {
@@ -5549,6 +5612,7 @@ async function loadDay(dateStr) {
     document.getElementById('selection-bar').classList.remove('active');
   }
   currentDate = dateStr; dirty = false; updateDateHeader();
+  if (currentTab === 'day') saveLastLocation();
   setStatus('', 'Cargando...');
   revokeMediaBlobUrls(currentDay.media);
   // v2.63: guarda de estabilidad — bug real reportado con álbumes
