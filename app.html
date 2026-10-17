@@ -664,7 +664,12 @@ audio { width: 100%; height: 32px; }
 .slideshow-overlay.open { display: flex; }
 .slideshow-media { width: 100%; height: 100%; object-fit: contain; display: block; position: absolute; inset: 0; }
 .slideshow-video { width: 100%; height: 100%; object-fit: contain; display: block; position: absolute; inset: 0; background: #000; }
-.slideshow-ui { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+.slideshow-ui { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; transition: opacity 0.2s; }
+/* v2.128: capa de toques tipo historias de Instagram (izquierda = anterior,
+   derecha = siguiente, mantener apretado = pausa). Va entre la foto/video y
+   los botones, así los botones de arriba siguen tocables. */
+.slideshow-tap { position: absolute; inset: 0; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.slideshow-overlay.ss-holding .slideshow-ui { opacity: 0; }
 .slideshow-top { display: flex; justify-content: flex-end; align-items: center; padding: 1rem 1rem 0; gap: 0.5rem; pointer-events: all; }
 .slideshow-btn { background: rgba(255,255,255,0.15); backdrop-filter: blur(6px); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
 .slideshow-btn:hover { background: rgba(255,255,255,0.3); }
@@ -1261,6 +1266,7 @@ audio { width: 100%; height: 32px; }
     <div class="slideshow-loader-rings"><span></span><span></span><span></span></div>
     <div class="slideshow-loader-text" id="slideshow-loader-text">Preparando tus recuerdos...</div>
   </div>
+  <div class="slideshow-tap" id="slideshow-tap"></div>
   <div class="slideshow-ui">
     <div class="slideshow-top">
       <button class="slideshow-btn" id="slideshow-pause" title="Pausar"><span data-icon="pause"></span></button>
@@ -1587,6 +1593,7 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Cada álbum agrupa los recuerdos que quieras. Tocá <strong>Nuevo álbum</strong> para crear uno.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá la tarjeta de un álbum para entrar al diario.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Desde el menú de un álbum podés compartirlo o reproducir el slideshow.</span></div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>En el slideshow, tocá a la derecha para pasar a la siguiente, a la izquierda para volver, y dejá el dedo apoyado para pausar.</span></div>
     </div>
     <div class="help-section"><div class="help-section-title"><span data-icon="upload"></span> Carga masiva</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el ícono de carga masiva para subir muchas fotos a la vez. La app las agrupa por día automáticamente.</span></div>
@@ -1659,7 +1666,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.127';
+const APP_VERSION = '2.128';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -8315,6 +8322,10 @@ let ssItems = [], ssIdx = 0, ssPaused = false, ssTimer = null, ssLoadingMore = f
 // pedirlos vía el proxy (ver "El scope drive.file no da acceso al
 // contenido de una carpeta compartida" en CLAUDE.md).
 let ssIsShared = false, ssAlbumFolderId = null;
+// v2.128: navegación tipo historias. `ssHeld` = el dedo está apoyado (pausa
+// temporal, distinta de `ssPaused`, que es el botón). `ssPhotoRemaining`
+// guarda cuánto le quedaba a la foto al congelarla, para retomar desde ahí.
+let ssHeld = false, ssTimerEnd = 0, ssPhotoRemaining = null, ssHoldTimer = null;
 
 function setSsLoaderVisible(visible, text) {
   document.getElementById('slideshow-loader').classList.toggle('open', visible);
@@ -8418,13 +8429,14 @@ function showSsItem() {
   document.getElementById('slideshow-day-label').textContent = formatDate(item.date) + (item.dayTitle ? ` · ${item.dayTitle}` : '');
   document.getElementById('slideshow-caption').textContent = item.caption || '';
   bar.style.transition = 'none'; bar.style.width = '0%';
+  ssPhotoRemaining = null;
   if (item.type === 'image') {
     videoEl.style.display = 'none'; videoEl.src = ''; imgEl.style.display = 'block'; imgEl.style.opacity = '0';
     if (item.data) { imgEl.src = item.data; } else if (item.driveFileId) { setAuthImg(imgEl, item.driveFileId, 'w2000', ssIsShared ? ssAlbumFolderId : null); }
-    imgEl.onload = () => { imgEl.style.transition = 'opacity 0.5s'; imgEl.style.opacity = '1'; if (!ssPaused) startPhotoTimer(); };
+    imgEl.onload = () => { imgEl.style.transition = 'opacity 0.5s'; imgEl.style.opacity = '1'; if (!ssPaused && !ssHeld) startPhotoTimer(); };
   } else if (item.type === 'video') {
     imgEl.style.display = 'none'; videoEl.style.display = 'block'; videoEl.style.opacity = '0';
-    if (item.driveFileId) { fetchFileAsDataUrl(item.driveFileId, ssIsShared ? ssAlbumFolderId : null).then(dataUrl => { videoEl.src = dataUrl; videoEl.style.transition = 'opacity 0.5s'; videoEl.style.opacity = '1'; if (!ssPaused) playSsVideo(videoEl); }).catch(() => { ssIdx++; showSsItem(); }); } else { videoEl.src = item.data || ''; videoEl.style.opacity = '1'; if (!ssPaused) playSsVideo(videoEl); }
+    if (item.driveFileId) { fetchFileAsDataUrl(item.driveFileId, ssIsShared ? ssAlbumFolderId : null).then(dataUrl => { videoEl.src = dataUrl; videoEl.style.transition = 'opacity 0.5s'; videoEl.style.opacity = '1'; if (!ssPaused && !ssHeld) playSsVideo(videoEl); }).catch(() => { ssIdx++; showSsItem(); }); } else { videoEl.src = item.data || ''; videoEl.style.opacity = '1'; if (!ssPaused && !ssHeld) playSsVideo(videoEl); }
     videoEl.onended = () => { if (!ssPaused) { ssIdx++; showSsItem(); } };
     videoEl.ontimeupdate = () => { if (videoEl.duration) { bar.style.transition = 'none'; bar.style.width = (videoEl.currentTime / videoEl.duration * 100) + '%'; } };
   }
@@ -8441,10 +8453,50 @@ function playSsVideo(videoEl) {
   const p = videoEl.play();
   if (p && typeof p.catch === 'function') p.catch(() => { ssIdx++; showSsItem(); });
 }
-function startPhotoTimer() { const duration = (Math.random() * 4 + 3) * 1000; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssIdx++; showSsItem(); }, duration); }
+// `ms` (opcional) = retomar una foto congelada con el tiempo que le quedaba;
+// sin `ms`, duración nueva al azar (3-7s) como siempre.
+function startPhotoTimer(ms) { if (ssTimer) clearTimeout(ssTimer); const duration = ms != null ? ms : (Math.random() * 4 + 3) * 1000; ssPhotoRemaining = null; ssTimerEnd = Date.now() + duration; const bar = document.getElementById('slideshow-progress-bar'); requestAnimationFrame(() => { bar.style.transition = `width ${duration}ms linear`; bar.style.width = '100%'; }); ssTimer = setTimeout(() => { ssTimer = null; ssIdx++; showSsItem(); }, duration); }
+// Congela el item actual sin perder dónde estaba: la foto guarda el tiempo
+// que le faltaba y la barra queda quieta en su ancho actual; el video se pausa.
+function ssFreeze() {
+  const item = ssItems[ssIdx]; if (!item) return;
+  if (item.type === 'image') {
+    if (ssTimer) {
+      clearTimeout(ssTimer); ssTimer = null;
+      ssPhotoRemaining = Math.max(0, ssTimerEnd - Date.now());
+      const bar = document.getElementById('slideshow-progress-bar');
+      const wrapW = bar.parentElement.getBoundingClientRect().width || 1;
+      const pct = bar.getBoundingClientRect().width / wrapW * 100;
+      bar.style.transition = 'none'; bar.style.width = pct + '%';
+    }
+  } else if (item.type === 'video') {
+    document.getElementById('slideshow-video').pause();
+  }
+}
+function ssResume() {
+  if (ssPaused || ssHeld) return;
+  const item = ssItems[ssIdx]; if (!item) return;
+  if (item.type === 'image') {
+    if (ssTimer) return;
+    if (ssPhotoRemaining != null) { startPhotoTimer(ssPhotoRemaining); return; }
+    // La foto terminó de cargar mientras el dedo estaba apoyado: su onload
+    // no arrancó el timer, lo arrancamos ahora.
+    const imgEl = document.getElementById('slideshow-img');
+    if (imgEl.complete && imgEl.naturalWidth > 0) startPhotoTimer();
+  } else if (item.type === 'video') {
+    const videoEl = document.getElementById('slideshow-video');
+    if (videoEl.src && videoEl.paused) playSsVideo(videoEl);
+  }
+}
+// Tocar izquierda/derecha. Anterior desde el primero vuelve a empezar el primero.
+function ssGo(delta) {
+  if (!ssItems.length) return;
+  ssIdx = Math.max(0, ssIdx + delta);
+  showSsItem();
+}
 function clearSsTimers() { if (ssTimer) { clearTimeout(ssTimer); ssTimer = null; } const videoEl = document.getElementById('slideshow-video'); videoEl.onended = null; videoEl.ontimeupdate = null; videoEl.pause(); }
-function toggleSsPause() { ssPaused = !ssPaused; const btn = document.getElementById('slideshow-pause'); const videoEl = document.getElementById('slideshow-video'); const item = ssItems[ssIdx]; btn.innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) { clearSsTimers(); if (item?.type === 'video') videoEl.pause(); } else { if (item?.type === 'image') startPhotoTimer(); else if (item?.type === 'video') { playSsVideo(videoEl); videoEl.onended = () => { ssIdx++; showSsItem(); }; } } }
-function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); exitSsFullscreen(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; }
+function toggleSsPause() { ssPaused = !ssPaused; document.getElementById('slideshow-pause').innerHTML = ssPaused ? icon('play') : icon('pause'); if (ssPaused) ssFreeze(); else ssResume(); }
+function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); exitSsFullscreen(); document.getElementById('slideshow-overlay').classList.remove('open'); setSsLoaderVisible(false); const videoEl = document.getElementById('slideshow-video'); videoEl.pause(); if (videoEl.src && videoEl.src.startsWith('blob:')) URL.revokeObjectURL(videoEl.src); videoEl.src = ''; document.getElementById('slideshow-img').src = ''; ssItems = []; ssIdx = 0; ssPaused = false; ssLoadingMore = false; ssHeld = false; ssPhotoRemaining = null; if (ssHoldTimer) { clearTimeout(ssHoldTimer); ssHoldTimer = null; } document.getElementById('slideshow-overlay').classList.remove('ss-holding'); }
 
 // ─── FAB UNIFICADO DEL DIARIO (v2.88) ──────────────────────
 // Reemplaza dos menús que hasta acá convivían por separado — el "···"
@@ -8485,7 +8537,7 @@ function diaryFabSheetRowsHtml() {
         <span class="bottom-sheet-icon">Aa</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">${bookShowText ? 'Ocultar' : 'Mostrar'} texto</span></span>
       </button>
-      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openAlbum,50)">
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(playCurrentAlbum,50)">
         <span class="bottom-sheet-icon">${icon('play')}</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">Reproducir álbum</span></span>
       </button>`;
@@ -8511,7 +8563,7 @@ function diaryFabSheetRowsHtml() {
       <span class="bottom-sheet-icon">${icon('upload')}</span>
       <span class="bottom-sheet-text"><span class="bottom-sheet-label">Carga masiva</span></span>
     </button>` : ''}
-    <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openAlbum,50)">
+    <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(playCurrentAlbum,50)">
       <span class="bottom-sheet-icon">${icon('play')}</span>
       <span class="bottom-sheet-text"><span class="bottom-sheet-label">Reproducir álbum</span></span>
     </button>`;
@@ -8796,6 +8848,48 @@ document.getElementById('lightbox').addEventListener('touchstart', e => { lbSwip
 document.getElementById('lightbox').addEventListener('touchend', e => { if (e.target && e.target.id === 'lightbox-video' && !e.target.paused) return; const diff = lbSwipeX - e.changedTouches[0].clientX; if (Math.abs(diff) > 50) lbNav(diff > 0 ? 1 : -1); });
 document.getElementById('slideshow-close').addEventListener('click', closeSlideshow);
 document.getElementById('slideshow-pause').addEventListener('click', toggleSsPause);
+// v2.128: toques tipo historias de Instagram sobre el slideshow. Tocar el
+// tercio izquierdo = anterior, el resto = siguiente; mantener apretado
+// (más de ~220ms) pausa mientras el dedo siga apoyado.
+(function initSlideshowTap() {
+  const tap = document.getElementById('slideshow-tap');
+  const overlay = document.getElementById('slideshow-overlay');
+  let pressing = false;
+  function endHold() {
+    if (ssHoldTimer) { clearTimeout(ssHoldTimer); ssHoldTimer = null; }
+    const wasHeld = ssHeld;
+    if (wasHeld) { ssHeld = false; overlay.classList.remove('ss-holding'); ssResume(); }
+    return wasHeld;
+  }
+  tap.addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    pressing = true;
+    ssHoldTimer = setTimeout(() => { ssHoldTimer = null; ssHeld = true; overlay.classList.add('ss-holding'); ssFreeze(); }, 220);
+  });
+  tap.addEventListener('pointerup', e => {
+    if (!e.isPrimary || !pressing) return;
+    pressing = false;
+    if (endHold()) return; // fue una pausa, no un toque
+    const rect = tap.getBoundingClientRect();
+    ssGo(e.clientX - rect.left < rect.width / 3 ? -1 : 1);
+  });
+  const cancel = () => { if (!pressing) return; pressing = false; endHold(); };
+  tap.addEventListener('pointercancel', cancel);
+  tap.addEventListener('pointerleave', cancel);
+  tap.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('keydown', e => {
+    if (!overlay.classList.contains('open')) return;
+    if (e.key === 'ArrowLeft') ssGo(-1);
+    else if (e.key === 'ArrowRight') ssGo(1);
+    else if (e.key === 'Escape') closeSlideshow();
+  });
+})();
+// v2.128: "Reproducir álbum" del "+" del diario usa el mismo slideshow que
+// la card de Home (antes abría otra vista, openAlbum()).
+function playCurrentAlbum() {
+  if (isSharedAlbum) startSlideshow({ _shared: true, _folderId: albumFolderId });
+  else startSlideshow({ id: albumId });
+}
 document.getElementById('modal-new-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewAlbumModal(); });
 document.getElementById('modal-confirm').addEventListener('click', e => { if (e.target === e.currentTarget) document.getElementById('confirm-cancel-btn').click(); });
 document.getElementById('modal-share-album').addEventListener('click', e => { if (e.target === e.currentTarget) closeShareModal(); });
