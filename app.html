@@ -1148,7 +1148,7 @@ audio { width: 100%; height: 32px; }
 
 <!-- ─── SHARED HEADER ─── -->
 <header class="app-header" id="app-header">
-  <div class="app-logo" id="app-logo" style="cursor:pointer;" onclick="navigateTo('home')">Legado <span id="header-subtitle"></span></div>
+  <div class="app-logo" id="app-logo" style="cursor:pointer;" onclick="goHome()">Legado <span id="header-subtitle"></span></div>
   <div style="display:flex;gap:0.5rem;align-items:center;" id="header-actions">
     <!-- populated by router -->
   </div>
@@ -1659,7 +1659,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.126';
+const APP_VERSION = '2.127';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -8457,7 +8457,11 @@ function closeSlideshow() { clearSsTimers(); releaseSsWakeLock(); exitSsFullscre
 function diaryFabSheetRowsHtml() {
   if (currentTab === 'book') {
     return `
-      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookExportModal,50)">
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();goHome()">
+      <span class="bottom-sheet-icon">${icon('albums')}</span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Volver a mis álbumes</span></span>
+    </button>
+    <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookExportModal,50)">
         <span class="bottom-sheet-icon">${icon('download')}</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">Exportar</span></span>
       </button>
@@ -8491,6 +8495,10 @@ function diaryFabSheetRowsHtml() {
   // individuales a la que aplicarle este modo.
   const canSelect = currentTab === 'day' || currentTab === 'list';
   return `
+    <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();goHome()">
+      <span class="bottom-sheet-icon">${icon('albums')}</span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Volver a mis álbumes</span></span>
+    </button>
     ${currentTab === 'day' && albumCanEdit ? `<button class="bottom-sheet-row" onclick="document.getElementById('file-input').click();closeDiaryFabSheet()">
       <span class="bottom-sheet-icon">${icon('upload')}</span>
       <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos a este día</span></span>
@@ -8507,6 +8515,15 @@ function diaryFabSheetRowsHtml() {
       <span class="bottom-sheet-icon">${icon('play')}</span>
       <span class="bottom-sheet-text"><span class="bottom-sheet-label">Reproducir álbum</span></span>
     </button>`;
+}
+
+// v2.127: "Volver a mis álbumes" (fila del "+" del diario) y el logo usan
+// esto. A diferencia de navigateTo('home') a secas, pregunta antes de
+// descartar cambios sin guardar del día abierto.
+function goHome() {
+  if (currentView === 'home') return;
+  if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return;
+  navigateTo('home');
 }
 
 function openDiaryFabSheet() {
