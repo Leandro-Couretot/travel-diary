@@ -1614,7 +1614,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.131';
+const APP_VERSION = '2.132';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -3706,7 +3706,10 @@ async function handleSharedAlbumMenuAction(action, album) {
 
 // ─── Confirmación propia (reemplaza confirm() nativo) ────────
 // Devuelve una Promise<boolean> — usar con await en vez de confirm().
-function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar', cancelLabel = 'Cancelar' } = {}) {
+// onConfirmSync (v2.132): se ejecuta dentro del mismo toque de "Confirmar",
+// antes de cerrar. Sirve para APIs que exigen un gesto reciente del
+// usuario (navigator.share en iOS).
+function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', onConfirmSync = null } = {}) {
   return new Promise(resolve => {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').textContent = message;
@@ -3723,7 +3726,7 @@ function customConfirm(message, { title = 'Confirmar', confirmLabel = 'Confirmar
       closeBtn.removeEventListener('click', onCancel);
       resolve(result);
     };
-    const onOk = () => finish(true);
+    const onOk = () => { if (onConfirmSync) { try { onConfirmSync(); } catch (e) { console.warn(e); } } finish(true); };
     const onCancel = () => finish(false);
     okBtn.addEventListener('click', onOk);
     cancelBtn.addEventListener('click', onCancel);
@@ -8610,8 +8613,37 @@ function updateSelectionBar() {
     n === 0 ? 'Seleccioná fotos' : `${n} seleccionada${n > 1 ? 's' : ''}`;
 }
 
+// v2.132: iOS solo deja abrir el menú de compartir pocos segundos después
+// de un toque. Bajar varias fotos/videos de Drive tarda más que eso, y
+// navigator.share() falla con NotAllowedError ("The request is not
+// allowed by the user agent..."). Se intenta directo; si iOS lo rechaza
+// por eso, se muestra un aviso "Listo para compartir" y el toque en su
+// botón (gesto nuevo) abre el menú con los archivos ya descargados.
+// Devuelve true si se compartió, false si se canceló.
+async function shareWithGesture(shareData, count) {
+  try {
+    await navigator.share(shareData);
+    return true;
+  } catch (e) {
+    if (e.name === 'AbortError') return false;
+    if (e.name !== 'NotAllowedError') throw e;
+  }
+  let sharePromise = null;
+  const ok = await customConfirm(
+    count > 1 ? `Tus ${count} archivos ya están listos.` : 'El archivo ya está listo.',
+    { title: 'Listo para compartir', confirmLabel: 'Compartir', cancelLabel: 'Cancelar',
+      onConfirmSync: () => { sharePromise = navigator.share(shareData); } }
+  );
+  if (!ok || !sharePromise) return false;
+  try { await sharePromise; return true; }
+  catch (e) { if (e.name === 'AbortError') return false; throw e; }
+}
+
 async function shareSelected() {
   if (!selectedIdxs.size) return;
+  const countEl = document.getElementById('selection-count');
+  const n = selectedIdxs.size;
+  if (countEl) countEl.textContent = `Preparando ${n} archivo${n > 1 ? 's' : ''}...`;
   // Galería: mismo mecanismo, la fuente de los items cambia — galleryPhotos
   // nunca tiene `.data` en memoria (siempre son fotos ya guardadas en
   // Drive), así que cae derecho a la rama fetchedFresh de abajo.
@@ -8625,7 +8657,7 @@ async function shareSelected() {
     try {
       let dataUrl = item.data;
       const fetchedFresh = !dataUrl && !!item.driveFileId;
-      if (fetchedFresh) dataUrl = await fetchFileAsDataUrl(item.driveFileId);
+      if (fetchedFresh) dataUrl = await fetchFileAsDataUrl(item.driveFileId, isSharedAlbum ? albumFolderId : null);
       if (!dataUrl) return null;
       const res  = await fetch(dataUrl);
       const blob = await res.blob();
@@ -8633,10 +8665,14 @@ async function shareSelected() {
       return new File([blob], item.name || 'foto.jpg', { type: blob.type });
     } catch { return null; }
   }))).filter(Boolean);
-  if (!files.length) return;
+  if (!files.length) {
+    updateSelectionBar();
+    alert('No se pudieron cargar los archivos para compartir. Probá de nuevo.');
+    return;
+  }
   try {
     if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
-      await navigator.share({ files });
+      if (!(await shareWithGesture({ files }, files.length))) { exitSelectionMode(); return; }
     } else {
       // Fallback: download each
       for (const file of files) {
@@ -8724,13 +8760,10 @@ async function shareMediaItem(item) {
 
     // Use Web Share API if available
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: item.caption || item.name,
-      });
+      if (!(await shareWithGesture({ files: [file], title: item.caption || item.name }, 1))) return;
     } else if (navigator.share) {
       // Fallback: share without file (URL only)
-      await navigator.share({ title: item.caption || item.name, text: item.caption || '' });
+      if (!(await shareWithGesture({ title: item.caption || item.name, text: item.caption || '' }, 1))) return;
     } else {
       // Last fallback: download
       const url = URL.createObjectURL(blob);
