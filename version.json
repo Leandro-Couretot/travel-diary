@@ -1,1 +1,1 @@
-{"version":"2.135","changelog":"Si una carga se corta justo al final, podés terminar de guardarla sin volver a subir los archivos."}
+{"version":"2.136","changelog":"Si una subida se corta antes de terminar de guardarse, la app la completa sola al volver y no vuelve a subir archivos que ya estaban en tu Drive."}

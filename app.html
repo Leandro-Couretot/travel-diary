@@ -750,6 +750,9 @@ audio { width: 100%; height: 32px; }
 .bulk-progress.error { color: var(--red); }
 .bulk-day-dupes { flex-basis: 100%; margin-top: 0.4rem; padding: 0.5rem 0.6rem; background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); }
 .bulk-dupe-warning { font-size: 0.75rem; color: var(--red); margin-bottom: 0.35rem; }
+.pending-resume-notice { position: fixed; left: 50%; bottom: calc(1.25rem + env(safe-area-inset-bottom)); transform: translate(-50%, 1rem); background: var(--ink); color: #fff; font-size: 0.85rem; padding: 0.7rem 1rem; border-radius: 10px; max-width: calc(100% - 32px); width: max-content; box-shadow: 0 4px 16px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.25s ease, transform 0.25s ease; z-index: 400; }
+.pending-resume-notice.show { opacity: 1; transform: translate(-50%, 0); }
+.bulk-adopt-note { font-size: 0.75rem; color: var(--ink-muted); margin-top: 0.35rem; }
 .bulk-dupe-list { margin: 0 0 0.5rem; padding-left: 1.1rem; font-size: 0.78rem; color: var(--ink-muted); }
 .bulk-dupe-list li { padding: 0.1rem 0; }
 .bulk-dupe-list li.bulk-dupe-item-excluded { text-decoration: line-through; opacity: 0.55; }
@@ -1614,7 +1617,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.135';
+const APP_VERSION = '2.136';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2983,6 +2986,8 @@ function albumSkeletonGridHtml(count = 4) {
 
 async function renderAlbums() {
   if (currentView !== 'home') return;
+  // v2.136: si quedaron archivos subidos sin registrar, terminarlos de fondo.
+  if (readPendingMedia().length) setTimeout(resumePendingMedia, 1500);
   // Único lugar al que se llega ya conectado a Drive de verdad — vuelve a
   // mostrar el chrome de la app que renderDisconnected() ocultó.
   const header = document.getElementById('app-header');
@@ -4469,7 +4474,7 @@ async function importFromDriveDiary() {
   if (!bulkDiaryGrouped) bulkDiaryGrouped = { dated: {}, undated: [] };
   mergeBulkGroups(bulkDiaryGrouped, extra);
   renderBulkDiaryReview();
-  markBulkDuplicates(bulkDiaryGrouped, albumFolderId).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
+  markBulkDuplicates(bulkDiaryGrouped, albumFolderId, isSharedAlbum).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
 }
 
 // ─── Carga masiva: aviso de posibles duplicados ────────────
@@ -4478,15 +4483,21 @@ async function importFromDriveDiary() {
 // CLAUDE.md). Marca cada File con _dup/_excluded; excluido por default
 // cuando hay coincidencia, el usuario puede re-tildarlo si de verdad
 // quiere subirlo igual.
-async function markBulkDuplicates(grouped, albumFolderId) {
+// v2.136: además marca `_orphanId` cuando el archivo ya está en la carpeta
+// del día en Drive pero no en day.json (se subió y se cortó el guardado):
+// runBulkUpload() lo adopta en vez de subirlo otra vez.
+async function markBulkDuplicates(grouped, albumFolderId, viaProxy = false) {
   const dates = Object.keys(grouped.dated);
   await Promise.all(dates.map(async date => {
-    let existingNames;
-    try { existingNames = await getExistingNamesForDate(albumFolderId, date); }
-    catch { existingNames = new Set(); }
+    let inv;
+    try { inv = await getDayUploadInventory(albumFolderId, date, viaProxy); }
+    catch { inv = { names: new Set(), orphans: new Map() }; }
     grouped.dated[date].forEach(file => {
-      file._dup = existingNames.has(file.name);
+      file._dup = inv.names.has(file.name);
       file._excluded = file._dup;
+      const orphan = !file._dup && inv.orphans.get(file.name);
+      const sameKind = orphan && (orphan.mimeType.split('/')[0] === String(file.type || '').split('/')[0]);
+      file._orphanId = sameKind ? orphan.id : null;
     });
   }));
 }
@@ -4516,6 +4527,14 @@ function renderBulkDatedList(datedList, grouped) {
           <button type="button" class="bulk-dupe-btn${allOmitted ? '' : ' active'}" data-date="${date}" data-action="include">Subir de todos modos</button>
         </div>`;
       row.appendChild(dupBox);
+    }
+    const adopted = files.filter(f => f._orphanId);
+    if (adopted.length) {
+      const note = document.createElement('div'); note.className = 'bulk-adopt-note';
+      note.textContent = adopted.length === 1
+        ? `"${adopted[0].name}" ya estaba en tu Drive pero no en el álbum: lo agregamos sin volver a subirlo.`
+        : `${adopted.length} archivos ya estaban en tu Drive pero no en el álbum: los agregamos sin volver a subirlos.`;
+      row.appendChild(note);
     }
     datedList.appendChild(row);
   });
@@ -4613,7 +4632,15 @@ function _uploadIssueProps(file, i, total, t0, proxyAlbumId, uploadPath) {
   return p;
 }
 
-async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess, proxyAlbumId = null) {
+// v2.136: mientras corre una carga masiva no se retoman pendientes de fondo
+// (resumePendingMedia), para no escribir el mismo day.json a la vez.
+let bulkRunActive = 0;
+async function runBulkUpload(...args) {
+  bulkRunActive++;
+  try { return await runBulkUploadInner(...args); }
+  finally { bulkRunActive--; }
+}
+async function runBulkUploadInner(albumFolderId, groupsByDate, progressEl, onSuccess, proxyAlbumId = null) {
   // Aviso mientras dura la subida — minimizar la app o bloquear el
   // celular puede cortarla a mitad de camino (ver ERROR_HANDLING_PLAN.md).
   const hintEl = document.getElementById(progressEl.id.replace('-progress', '-upload-hint'));
@@ -4722,7 +4749,12 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     try {
     const isImg = file.type.startsWith('image/');
     let fileId;
-    if (file._driveImport) {
+    if (file._orphanId) {
+      // v2.136: ya estaba en la carpeta del día en Drive pero no en day.json
+      // (subida anterior que se cortó al guardar): se adopta, no se sube.
+      fileId = file._orphanId;
+      uploadPath = 'adopted';
+    } else if (file._driveImport) {
       // v2.96: foto/video elegido del Picker — nunca pasa por el navegador,
       // es una copia server-side de Drive a Drive, así que no hay ningún
       // porcentaje real de bytes que mostrar (a diferencia de una subida
@@ -4736,7 +4768,11 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
       fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderIds[date], null, MEDIA_FILE_DESCRIPTION, proxyAlbumId, pct => { if (pct === null) uploadPath = 'base64'; setItemState(i, 'uploading', pct); });
     }
     if (!newMediaByDate[date]) newMediaByDate[date] = [];
-    newMediaByDate[date].push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
+    const mediaEntry = { type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' };
+    newMediaByDate[date].push(mediaEntry);
+    // v2.136: queda anotado en el teléfono hasta que day.json lo registre; si
+    // iOS corta la app antes, se termina de guardar solo al volver.
+    addPendingMedia({ albumFolderId, date, dayFolderId: dayFolderIds[date], proxyAlbumId, media: mediaEntry });
     setItemState(i, 'done');
     done++; lastCompletedAt = Date.now(); progressEl.textContent = `Subiendo... ${done}/${total}`;
     // v2.110: una subida que salió bien pero tardó mucho también se registra
@@ -4810,19 +4846,145 @@ async function saveBulkMediaToDays(albumFolderId, dayFolderIds, newMediaByDate, 
     const dates = Object.keys(newMediaByDate);
     const saveResults = await Promise.allSettled(dates.map(async date => {
       invalidateDayCache(albumFolderId, date);
-      const day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId) || { title: '', notes: '', media: [] };
-      day.media.push(...newMediaByDate[date]);
-      await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
+      let day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId);
+      // v2.136: null puede ser "no hay día" o un error de red; si el
+      // day.json existe (o no se pudo verificar) no se escribe nada.
+      if (!day) {
+        if (await dayJsonExists(dayFolderIds[date], date, proxyAlbumId)) throw new Error('No se pudo leer el día para guardarlo');
+        day = { title: '', notes: '', media: [] };
+      }
+      // v2.136: nunca dos veces el mismo archivo (un reintento o un
+      // pendiente retomado puede volver a traer algo ya registrado).
+      const known = new Set(day.media.map(m => m.driveFileId));
+      const toAdd = newMediaByDate[date].filter(m => !known.has(m.driveFileId) && (known.add(m.driveFileId), true));
+      if (toAdd.length) {
+        day.media.push(...toAdd);
+        await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
+      }
       invalidateDayCache(albumFolderId, date);
     }));
     let firstErr = null;
     saveResults.forEach((r, i) => {
-      if (r.status === 'fulfilled') delete newMediaByDate[dates[i]];
+      if (r.status === 'fulfilled') {
+        clearPendingMedia(albumFolderId, dates[i], newMediaByDate[dates[i]].map(m => m.driveFileId));
+        delete newMediaByDate[dates[i]];
+      }
       else if (!firstErr) firstErr = r.reason || new Error('Error al guardar');
     });
     if (!firstErr || attempt >= autoRetries) return firstErr;
     await new Promise(r => setTimeout(r, 1500));
   }
+}
+
+// ─── v2.136: archivos subidos pendientes de registrar en day.json ─────────
+// Metadata de corta vida en localStorage (misma excepción a la convención #2
+// que td_first_touch / td_issue_queue): ids de Drive ya subidos, nunca
+// contenido. Se borra apenas el day.json los registra.
+const PENDING_MEDIA_KEY = 'td_pending_media';
+const PENDING_MEDIA_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const PENDING_MEDIA_MAX_ATTEMPTS = 5;
+function readPendingMedia() {
+  try { const a = JSON.parse(localStorage.getItem(PENDING_MEDIA_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+function writePendingMedia(list) {
+  try {
+    if (list.length) localStorage.setItem(PENDING_MEDIA_KEY, JSON.stringify(list.slice(-300)));
+    else localStorage.removeItem(PENDING_MEDIA_KEY);
+  } catch {}
+}
+function addPendingMedia(entry) {
+  const list = readPendingMedia();
+  list.push({ ...entry, owner: (typeof currentUserSub !== 'undefined' && currentUserSub) || null, ts: Date.now(), attempts: 0 });
+  writePendingMedia(list);
+}
+function clearPendingMedia(albumFolderId, date, ids) {
+  const set = new Set(ids);
+  const list = readPendingMedia();
+  const next = list.filter(p => !(p.albumFolderId === albumFolderId && p.date === date && p.media && set.has(p.media.driveFileId)));
+  if (next.length !== list.length) writePendingMedia(next);
+}
+
+let _pendingResumeInFlight = false;
+async function resumePendingMedia() {
+  if (_pendingResumeInFlight || bulkRunActive > 0 || !isDriveConnected()) return;
+  // Con el aviso "Terminar de guardar" a la vista, lo resuelve ese botón.
+  if (bulkSaveRetryCtx && bulkSaveRetryCtx.progressEl && bulkSaveRetryCtx.progressEl.offsetParent) return;
+  const now = Date.now();
+  let list = readPendingMedia();
+  if (!list.length) return;
+  const valid = list.filter(p => p && p.albumFolderId && p.dayFolderId && p.date && p.media && p.media.driveFileId
+    && now - (p.ts || 0) < PENDING_MEDIA_MAX_AGE_MS && (p.attempts || 0) < PENDING_MEDIA_MAX_ATTEMPTS);
+  if (valid.length !== list.length) writePendingMedia(valid);
+  // Si ya sabemos qué cuenta está conectada, solo lo de esa cuenta.
+  const mine = valid.filter(p => !p.owner || !currentUserSub || p.owner === currentUserSub);
+  if (!mine.length) return;
+  _pendingResumeInFlight = true;
+  try {
+    if (mine.some(p => p.proxyAlbumId) && !sessionToken) await waitForSessionToken(6000);
+    const groups = {};
+    mine.forEach(p => {
+      const k = `${p.albumFolderId}|${p.proxyAlbumId || ''}`;
+      const g = groups[k] || (groups[k] = { albumFolderId: p.albumFolderId, proxyAlbumId: p.proxyAlbumId || null, dayFolderIds: {}, newMediaByDate: {} });
+      g.dayFolderIds[p.date] = p.dayFolderId;
+      (g.newMediaByDate[p.date] || (g.newMediaByDate[p.date] = [])).push(p.media);
+    });
+    let lastErr = null;
+    const touched = [];
+    for (const g of Object.values(groups)) {
+      const dates = Object.keys(g.newMediaByDate);
+      const err = await saveBulkMediaToDays(g.albumFolderId, g.dayFolderIds, g.newMediaByDate, g.proxyAlbumId, 0);
+      if (err) lastErr = err;
+      dates.forEach(d => { if (!g.newMediaByDate[d]) touched.push({ albumFolderId: g.albumFolderId, date: d }); });
+    }
+    const remaining = readPendingMedia();
+    const remainingIds = new Set(remaining.map(p => p.media && p.media.driveFileId));
+    const saved = mine.filter(p => !remainingIds.has(p.media.driveFileId)).length;
+    if (lastErr) {
+      const mineIds = new Set(mine.map(p => p.media.driveFileId));
+      writePendingMedia(remaining.map(p => (p.media && mineIds.has(p.media.driveFileId)) ? { ...p, attempts: (p.attempts || 0) + 1 } : p));
+      logIssue('upload_error', 'pending_media_resume', { error: lastErr, props: { pending: mine.length, saved } });
+    }
+    if (saved) {
+      logIssue('info', 'pending_media_resume', { message: 'pendientes guardados', props: { saved, pending: mine.length } });
+      showPendingResumeNotice(saved);
+      refreshViewsAfterPendingResume(touched);
+    }
+  } catch (e) {
+    console.warn('No se pudieron retomar los archivos pendientes:', e);
+  } finally {
+    _pendingResumeInFlight = false;
+  }
+}
+
+function showPendingResumeNotice(n) {
+  let el = document.getElementById('pending-resume-notice');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pending-resume-notice';
+    el.className = 'pending-resume-notice';
+    document.body.appendChild(el);
+  }
+  el.textContent = n === 1
+    ? 'Terminamos de guardar 1 archivo que había quedado pendiente en tu álbum.'
+    : `Terminamos de guardar ${n} archivos que habían quedado pendientes en tu álbum.`;
+  el.classList.add('show');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.remove('show'), 6000);
+}
+
+// Si el día retomado es el que está abierto (sin cambios sin guardar), o se
+// está en Home/Galería, se refresca para que aparezca sin recargar a mano.
+function refreshViewsAfterPendingResume(touched) {
+  try {
+    if (currentView === 'home') { renderAlbums(); return; }
+    if (currentView !== 'diary') return;
+    const here = touched.filter(t => t.albumFolderId === albumFolderId);
+    if (!here.length) return;
+    allDates = [];
+    if (currentTab === 'day' && !dirty && here.some(t => t.date === currentDate)) loadDay(currentDate);
+    else if (currentTab === 'list') renderListTab();
+  } catch (e) { console.warn(e); }
 }
 
 function showBulkSaveRetry(ctx) {
@@ -8059,7 +8221,7 @@ async function processBulkDiaryFiles(fileList) {
   document.getElementById('bulk-diary-drop-zone').innerHTML = `<div class="bulk-drop-icon">⏳</div><div class="bulk-drop-text">Leyendo fechas de ${files.length} archivo${files.length > 1 ? 's' : ''}...</div>`;
   bulkDiaryGrouped = await groupFilesByDate(files);
   renderBulkDiaryReview();
-  markBulkDuplicates(bulkDiaryGrouped, albumFolderId).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
+  markBulkDuplicates(bulkDiaryGrouped, albumFolderId, isSharedAlbum).then(() => renderBulkDatedList(document.getElementById('bulk-diary-dated-list'), bulkDiaryGrouped));
 }
 
 function renderBulkDiaryReview() {
@@ -9110,6 +9272,16 @@ document.getElementById('book-stuck-banner-close').addEventListener('click', hid
 
 checkForAppUpdate();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForAppUpdate(); });
+// v2.136: al volver a la app, terminar un guardado de carga masiva que quedó
+// cortado (el modal sigue abierto con "Terminar de guardar") o retomar los
+// archivos pendientes. Con un margen para que el token se refresque antes.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  setTimeout(() => {
+    if (bulkSaveRetryCtx && bulkSaveRetryCtx.progressEl && bulkSaveRetryCtx.progressEl.offsetParent) retryBulkSave();
+    else if (readPendingMedia().length) resumePendingMedia();
+  }, 2000);
+});
 setInterval(() => { if (document.visibilityState === 'visible') checkForAppUpdate(); }, 15 * 60 * 1000);
 
 // ─── Vuelta desde el checkout de Mercado Pago ────────────

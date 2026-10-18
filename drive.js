@@ -571,6 +571,20 @@ const DAY_JSON_DESCRIPTION = 'Este archivo es usado por la app Legado. Borrarlo 
 async function findDayJsonId(dayFolderId, dateStr) {
   return await findFileInFolderMigrating(dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId);
 }
+// v2.136: true/false si el day.json existe; TIRA si no se pudo verificar.
+// Lo usa la carga masiva antes de escribir un day.json "nuevo": si
+// loadDayFromDrive() devolvió null por un error de red (no porque el día no
+// exista), escribir pisaría el día real con solo los archivos nuevos.
+async function dayJsonExists(dayFolderId, dateStr, proxyAlbumId = null) {
+  if (proxyAlbumId) {
+    const res = await sharedAlbumProxyCall(proxyAlbumId, 'findFileByName', {
+      parentId: dayFolderId, names: [dayJsonName(dateStr), dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY],
+    });
+    if (!res.ok) throw new Error('No se pudo verificar el día en Drive');
+    return !!(await res.json()).id;
+  }
+  return !!(await findDayJsonId(dayFolderId, dateStr));
+}
 async function saveDayJson(dayFolderId, dateStr, dayJson, proxyAlbumId = null) {
   return await writeJsonFileMigrating(dayJson, dayJsonName(dateStr), [dayJsonNameOld(dateStr), DAY_JSON_OLD_NAME_LEGACY], dayFolderId, DAY_JSON_DESCRIPTION, proxyAlbumId);
 }
@@ -1207,6 +1221,47 @@ async function getExistingNamesForDate(albumFolderId, dateStr) {
   // arriba) — así el chequeo de duplicados sigue funcionando para esos
   // días también, sin depender de reescribir el day.json ya guardado.
   return new Set((day?.media || []).map(m => stripMediaNamePrefix(m.name)));
+}
+
+// v2.136: inventario de una fecha para la carga masiva. Además de los
+// nombres ya registrados en day.json (aviso de duplicados), lista la
+// carpeta del día en Drive y devuelve los archivos de media que están ahí
+// pero NO figuran en day.json ("huérfanos": se subieron pero se cortó el
+// guardado final, ver v2.135). La carga masiva los adopta en vez de volver
+// a subirlos. Una sola lista de carpeta por fecha, solo al subir (nunca al
+// navegar). Nunca tira: ante cualquier error devuelve lo que pudo.
+async function getDayUploadInventory(albumFolderId, dateStr, viaProxy = false) {
+  const names = new Set();
+  const orphans = new Map();
+  try {
+    invalidateDayCache(albumFolderId, dateStr);
+    const day = await loadDayFromDrive(albumFolderId, dateStr, viaProxy);
+    const knownIds = new Set();
+    (day?.media || []).forEach(m => {
+      names.add(stripMediaNamePrefix(m.name));
+      if (m.driveFileId) knownIds.add(m.driveFileId);
+    });
+    const dayFolderId = getCachedDayFolderId(albumFolderId, dateStr);
+    // Un día reconstruido (sin day.json) ya trae como media todos los
+    // archivos de la carpeta: no hay huérfanos que buscar.
+    if (!dayFolderId || !day || day._reconstructed) return { names, orphans };
+    let files = [];
+    if (viaProxy) {
+      const res = await sharedAlbumProxyCall(albumFolderId, 'listFiles', { parentId: dayFolderId });
+      if (res.ok) files = (await res.json()).files || [];
+    } else {
+      files = await listFilesInFolder(dayFolderId);
+    }
+    files.forEach(f => {
+      const mt = f.mimeType || '';
+      if (!/^(image|video|audio)\//.test(mt) || knownIds.has(f.id)) return;
+      const base = stripMediaNamePrefix(f.name);
+      if (!orphans.has(base)) orphans.set(base, { id: f.id, mimeType: mt });
+    });
+  } catch (e) {
+    console.warn('Inventario de día para carga masiva:', e);
+  }
+  return { names, orphans };
 }
 
 // ─── FOTOLIBRO: páginas explícitas + drawer ──────────────
