@@ -1447,8 +1447,8 @@ audio { width: 100%; height: 32px; }
     <button class="bottom-sheet-row" onclick="handleFabAction('photos')">
       <span class="bottom-sheet-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="9" cy="10" r="1.5"></circle><path d="M21 15l-5-5-4 4-3-3-4 4"></path></svg></span>
       <span class="bottom-sheet-text">
-        <span class="bottom-sheet-label">Agregar fotos</span>
-        <span class="bottom-sheet-sub">Subí fotos a un álbum existente</span>
+        <span class="bottom-sheet-label">Agregar fotos y videos</span>
+        <span class="bottom-sheet-sub">Subí fotos y videos a un álbum existente</span>
       </span>
     </button>
     <div class="bottom-sheet-divider"></div>
@@ -1498,7 +1498,7 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-bulk-upload">
   <div class="modal" style="max-width:480px;">
-    <div class="modal-header"><div class="modal-title">Carga masiva</div><button class="modal-close" onclick="closeBulkUpload()">×</button></div>
+    <div class="modal-header"><div class="modal-title">Agregar fotos y videos</div><button class="modal-close" onclick="closeBulkUpload()">×</button></div>
     <div class="modal-body">
       <div id="bulk-step-drop">
         <div class="bulk-drop-zone" id="bulk-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
@@ -1519,7 +1519,7 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-bulk-diary">
   <div class="modal" style="max-width:480px;">
-    <div class="modal-header"><div class="modal-title">Carga masiva</div><button class="modal-close" onclick="closeBulkDiary()">×</button></div>
+    <div class="modal-header"><div class="modal-title">Agregar fotos y videos</div><button class="modal-close" onclick="closeBulkDiary()">×</button></div>
     <div class="modal-body">
       <div id="bulk-diary-step-drop">
         <div class="bulk-drop-zone" id="bulk-diary-drop-zone"><div class="bulk-drop-icon" data-icon="drive"></div><div class="bulk-drop-text"><strong>Seleccioná fotos y videos</strong></div><div class="bulk-drop-sub">La app lee la fecha de cada archivo y los agrupa por día</div></div>
@@ -1546,8 +1546,8 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span>Desde el menú de un álbum podés compartirlo o reproducir el slideshow.</span></div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>En el slideshow, tocá a la derecha para pasar a la siguiente, a la izquierda para volver, y dejá el dedo apoyado para pausar.</span></div>
     </div>
-    <div class="help-section"><div class="help-section-title"><span data-icon="upload"></span> Carga masiva</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el ícono de carga masiva para subir muchas fotos a la vez. La app las agrupa por día automáticamente.</span></div>
+    <div class="help-section"><div class="help-section-title"><span data-icon="upload"></span> Agregar fotos y videos</div>
+      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá "Agregar fotos y videos" para subir muchos a la vez. La app los ordena por día automáticamente.</span></div>
     </div>
     <div class="help-section"><div class="help-section-title"><span data-icon="calendar"></span> El diario</div>
       <div class="help-item"><span class="help-item-dot">▸</span><span>Navegá entre días con las flechas o tocando la fecha.</span></div>
@@ -1617,7 +1617,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.136';
+const APP_VERSION = '2.137';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -3510,7 +3510,7 @@ function toggleAlbumMenu(event, album, wrapper) {
   menu.innerHTML = `
     <button class="diary-menu-item" data-action="play"><span class="diary-menu-item-icon">${icon('play')}</span> Reproducir</button>
     <button class="diary-menu-item" data-action="edit"><span class="diary-menu-item-icon">${icon('edit')}</span> Editar álbum</button>
-    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Carga masiva</button>
+    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Agregar fotos y videos</button>
     <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">${icon('share')}</span> Compartir álbum</button>
     <button class="diary-menu-item" data-action="drive"><span class="diary-menu-item-icon">${icon('drive')}</span> Ver en Drive</button>
     <button class="diary-menu-item" data-action="archive"><span class="diary-menu-item-icon">${icon('archive')}</span> Archivar álbum</button>
@@ -3623,7 +3623,7 @@ function sharedAlbumMenuItemsHtml(isEditor) {
   // el usuario decidió que renombrar/cambiar fechas quede exclusivo de la
   // dueña real, igual que archivar/eliminar.
   const editorItems = isEditor ? `
-    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Carga masiva</button>
+    <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Agregar fotos y videos</button>
     <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">${icon('share')}</span> Compartir álbum</button>` : '';
   return `
     <button class="diary-menu-item" data-action="play"><span class="diary-menu-item-icon">${icon('play')}</span> Reproducir</button>
@@ -8685,7 +8685,7 @@ function diaryFabSheetRowsHtml() {
       </button>
       ${albumCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBulkDiary,50)">
         <span class="bottom-sheet-icon">${icon('upload')}</span>
-        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos</span></span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos</span></span>
       </button>` : ''}
       ${bookCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookPageSizeModal,50)">
         <span class="bottom-sheet-icon">${icon('size')}</span>
@@ -8719,7 +8719,7 @@ function diaryFabSheetRowsHtml() {
   return `
     ${currentTab === 'day' && albumCanEdit ? `<button class="bottom-sheet-row" onclick="document.getElementById('file-input').click();closeDiaryFabSheet()">
       <span class="bottom-sheet-icon">${icon('upload')}</span>
-      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos a este día</span></span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos a este día</span></span>
     </button>` : ''}
     ${canSelect ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(enterSelectionMode,50)">
       <span class="bottom-sheet-icon">${icon('select')}</span>
@@ -8727,7 +8727,7 @@ function diaryFabSheetRowsHtml() {
     </button>` : ''}
     ${albumCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBulkDiary,50)">
       <span class="bottom-sheet-icon">${icon('upload')}</span>
-      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Carga masiva</span></span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos</span></span>
     </button>` : ''}
     <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(playCurrentAlbum,50)">
       <span class="bottom-sheet-icon">${icon('play')}</span>

@@ -1,1 +1,1 @@
-{"version":"2.136","changelog":"Si una subida se corta antes de terminar de guardarse, la app la completa sola al volver y no vuelve a subir archivos que ya estaban en tu Drive."}
+{"version":"2.137","changelog":"\"Carga masiva\" ahora se llama \"Agregar fotos y videos\"."}
