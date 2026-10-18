@@ -87,13 +87,18 @@ self.addEventListener('fetch', event => {
   // función que el app.html nuevo ya llama (ver v1.43 en CLAUDE.md). Si
   // no hay conexión, cae al caché igual que antes.
   const isScript = url.pathname.endsWith('.js');
-  event.respondWith(req.mode === 'navigate' || isScript ? networkFirst(req) : staleWhileRevalidate(req));
+  event.respondWith(req.mode === 'navigate' || isScript ? networkFirst(req, isScript) : staleWhileRevalidate(req));
 });
 
-async function networkFirst(req) {
+async function networkFirst(req, revalidate) {
   const cache = await caches.open(CACHE_NAME);
   try {
-    const fresh = await fetch(req);
+    // v2.134: legadofamiliar.com.ar pasa por Cloudflare, que reemplaza el
+    // "no-cache" de firebase.json por "max-age=14400" en los .js. Con eso
+    // el navegador servía un exif.js viejo de su caché durante 4 horas
+    // aunque el deploy ya estuviera arriba. cache:'no-cache' obliga a
+    // revalidar contra el servidor (con ETag, barato si no cambió).
+    const fresh = await fetch(req, revalidate ? { cache: 'no-cache' } : undefined);
     if (fresh && fresh.ok) cache.put(req, fresh.clone());
     return fresh;
   } catch {
