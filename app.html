@@ -794,6 +794,17 @@ audio { width: 100%; height: 32px; }
 .bulk-upload-donut.failed { background: var(--red); }
 .bulk-upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bulk-upload-pct { color: var(--ink-muted); font-size: 0.72rem; flex-shrink: 0; min-width: 3.4em; text-align: right; }
+/* v2.139: panel de progreso de la subida del Contribuidor (reusa las filas
+   .bulk-upload-item / donut de la carga masiva). */
+.contrib-upload-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 300; background: var(--paper, #fff); border-top: 1px solid var(--ink-faint); border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,0.14); padding: 0.9rem 1rem calc(0.9rem + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; display: none; }
+.contrib-upload-panel.open { display: block; }
+.contrib-upload-panel .cup-title { font-weight: 600; font-size: 0.95rem; color: var(--ink); display: flex; align-items: center; gap: 0.5rem; }
+.contrib-upload-panel .cup-hint { font-size: 0.76rem; color: var(--ink-muted); margin: 0.35rem 0 0; line-height: 1.4; }
+.contrib-upload-panel .bulk-upload-list { max-height: 34vh; }
+.contrib-upload-panel .cup-note { margin-top: 0.5rem; font-size: 0.76rem; color: var(--ink-muted); background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); padding: 0.5rem 0.75rem; line-height: 1.4; }
+.contrib-upload-panel .cup-note.error { color: var(--red); border-color: var(--red); }
+.contrib-upload-panel .cup-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
+.contrib-upload-panel .cup-actions .btn { flex: 1; width: auto; padding: 0.55rem 0.8rem; font-size: 0.85rem; }
 .bulk-upload-stall-note { margin-top: 0.5rem; font-size: 0.76rem; color: var(--ink-muted); text-align: center; background: var(--paper); border: 1px solid var(--ink-faint); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 
 /* Aviso de resolución al exportar el fotolibro (v2.43) — lista una por una
@@ -1617,7 +1628,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.138';
+const APP_VERSION = '2.139';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2988,6 +2999,7 @@ async function renderAlbums() {
   if (currentView !== 'home') return;
   // v2.136: si quedaron archivos subidos sin registrar, terminarlos de fondo.
   if (readPendingMedia().length) setTimeout(resumePendingMedia, 1500);
+  setTimeout(checkInterruptedContributorUpload, 2500); // v2.139
   // Único lugar al que se llega ya conectado a Drive de verdad — vuelve a
   // mostrar el chrome de la app que renderDisconnected() ocultó.
   const header = document.getElementById('app-header');
@@ -4907,7 +4919,7 @@ function clearPendingMedia(albumFolderId, date, ids) {
 
 let _pendingResumeInFlight = false;
 async function resumePendingMedia() {
-  if (_pendingResumeInFlight || bulkRunActive > 0 || !isDriveConnected()) return;
+  if (_pendingResumeInFlight || bulkRunActive > 0 || contribRunActive > 0 || !isDriveConnected()) return;
   // Con el aviso "Terminar de guardar" a la vista, lo resuelve ese botón.
   if (bulkSaveRetryCtx && bulkSaveRetryCtx.progressEl && bulkSaveRetryCtx.progressEl.offsetParent) return;
   const now = Date.now();
@@ -4917,11 +4929,37 @@ async function resumePendingMedia() {
     && now - (p.ts || 0) < PENDING_MEDIA_MAX_AGE_MS && (p.attempts || 0) < PENDING_MEDIA_MAX_ATTEMPTS);
   if (valid.length !== list.length) writePendingMedia(valid);
   // Si ya sabemos qué cuenta está conectada, solo lo de esa cuenta.
-  const mine = valid.filter(p => !p.owner || !currentUserSub || p.owner === currentUserSub);
-  if (!mine.length) return;
+  const mineAll = valid.filter(p => !p.owner || !currentUserSub || p.owner === currentUserSub);
+  if (!mineAll.length) return;
+  // v2.139: lo del Contribuidor no se puede escribir con el day.json completo
+  // (el proxy solo le deja sumar UNA entrada), va por contributorAppendMedia.
+  const contribPend = mineAll.filter(p => p.contributor);
+  const mine = mineAll.filter(p => !p.contributor);
   _pendingResumeInFlight = true;
   try {
-    if (mine.some(p => p.proxyAlbumId) && !sessionToken) await waitForSessionToken(6000);
+    if (mineAll.some(p => p.proxyAlbumId) && !sessionToken) await waitForSessionToken(6000);
+    if (contribPend.length) {
+      let cSaved = 0, cErr = null; const cTouched = [];
+      for (const p of contribPend) {
+        try {
+          await contributorAppendMediaToDay(p.albumFolderId, p.dayFolderId, p.date, p.media);
+          clearPendingMedia(p.albumFolderId, p.date, [p.media.driveFileId]);
+          invalidateDayCache(p.albumFolderId, p.date);
+          cSaved++; cTouched.push({ albumFolderId: p.albumFolderId, date: p.date });
+        } catch (e) { cErr = e; }
+      }
+      if (cErr) {
+        const ids = new Set(contribPend.map(p => p.media.driveFileId));
+        writePendingMedia(readPendingMedia().map(p => (p.media && ids.has(p.media.driveFileId)) ? { ...p, attempts: (p.attempts || 0) + 1 } : p));
+        logIssue('upload_error', 'pending_media_resume', { error: cErr, props: { pending: contribPend.length, saved: cSaved, contributor: true } });
+      }
+      if (cSaved) {
+        logIssue('info', 'pending_media_resume', { message: 'pendientes de contribuidor guardados', props: { saved: cSaved, pending: contribPend.length, contributor: true } });
+        showPendingResumeNotice(cSaved);
+        refreshViewsAfterPendingResume(cTouched);
+      }
+    }
+    if (!mine.length) return;
     const groups = {};
     mine.forEach(p => {
       const k = `${p.albumFolderId}|${p.proxyAlbumId || ''}`;
@@ -4982,6 +5020,7 @@ function refreshViewsAfterPendingResume(touched) {
     const here = touched.filter(t => t.albumFolderId === albumFolderId);
     if (!here.length) return;
     allDates = [];
+    if (isContributor) { renderContributorGallery(); return; }
     if (currentTab === 'day' && !dirty && here.some(t => t.date === currentDate)) loadDay(currentDate);
     else if (currentTab === 'list') renderListTab();
   } catch (e) { console.warn(e); }
@@ -5655,7 +5694,8 @@ async function renderContributorDiaryPage() {
   document.getElementById('diary-tabs').style.display = 'none';
   document.getElementById('diary-fab-container').style.display = 'none';
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-list'));
-  document.getElementById('contrib-fab-container').style.display = 'block';
+  document.getElementById('contrib-fab-container').style.display = contribRunActive > 0 ? 'none' : 'block';
+  setTimeout(checkInterruptedContributorUpload, 2500); // v2.139
   await renderContributorGallery();
 }
 
@@ -5728,51 +5768,288 @@ async function deleteContributorPhoto(idx) {
 
 // v2.138: fotos y videos (audio no). Los videos no se comprimen: se suben
 // tal cual por la subida directa a Google (v2.123), sin el techo del proxy.
+//
+// v2.139: panel de progreso (mismas filas/donut que la carga masiva) y
+// resistencia a que la pantalla se apague o la app pase a segundo plano (caso
+// real: un casamiento, el invitado sube fotos y bloquea el celular para
+// comer o bailar). Lo que se cubre, y lo que no:
+//  - Pantalla despierta mientras sube (Wake Lock): evita el bloqueo
+//    AUTOMÁTICO por inactividad. Un bloqueo manual (botón de encendido) no.
+//  - Si una subida se corta (pasó a segundo plano), se reintenta sola una vez
+//    apenas la app vuelve a estar visible.
+//  - Lo que llegó a subirse a Drive pero no a anotarse en el día queda
+//    pendiente (td_pending_media, contributor:true) y se termina solo al
+//    volver (resumePendingMedia()).
+//  - Si iOS cierra la app del todo, no se pueden retomar los archivos que
+//    faltaban (el navegador no conserva los File elegidos): queda un registro
+//    (td_contrib_upload_session) y al volver a abrir se le dice a la persona
+//    cuáles no llegaron, para que los vuelva a elegir.
 const CONTRIB_UPLOAD_CONCURRENCY = 3;
+const CONTRIB_SESSION_KEY = 'td_contrib_upload_session';
+let contribRunActive = 0;
+let contribRun = null; // { items, failedItems, ... } de la corrida en pantalla
+
+function _contribIsVideo(f) { return (f.type || '').startsWith('video/') || /\.(mp4|mov|m4v)$/i.test(f.name || ''); }
+
+// Registro local de la corrida en curso (solo nombres y estados, nunca el
+// contenido). Se borra al terminar; si queda al abrir la app, es que se cortó.
+function saveContribSession(run) {
+  try {
+    localStorage.setItem(CONTRIB_SESSION_KEY, JSON.stringify({
+      albumFolderId: run.albumFolderId, owner: currentUserSub || null, ts: Date.now(),
+      items: run.items.map(it => ({ name: it.file.name, state: it.state })),
+    }));
+  } catch (e) {}
+}
+function clearContribSession() { try { localStorage.removeItem(CONTRIB_SESSION_KEY); } catch (e) {} }
+
+let _contribInterruptedChecked = false;
+function checkInterruptedContributorUpload() {
+  if (contribRunActive > 0) return;
+  let sess = null;
+  try { sess = JSON.parse(localStorage.getItem(CONTRIB_SESSION_KEY) || 'null'); } catch (e) {}
+  if (!sess || !Array.isArray(sess.items)) return;
+  if (sess.owner && currentUserSub && sess.owner !== currentUserSub) return;
+  clearContribSession();
+  if (Date.now() - (sess.ts || 0) > 3 * 24 * 60 * 60 * 1000) return;
+  const done = sess.items.filter(it => it.state === 'done').length;
+  const pend = sess.items.filter(it => it.state === 'pending' || it.state === 'saving').length;
+  const lost = sess.items.filter(it => it.state !== 'done' && it.state !== 'pending' && it.state !== 'saving');
+  if (!lost.length) return;
+  const code = newIssueCode();
+  logIssue('upload_error', 'contributor_upload_interrupted', { message: 'subida cortada', code, props: { total: sess.items.length, done, pending: pend, lost: lost.length } });
+  const names = lost.slice(0, 8).map(it => `<li>${escHtml(it.name)}</li>`).join('') + (lost.length > 8 ? `<li>y ${lost.length - 8} más</li>` : '');
+  showOnboardingInfoModal({
+    title: 'Una subida quedó a medias',
+    itemsHtml: `
+      <p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0 0 0.7rem;">La última vez que subiste fotos y videos, la app se cerró o se pausó antes de terminar (puede pasar al apagar la pantalla). ${done ? `Se subieron ${done} de ${sess.items.length}. ` : ''}${pend ? `Otros ${pend} ya están en Drive y los terminamos de guardar solos. ` : ''}</p>
+      <p style="font-size:0.9rem;color:var(--ink);line-height:1.5;margin:0 0 0.4rem;"><strong>No llegaron ${lost.length === 1 ? 'este archivo' : 'estos ' + lost.length + ' archivos'}:</strong></p>
+      <ul style="font-size:0.85rem;color:var(--ink-muted);margin:0 0 0.7rem;padding-left:1.1rem;line-height:1.5;">${names}</ul>
+      <p style="font-size:0.85rem;color:var(--ink-muted);line-height:1.5;margin:0;">Volvé a elegirlos con el botón ＋ para subirlos de nuevo. Si dejás la app abierta mientras suben, no se pierde nada.</p>
+      <p style="font-size:0.72rem;color:var(--ink-muted);margin:0.6rem 0 0;">Código: ${code}</p>`,
+    ctaLabel: 'Entendido',
+  });
+}
+
+let contribWakeLock = null;
+async function acquireContribWakeLock() {
+  try { if ('wakeLock' in navigator) contribWakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function releaseContribWakeLock() {
+  try { contribWakeLock?.release(); } catch (e) {}
+  contribWakeLock = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (contribRunActive > 0 && contribRun) {
+    if (document.visibilityState === 'hidden') contribRun.hiddenAt = Date.now();
+    else {
+      acquireContribWakeLock();
+      contribRun.lastProgressAt = Date.now();
+      if (contribRun.hiddenAt && Date.now() - contribRun.hiddenAt > 4000) {
+        contribRun.hiddenAt = null;
+        setContribNote('Volviste a la app. Las subidas que se pausaron las retomamos solas; si alguna no se pudo, la dejamos marcada para reintentar.');
+      }
+    }
+  }
+});
+window.addEventListener('beforeunload', e => { if (contribRunActive > 0) { e.preventDefault(); e.returnValue = ''; } });
+
+function contribPanel() {
+  let el = document.getElementById('contrib-upload-panel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'contrib-upload-panel';
+    el.className = 'contrib-upload-panel';
+    el.innerHTML = '<div class="cup-title" id="cup-title"></div><div class="cup-hint" id="cup-hint"></div><div class="bulk-upload-list" id="cup-list"></div><div id="cup-notes"></div><div class="cup-actions" id="cup-actions"></div>';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function setContribNote(text, isError) {
+  const box = document.getElementById('cup-notes');
+  if (!box) return;
+  box.innerHTML = text ? `<div class="cup-note${isError ? ' error' : ''}">${text}</div>` : '';
+}
+function setContribItemState(i, state, pct) {
+  if (!contribRun) return;
+  const it = contribRun.items[i];
+  if (it) it.state = state === 'uploading' && pct == null ? 'uploading' : state;
+  const donut = document.getElementById(`cup-donut-${i}`);
+  const pctEl = document.getElementById(`cup-pct-${i}`);
+  const itemEl = document.getElementById(`cup-item-${i}`);
+  if (!donut || !pctEl) return;
+  if (itemEl) { itemEl.classList.remove('queued'); itemEl.classList.remove('failed'); }
+  if (state === 'queued') {
+    if (itemEl) itemEl.classList.add('queued');
+    donut.className = 'bulk-upload-donut'; donut.style.background = ''; donut.innerHTML = ''; pctEl.textContent = 'en cola';
+  } else if (state === 'preparing' || (state === 'uploading' && pct == null)) {
+    donut.className = 'bulk-upload-donut working'; donut.style.background = ''; donut.innerHTML = '';
+    pctEl.textContent = state === 'preparing' ? 'preparando' : 'enviando';
+  } else if (state === 'uploading') {
+    donut.className = 'bulk-upload-donut'; donut.style.background = `conic-gradient(var(--accent) ${pct}%, var(--ink-faint) 0)`; donut.innerHTML = ''; pctEl.textContent = `${pct}%`;
+  } else if (state === 'saving') {
+    donut.className = 'bulk-upload-donut working'; donut.style.background = ''; donut.innerHTML = ''; pctEl.textContent = 'guardando';
+  } else if (state === 'done') {
+    donut.className = 'bulk-upload-donut done'; donut.style.background = ''; donut.innerHTML = icon('check'); pctEl.textContent = '✓';
+  } else if (state === 'pending') {
+    // Ya está en Drive; falta anotarlo en el día (se termina solo).
+    donut.className = 'bulk-upload-donut working'; donut.style.background = ''; donut.innerHTML = ''; pctEl.textContent = 'falta guardar';
+  } else if (state === 'failed') {
+    donut.className = 'bulk-upload-donut failed'; donut.style.background = ''; donut.innerHTML = icon('close'); pctEl.textContent = 'falló';
+    if (itemEl) itemEl.classList.add('failed');
+  }
+  if (state !== 'uploading') saveContribSession(contribRun);
+}
+
+function closeContribPanel() {
+  const el = document.getElementById('contrib-upload-panel');
+  if (el) el.classList.remove('open');
+  const fab = document.getElementById('contrib-fab-container');
+  if (fab && isContributor) fab.style.display = 'block';
+}
+
+function contribDoneCount() { return contribRun ? contribRun.items.filter(it => it.state === 'done' || it.state === 'pending').length : 0; }
+function updateContribTitle() {
+  const t = document.getElementById('cup-title');
+  if (!t || !contribRun) return;
+  t.innerHTML = `<span class="btn-spinner"></span> Subiendo ${contribDoneCount()} de ${contribRun.items.length}`;
+}
+
 async function uploadContributorMedia(fileListRaw) {
-  const isVideoFile = f => (f.type || '').startsWith('video/') || /\.(mp4|mov|m4v)$/i.test(f.name || '');
-  const files = Array.from(fileListRaw).filter(f => isVideoFile(f) || (f.type || '').startsWith('image/') || /\.(jpe?g|png|heic|heif)$/i.test(f.name || ''));
+  const files = Array.from(fileListRaw).filter(f => _contribIsVideo(f) || (f.type || '').startsWith('image/') || /\.(jpe?g|png|heic|heif)$/i.test(f.name || ''));
   if (!files.length) return;
-  const btn = document.getElementById('contrib-fab-btn');
-  const prevLabel = btn.textContent;
-  btn.disabled = true; btn.textContent = '…';
+  if (contribRunActive > 0) { alert('Ya hay una subida en curso. Esperá a que termine para sumar más.'); return; }
+  const items = [];
+  for (const file of files) items.push({ file, date: (await getFileDateStr(file)) || localDateStr(), state: 'queued' });
+  await runContributorUploads(items);
+}
+
+async function runContributorUploads(items) {
+  contribRunActive++;
+  const run = contribRun = { albumFolderId, items, hiddenAt: null, lastProgressAt: Date.now() };
+  const total = items.length;
+  acquireContribWakeLock();
+
+  const panel = contribPanel();
+  const fab = document.getElementById('contrib-fab-container');
+  if (fab) fab.style.display = 'none';
+  document.getElementById('cup-hint').textContent = 'No cierres la app. Si se apaga la pantalla, las subidas se pausan y se retoman solas al volver; te avisamos qué pasó con cada archivo.';
+  document.getElementById('cup-actions').innerHTML = '';
+  setContribNote('');
+  document.getElementById('cup-list').innerHTML = items.map((it, i) => `
+    <div class="bulk-upload-item queued" id="cup-item-${i}">
+      <div class="bulk-upload-donut" id="cup-donut-${i}"></div>
+      <div class="bulk-upload-name">${escHtml(it.file.name)}</div>
+      <div class="bulk-upload-pct" id="cup-pct-${i}">en cola</div>
+    </div>`).join('');
+  panel.classList.add('open');
+  updateContribTitle();
+  saveContribSession(run);
 
   const dayFolderPromises = {};
   function resolveDayFolder(date) {
     if (!dayFolderPromises[date]) {
-      dayFolderPromises[date] = (async () => getCachedDayFolderId(albumFolderId, date) || await getOrCreateFolder(date, albumFolderId, albumFolderId))();
+      dayFolderPromises[date] = (async () => getCachedDayFolderId(run.albumFolderId, date) || await getOrCreateFolder(date, run.albumFolderId, run.albumFolderId))();
+      dayFolderPromises[date].catch(() => { delete dayFolderPromises[date]; });
     }
     return dayFolderPromises[date];
   }
+  const waitVisible = () => document.visibilityState === 'visible' ? Promise.resolve() : new Promise(res => {
+    const h = () => { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', h); res(); } };
+    document.addEventListener('visibilitychange', h);
+  });
 
-  const tasks = [];
-  for (const file of files) { const date = (await getFileDateStr(file)) || localDateStr(); tasks.push({ file, date }); }
+  const stallTimer = setInterval(() => {
+    if (contribDoneCount() + items.filter(it => it.state === 'failed').length >= total || document.getElementById('cup-stall')) return;
+    if (document.visibilityState === 'visible' && Date.now() - run.lastProgressAt > 20000) {
+      const box = document.getElementById('cup-notes');
+      if (box && !box.textContent) box.innerHTML = '<div class="cup-note" id="cup-stall">Está tardando más de lo normal. Seguimos reintentando solos, no hace falta que hagas nada ni cierres la app.</div>';
+    }
+  }, 5000);
 
-  const results = await runWithConcurrency(tasks, CONTRIB_UPLOAD_CONCURRENCY, async ({ file, date }, i) => {
+  const results = await runWithConcurrency(items, CONTRIB_UPLOAD_CONCURRENCY, async (it, i) => {
+    const { file, date } = it;
+    const type = _contribIsVideo(file) ? 'video' : 'image';
     const t0 = Date.now();
+    let driveFileId = null, dayFolderId = null, mediaEntry = null;
     try {
-      const type = isVideoFile(file) ? 'video' : 'image';
-      const blob = type === 'video' ? file : base64ToBlob(await compressImageFile(file));
-      const dayFolderId = await resolveDayFolder(date);
-      const driveFileId = await uploadFile(blob, mediaFileName(type, file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, albumFolderId);
-      await contributorAppendMediaToDay(albumFolderId, dayFolderId, date, { type, name: file.name, driveFileId });
-      invalidateDayCache(albumFolderId, date);
-      if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'contributor_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, tasks.length, t0, albumFolderId) });
+      // 1) Subir el archivo (hasta 2 intentos: si se cortó con la app en
+      // segundo plano, se espera a que vuelva y se reintenta una vez).
+      for (let attempt = 1; ; attempt++) {
+        try {
+          setContribItemState(i, 'preparing');
+          const blob = type === 'video' ? file : base64ToBlob(await compressImageFile(file));
+          dayFolderId = await resolveDayFolder(date);
+          driveFileId = await uploadFile(blob, mediaFileName(type, file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, run.albumFolderId, pct => setContribItemState(i, 'uploading', pct));
+          break;
+        } catch (e) {
+          if (attempt >= 2 || e instanceof DriveQuotaExceededError || (e && /read_only|not_authorized|owner_/.test(e.proxyCode || e.message || ''))) throw e;
+          setContribItemState(i, 'preparing');
+          await waitVisible();
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+      // 2) Anotarlo en el día. Queda como pendiente hasta confirmarlo, así si
+      // la app se corta justo acá se termina de guardar al volver.
+      mediaEntry = { type, name: file.name, driveFileId };
+      addPendingMedia({ albumFolderId: run.albumFolderId, date, dayFolderId, proxyAlbumId: run.albumFolderId, contributor: true, media: mediaEntry });
+      setContribItemState(i, 'saving');
+      try {
+        await contributorAppendMediaToDay(run.albumFolderId, dayFolderId, date, mediaEntry);
+        clearPendingMedia(run.albumFolderId, date, [driveFileId]);
+        invalidateDayCache(run.albumFolderId, date);
+        setContribItemState(i, 'done');
+      } catch (e) {
+        // El archivo ya está en Drive: no es una falla, se termina solo.
+        setContribItemState(i, 'pending');
+        logIssue('upload_error', 'contributor_append', { error: e, props: { ..._uploadIssueProps(file, i, total, t0, run.albumFolderId), error_name: (e && e.name) || null } });
+      }
+      run.lastProgressAt = Date.now();
+      updateContribTitle();
+      if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'contributor_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, total, t0, run.albumFolderId) });
     } catch (e) {
-      try { e._issueProps = _uploadIssueProps(file, i, tasks.length, t0, albumFolderId); } catch (_) {}
+      try { e._issueProps = _uploadIssueProps(file, i, total, t0, run.albumFolderId); } catch (_) {}
+      setContribItemState(i, 'failed');
+      updateContribTitle();
       throw e;
     }
   });
+  clearInterval(stallTimer);
+  releaseContribWakeLock();
+  contribRunActive--;
+  clearContribSession();
 
-  btn.disabled = false; btn.textContent = prevLabel;
-  await renderContributorGallery();
+  const failedItems = items.filter((it, i) => results[i].status === 'rejected');
+  const pendingItems = items.filter(it => it.state === 'pending');
+  const okCount = items.filter(it => it.state === 'done').length;
   const failedResults = results.filter(r => r.status === 'rejected');
-  const failed = failedResults.length;
-  if (failed) {
-    const code = newIssueCode();
-    failedResults.forEach(r => logIssue('upload_error', 'contributor_upload', { error: r.reason, code, props: { ...((r.reason && r.reason._issueProps) || {}), failed_count: failed, total: files.length } }));
-    alert(`${failed} de ${files.length} archivo${files.length === 1 ? '' : 's'} no se ${failed === 1 ? 'pudo subir' : 'pudieron subir'}. Probá de nuevo.\n\nCódigo de error: ${code}`);
+
+  const title = document.getElementById('cup-title');
+  const actions = document.getElementById('cup-actions');
+  document.getElementById('cup-hint').textContent = '';
+  setContribNote('');
+  let code = null;
+  if (failedItems.length) {
+    code = newIssueCode();
+    failedResults.forEach(r => logIssue('upload_error', 'contributor_upload', { error: r.reason, code, props: { ...((r.reason && r.reason._issueProps) || {}), failed_count: failedItems.length, total } }));
+    title.textContent = `${okCount + pendingItems.length} de ${total} subidos, ${failedItems.length} no se ${failedItems.length === 1 ? 'pudo' : 'pudieron'} subir`;
+    setContribNote(`Probá de nuevo con el botón de abajo. Si el problema sigue, avisanos con este código: <b>${code}</b>`, true);
+  } else {
+    title.textContent = `Listo: ${total} ${total === 1 ? 'archivo subido' : 'archivos subidos'} ✓`;
   }
+  if (pendingItems.length) {
+    const box = document.getElementById('cup-notes');
+    box.insertAdjacentHTML('beforeend', `<div class="cup-note">${pendingItems.length === 1 ? '1 archivo ya está' : pendingItems.length + ' archivos ya están'} en Drive y falta anotarlo en el álbum. Lo terminamos solos en unos segundos o apenas vuelvas a abrir la app.</div>`);
+  }
+  actions.innerHTML = (failedItems.length ? '<button type="button" class="btn btn-primary" id="cup-retry">Reintentar los que fallaron</button>' : '') +
+    `<button type="button" class="btn ${failedItems.length ? 'btn-secondary' : 'btn-primary'}" id="cup-close">${failedItems.length ? 'Cerrar' : 'Listo'}</button>`;
+  document.getElementById('cup-close').onclick = () => { closeContribPanel(); contribRun = null; };
+  if (failedItems.length) document.getElementById('cup-retry').onclick = () => {
+    const retry = failedItems.map(it => ({ file: it.file, date: it.date, state: 'queued' }));
+    contribRun = null; runContributorUploads(retry);
+  };
+  await renderContributorGallery();
+  if (pendingItems.length) setTimeout(resumePendingMedia, 1500);
 }
 
 // v2.126: la tab Día está oculta y se llega desde Calendario, así que
