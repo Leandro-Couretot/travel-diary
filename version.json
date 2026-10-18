@@ -1,1 +1,1 @@
-{"version":"2.134","changelog":"La app toma siempre la última versión de sus archivos, así los arreglos llegan apenas se publican."}
+{"version":"2.135","changelog":"Si una carga se corta justo al final, podés terminar de guardarla sin volver a subir los archivos."}

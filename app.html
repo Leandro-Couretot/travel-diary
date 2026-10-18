@@ -1614,7 +1614,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.134';
+const APP_VERSION = '2.135';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -4783,20 +4783,75 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
     progressEl.className = 'bulk-progress';
     progressEl.innerHTML = '<span class="btn-spinner"></span> Guardando en el álbum... (ya casi, no cierres la app)';
     const tSave = Date.now();
-    const saveResults = await Promise.allSettled(datesToSave.map(async date => {
+    // v2.135: los archivos ya están en Drive; si falla anotarlos en el
+    // day.json (caso real: iOS pausó la app con el celular bloqueado y el
+    // pedido volvió como "Fetch is aborted"), se reintenta solo una vez y,
+    // si sigue fallando, se ofrece reintentar SOLO este paso, sin volver a
+    // subir nada. Antes se mostraba el error crudo y el video quedaba en
+    // Drive sin aparecer en el álbum.
+    const saveFailed = await saveBulkMediaToDays(albumFolderId, dayFolderIds, newMediaByDate, proxyAlbumId, 1);
+    const saveElapsed = Date.now() - tSave;
+    if (saveFailed) {
+      const code = incidentCode || newIssueCode();
+      logIssue('upload_error', 'bulk_save_day', { error: saveFailed, code, props: { via_proxy: !!proxyAlbumId, dates: datesToSave.length, elapsed_ms: saveElapsed, error_name: saveFailed.name || null } });
+      showBulkSaveRetry({ albumFolderId, dayFolderIds, newMediaByDate, progressEl, onSuccess, proxyAlbumId, total, failedTasks, hintEl, code });
+      return;
+    }
+    if (saveElapsed > SLOW_UPLOAD_MS) logIssue('slow', 'bulk_save_day', { message: 'guardado de día lento', props: { via_proxy: !!proxyAlbumId, dates: datesToSave.length, total, elapsed_ms: saveElapsed } });
+  }
+  finishBulkUploadRun({ albumFolderId, progressEl, onSuccess, proxyAlbumId, total, failedTasks, quotaExceeded, results, incidentCode, hintEl });
+}
+
+// v2.135: anota en el day.json de cada fecha lo que ya se subió. Las fechas
+// que salen bien se sacan de `newMediaByDate`, así un reintento solo toca
+// las que faltan y nunca duplica una entrada. Devuelve el error o null.
+async function saveBulkMediaToDays(albumFolderId, dayFolderIds, newMediaByDate, proxyAlbumId, autoRetries) {
+  for (let attempt = 0; ; attempt++) {
+    const dates = Object.keys(newMediaByDate);
+    const saveResults = await Promise.allSettled(dates.map(async date => {
+      invalidateDayCache(albumFolderId, date);
       const day = await loadDayFromDrive(albumFolderId, date, !!proxyAlbumId) || { title: '', notes: '', media: [] };
       day.media.push(...newMediaByDate[date]);
       await saveDayJson(dayFolderIds[date], date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
       invalidateDayCache(albumFolderId, date);
     }));
-    const saveElapsed = Date.now() - tSave;
-    const saveFailed = saveResults.find(r => r.status === 'rejected');
-    if (saveFailed) {
-      logIssue('upload_error', 'bulk_save_day', { error: saveFailed.reason || {}, props: { via_proxy: !!proxyAlbumId, dates: datesToSave.length, elapsed_ms: saveElapsed } });
-      throw saveFailed.reason;
-    }
-    if (saveElapsed > SLOW_UPLOAD_MS) logIssue('slow', 'bulk_save_day', { message: 'guardado de día lento', props: { via_proxy: !!proxyAlbumId, dates: datesToSave.length, total, elapsed_ms: saveElapsed } });
+    let firstErr = null;
+    saveResults.forEach((r, i) => {
+      if (r.status === 'fulfilled') delete newMediaByDate[dates[i]];
+      else if (!firstErr) firstErr = r.reason || new Error('Error al guardar');
+    });
+    if (!firstErr || attempt >= autoRetries) return firstErr;
+    await new Promise(r => setTimeout(r, 1500));
   }
+}
+
+function showBulkSaveRetry(ctx) {
+  const { progressEl, hintEl, code } = ctx;
+  progressEl.className = 'bulk-progress error';
+  progressEl.innerHTML = `${icon('warning')} Los archivos ya se subieron a tu Drive, pero no pudimos terminar de guardarlos en el álbum (se cortó la conexión, puede pasar si se bloquea el celular). Tocá "Terminar de guardar": no se vuelve a subir nada. <span style="display:block;font-size:0.75rem;opacity:0.8;margin-top:0.3rem;">Código de error: <b>${code}</b></span> <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryBulkSave()">Terminar de guardar</button>`;
+  bulkSaveRetryCtx = ctx;
+  if (hintEl) hintEl.style.display = 'none';
+}
+
+let bulkSaveRetryCtx = null;
+async function retryBulkSave() {
+  const ctx = bulkSaveRetryCtx;
+  if (!ctx) return;
+  bulkSaveRetryCtx = null;
+  ctx.progressEl.className = 'bulk-progress';
+  ctx.progressEl.innerHTML = '<span class="btn-spinner"></span> Guardando en el álbum... (ya casi, no cierres la app)';
+  const err = await saveBulkMediaToDays(ctx.albumFolderId, ctx.dayFolderIds, ctx.newMediaByDate, ctx.proxyAlbumId, 1);
+  if (err) {
+    logIssue('upload_error', 'bulk_save_day', { error: err, code: ctx.code, props: { via_proxy: !!ctx.proxyAlbumId, retry: true, error_name: err.name || null } });
+    showBulkSaveRetry(ctx);
+    return;
+  }
+  // El reintento solo cubre el guardado; si además habían fallado archivos,
+  // se muestra ese aviso como antes.
+  finishBulkUploadRun({ ...ctx, quotaExceeded: false, results: null, incidentCode: ctx.code });
+}
+
+function finishBulkUploadRun({ albumFolderId, progressEl, onSuccess, proxyAlbumId, total, failedTasks, quotaExceeded, results, incidentCode, hintEl }) {
 
   if (failedTasks.length) {
     const okCount = total - failedTasks.length;
@@ -4805,7 +4860,7 @@ async function runBulkUpload(albumFolderId, groupsByDate, progressEl, onSuccess,
       : `${failedTasks.length} archivo${failedTasks.length > 1 ? 's' : ''} no se pudo${failedTasks.length > 1 ? 'n' : ''} subir.`;
     // Con un solo archivo fallido (o varios por la misma causa) el motivo real
     // es más útil que el genérico "no se pudo subir".
-    const firstErr = (results.find(r => r.status === 'rejected') || {}).reason;
+    const firstErr = ((results || []).find(r => r.status === 'rejected') || {}).reason;
     const detailMsg = (!quotaExceeded && firstErr && firstErr.message && (firstErr.sizeMb || firstErr.httpStatus)) ? ` ${escHtml(firstErr.message)}` : '';
     progressEl.innerHTML = `${icon('warning')} ${okCount}/${total} subidos. ${reasonMsg}${detailMsg} <span style="display:block;font-size:0.75rem;opacity:0.8;margin-top:0.3rem;">Código de error: <b>${incidentCode}</b> (si nos escribís, pasanos este código)</span> <button type="button" class="btn btn-primary" style="display:inline-block;width:auto;padding:0.4rem 0.9rem;font-size:0.8rem;margin-top:0.5rem;" onclick="retryFailedBulkUpload()">Reintentar los que faltan</button>`;
     progressEl.className = 'bulk-progress error';
