@@ -29,7 +29,18 @@ async function getFileDateStr(file) {
       // `mvhd` (creation_time) dentro del propio archivo. lastModified de un
       // video bajado de Drive suele ser el momento de la descarga ("hoy").
       const date = await readMp4CreationDate((start, len) => readSlice(file, start, len), file.size);
-      if (date) { _logVideoDate(file, 'mvhd', date); return date; }
+      if (date) {
+        // v2.133: caso real (iPhone, Fototeca, 18/oct/2026): iOS re-exporta el
+        // video y escribe en mvhd el momento de la exportación (hoy), mientras
+        // lastModified conserva la fecha real de grabación (ayer). Ninguna de
+        // las dos puede ser anterior a la grabación real, así que se usa la
+        // más vieja de ambas. Un video bajado de Drive (lastModified = hoy,
+        // mvhd = fecha real) sigue quedando con mvhd.
+        const lmDate = file.lastModified ? _localDateFromMs(file.lastModified) : null;
+        if (lmDate && lmDate < date) { _logVideoDate(file, 'lastModified_older_than_mvhd', lmDate); return lmDate; }
+        _logVideoDate(file, 'mvhd', date);
+        return date;
+      }
       // v2.121: reporte real (iPhone, video elegido de la Fototeca): quedaban
       // fechados "hoy". iOS re-exporta el video al entregarlo al navegador y
       // el archivo llega sin fecha de grabación; entonces lastModified es el
