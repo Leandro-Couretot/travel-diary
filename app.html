@@ -1189,9 +1189,9 @@ audio { width: 100%; height: 32px; }
        Reusa las mismas clases .fab-container/.fab-btn (ver estilos arriba),
        oculto por default. -->
   <div class="fab-container" id="contrib-fab-container">
-    <button class="fab-btn" id="contrib-fab-btn" onclick="document.getElementById('contrib-file-input').click()" title="Agregar fotos">＋</button>
+    <button class="fab-btn" id="contrib-fab-btn" onclick="document.getElementById('contrib-file-input').click()" title="Agregar fotos y videos">＋</button>
   </div>
-  <input type="file" id="contrib-file-input" accept="image/*" multiple style="display:none;">
+  <input type="file" id="contrib-file-input" accept="image/*,video/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,.heic,.heif" multiple style="display:none;">
 </div>
 
 <!-- ─── GLOBAL OVERLAYS ─── -->
@@ -1617,7 +1617,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.137';
+const APP_VERSION = '2.138';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -5666,20 +5666,21 @@ async function renderContributorGallery() {
   // usuario ya navegó a otro álbum mientras esto resolvía, no pisar nada.
   const navFolderId = albumFolderId;
   try { allDates = await listDayFolders(albumFolderId, true); }
-  catch (e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar las fotos</div>'; return; }
+  catch (e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar las fotos y videos</div>'; return; }
   if (albumFolderId !== navFolderId) return;
-  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos. Tocá "＋" para sumar la primera.</div>'; contributorPhotos = []; return; }
+  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos ni videos. Tocá "＋" para sumar el primero.</div>'; contributorPhotos = []; return; }
 
   const perDay = await Promise.all(allDates.map(async date => {
     const day = await loadDayFromDrive(albumFolderId, date, true).catch(() => null) || { media: [] };
     return (day.media || [])
-      .filter(m => m.type === 'image' && m.driveFileId)
-      .map(m => ({ driveFileId: m.driveFileId, date, name: m.name, uploadedBy: m.uploadedBy || null }));
+      .filter(m => (m.type === 'image' || m.type === 'video') && m.driveFileId)
+      .map(m => ({ type: m.type, driveFileId: m.driveFileId, date, name: m.name, caption: m.caption || '', uploadedBy: m.uploadedBy || null }));
   }));
   if (albumFolderId !== navFolderId) return;
   const allPhotos = perDay.flat().reverse(); // allDates viene ascendente — se invierte para mostrar el día más reciente primero
   contributorPhotos = allPhotos;
-  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos. Tocá "＋" para sumar la primera.</div>'; return; }
+  galleryPhotos = allPhotos; // fuente del carrusel (openGalleryViewer), igual que en Galería
+  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos ni videos. Tocá "＋" para sumar el primero.</div>'; return; }
 
   wrap.innerHTML = '';
   const grid = document.createElement('div');
@@ -5699,10 +5700,11 @@ async function renderContributorGallery() {
     const isMine = !!(currentUserSub && p.uploadedBy === currentUserSub);
     const item = document.createElement('div');
     item.className = 'list-photo-item';
-    item.innerHTML = `<img class="list-photo-img" alt=""><div class="list-photo-date">${formatDate(p.date)}</div>` +
+    item.innerHTML = `<img class="list-photo-img" alt="">${p.type === 'video' ? `<div class="list-photo-play">${icon('play')}</div>` : ''}<div class="list-photo-date">${formatDate(p.date)}</div>` +
       (isMine ? `<button class="contrib-photo-delete" data-idx="${i}" title="Borrar">${icon('trash', { size: '16px' })}</button>` : '');
     if (isMine) item.querySelector('.contrib-photo-delete').addEventListener('click', e => { e.stopPropagation(); deleteContributorPhoto(i); });
-    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, albumFolderId);
+    item.addEventListener('click', () => openGalleryViewer(i));
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, albumFolderId, p.type === 'video');
     grid.appendChild(item);
   });
   wrap.appendChild(grid);
@@ -5711,7 +5713,8 @@ async function renderContributorGallery() {
 async function deleteContributorPhoto(idx) {
   const photo = contributorPhotos[idx];
   if (!photo) return;
-  const ok = await customConfirm('Esta foto se va a borrar de Drive (recuperable 30 días desde la papelera).', { title: 'Borrar foto', confirmLabel: 'Borrar' });
+  const isVid = photo.type === 'video';
+  const ok = await customConfirm(isVid ? 'Este video se va a borrar de Drive (recuperable 30 días desde la papelera).' : 'Esta foto se va a borrar de Drive (recuperable 30 días desde la papelera).', { title: isVid ? 'Borrar video' : 'Borrar foto', confirmLabel: 'Borrar' });
   if (!ok) return;
   try {
     const dayFolderId = getCachedDayFolderId(albumFolderId, photo.date) || await getOrCreateFolder(photo.date, albumFolderId, albumFolderId);
@@ -5719,18 +5722,16 @@ async function deleteContributorPhoto(idx) {
     invalidateDayCache(albumFolderId, photo.date);
     await renderContributorGallery();
   } catch (e) {
-    alert(e.message || 'No se pudo borrar la foto.');
+    alert(e.message || 'No se pudo borrar.');
   }
 }
 
-// Alcance de esta primera entrega: solo fotos (`accept="image/*"` en
-// #contrib-file-input) — mismo límite ya aceptado para la tab Galería
-// desde v1.88 ("ni video ni audio tienen una miniatura real para
-// reconocer a simple vista"). Video/audio queda como mejora futura, ver
-// CLAUDE.md → "Rol Contribuidor" → Pasos siguientes.
+// v2.138: fotos y videos (audio no). Los videos no se comprimen: se suben
+// tal cual por la subida directa a Google (v2.123), sin el techo del proxy.
 const CONTRIB_UPLOAD_CONCURRENCY = 3;
 async function uploadContributorMedia(fileListRaw) {
-  const files = Array.from(fileListRaw).filter(f => f.type.startsWith('image/'));
+  const isVideoFile = f => (f.type || '').startsWith('video/') || /\.(mp4|mov|m4v)$/i.test(f.name || '');
+  const files = Array.from(fileListRaw).filter(f => isVideoFile(f) || (f.type || '').startsWith('image/') || /\.(jpe?g|png|heic|heif)$/i.test(f.name || ''));
   if (!files.length) return;
   const btn = document.getElementById('contrib-fab-btn');
   const prevLabel = btn.textContent;
@@ -5750,11 +5751,11 @@ async function uploadContributorMedia(fileListRaw) {
   const results = await runWithConcurrency(tasks, CONTRIB_UPLOAD_CONCURRENCY, async ({ file, date }, i) => {
     const t0 = Date.now();
     try {
-      const dataUrl = await compressImageFile(file);
-      const blob = base64ToBlob(dataUrl);
+      const type = isVideoFile(file) ? 'video' : 'image';
+      const blob = type === 'video' ? file : base64ToBlob(await compressImageFile(file));
       const dayFolderId = await resolveDayFolder(date);
-      const driveFileId = await uploadFile(blob, mediaFileName('image', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, albumFolderId);
-      await contributorAppendMediaToDay(albumFolderId, dayFolderId, date, { type: 'image', name: file.name, driveFileId });
+      const driveFileId = await uploadFile(blob, mediaFileName(type, file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, albumFolderId);
+      await contributorAppendMediaToDay(albumFolderId, dayFolderId, date, { type, name: file.name, driveFileId });
       invalidateDayCache(albumFolderId, date);
       if (Date.now() - t0 > SLOW_UPLOAD_MS) logIssue('slow', 'contributor_upload_file', { message: 'subida lenta', props: _uploadIssueProps(file, i, tasks.length, t0, albumFolderId) });
     } catch (e) {
@@ -5770,7 +5771,7 @@ async function uploadContributorMedia(fileListRaw) {
   if (failed) {
     const code = newIssueCode();
     failedResults.forEach(r => logIssue('upload_error', 'contributor_upload', { error: r.reason, code, props: { ...((r.reason && r.reason._issueProps) || {}), failed_count: failed, total: files.length } }));
-    alert(`${failed} de ${files.length} foto${files.length === 1 ? '' : 's'} no se ${failed === 1 ? 'pudo subir' : 'pudieron subir'}. Probá de nuevo.\n\nCódigo de error: ${code}`);
+    alert(`${failed} de ${files.length} archivo${files.length === 1 ? '' : 's'} no se ${failed === 1 ? 'pudo subir' : 'pudieron subir'}. Probá de nuevo.\n\nCódigo de error: ${code}`);
   }
 }
 
@@ -8380,7 +8381,7 @@ function renderLightbox() {
   document.getElementById('lightbox-counter').textContent = lbImages.length > 1 ? `${lbIdx + 1} / ${lbImages.length}` : '';
   document.getElementById('lightbox-prev').disabled = lbIdx === 0;
   document.getElementById('lightbox-next').disabled = lbIdx === lbImages.length - 1;
-  document.getElementById('lightbox-goto-day').style.display = lbSource === 'gallery' && item.date ? 'block' : 'none';
+  document.getElementById('lightbox-goto-day').style.display = lbSource === 'gallery' && item.date && !isContributor ? 'block' : 'none';
   lbPreloadNeighbors();
 }
 function lbGotoDay() {
