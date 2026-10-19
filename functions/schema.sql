@@ -199,6 +199,9 @@ create table if not exists travel_diary.shared_album_invites (
   created_at       timestamptz not null default now()
 );
 create index if not exists shared_album_invites_folder_idx on travel_diary.shared_album_invites (folder_drive_id);
+-- v2.140: nombre del álbum al momento de generar el link, para poder mostrarlo en
+-- la pantalla "Te invitaron a sumarte al álbum X" ANTES de que el invitado inicie sesión.
+alter table travel_diary.shared_album_invites add column if not exists album_name text;
 
 -- Quién tiene qué rol sobre qué álbum — reemplaza, para Contribuidor, la
 -- consulta en vivo a los permisos reales de Drive que usa

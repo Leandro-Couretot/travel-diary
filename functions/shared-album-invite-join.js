@@ -36,13 +36,41 @@ exports.sharedAlbumInviteJoin = onRequest(
       res.status(405).json({ error: 'method_not_allowed' });
       return;
     }
+    const { token, via, preview } = req.body || {};
+
+    // v2.140: modo "preview", SIN sesión — la pantalla previa al login
+    // ("Te invitaron a sumarte al álbum X") necesita el nombre antes de que
+    // la persona se identifique. Solo devuelve nombre y estado del link,
+    // nunca une a nadie ni toca shared_album_members. Quien tiene el token
+    // ya tiene el link, así que el nombre no filtra nada nuevo. App Check
+    // sigue exigido (enforceAppCheck), así que no es un endpoint abierto.
+    if (preview === true) {
+      if (!token || typeof token !== 'string') { res.status(400).json({ error: 'bad_request' }); return; }
+      try {
+        const supabase = getSupabaseClient(SUPABASE_URL.value(), SUPABASE_SERVICE_ROLE_KEY.value());
+        const { data: inv, error: invErr } = await supabase
+          .from('shared_album_invites')
+          .select('album_name, active, expires_at')
+          .eq('token', token)
+          .maybeSingle();
+        if (invErr) { console.error('shared-album-invite-join preview error:', invErr); res.status(500).json({ error: 'invite_lookup_failed' }); return; }
+        if (!inv) { res.status(404).json({ error: 'invite_not_found' }); return; }
+        const expired = inv.expires_at && new Date(inv.expires_at).getTime() <= Date.now();
+        const status = !inv.active ? 'inactive' : (expired ? 'expired' : 'ok');
+        res.status(200).json({ ok: true, albumName: inv.album_name || null, status });
+      } catch (e) {
+        console.error('shared-album-invite-join preview error:', e);
+        res.status(500).json({ error: 'internal_error' });
+      }
+      return;
+    }
+
     const session = verifySession(req, SESSION_JWT_SECRET.value());
     if (!session) {
       res.status(401).json({ error: 'invalid_session' });
       return;
     }
 
-    const { token, via } = req.body || {};
     if (!token || typeof token !== 'string') {
       res.status(400).json({ error: 'bad_request' });
       return;

@@ -1628,7 +1628,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.139';
+const APP_VERSION = '2.140';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2729,7 +2729,7 @@ async function initGoogleAuth() {
   }
 
   if (!hasSavedToken) {
-    if (contribToken) { renderContributorJoinPending(); return; }
+    if (contribToken) { renderContributorJoinPending(contribToken); return; }
     if (joinId) renderJoinPending(joinName); else renderDisconnected(); return;
   }
 
@@ -2744,7 +2744,7 @@ async function initGoogleAuth() {
     if (maybeRestoreLastLocation()) return;
     await renderAlbums(); await checkMigratable();
   }, () => {
-    if (contribToken) { renderContributorJoinPending(); return; }
+    if (contribToken) { renderContributorJoinPending(contribToken); return; }
     if (joinId) renderJoinPending(joinName); else renderDisconnected();
   });
 }
@@ -2834,7 +2834,7 @@ function setConnectingStep(text) {
 function renderLoginEntryScreen() {
   clearTimeout(connectingSlowTimer);
   const sp = new URLSearchParams(location.search);
-  if (sp.get('contrib')) { renderContributorJoinPending(); return; }
+  if (sp.get('contrib')) { renderContributorJoinPending(sp.get('contrib')); return; }
   if (sp.get('join')) { renderJoinPending(decodeURIComponent(sp.get('name') || '')); return; }
   renderDisconnected();
 }
@@ -2914,17 +2914,35 @@ async function handleJoin(folderId, albumName, dateFrom, dateTo) {
 // Rol Contribuidor (v2.73, Paso 4 — ver "Rol Contribuidor" en CLAUDE.md):
 // a diferencia de un link de compartir normal (generateShareLink(), que
 // lleva el nombre/fechas del álbum en la URL), el link de invitación de
-// Contribuidor solo lleva el token (`?contrib=...`) — el nombre todavía
-// no se conoce del lado del cliente hasta después de unirse, así que esta
-// pantalla previa a conectar es deliberadamente genérica, sin nombrar
-// ningún álbum.
-function renderContributorJoinPending() {
-  document.getElementById('home-main').innerHTML = `
+// Contribuidor solo lleva el token (`?contrib=...`). Desde v2.140 el nombre
+// se pide sin sesión al modo `preview` de /api/shared-album/invite/join
+// (se guarda en shared_album_invites.album_name al generar el link). Si el
+// preview falla o el link es viejo y no tiene nombre, queda el texto genérico.
+async function renderContributorJoinPending(tokenArg) {
+  const token = tokenArg || new URLSearchParams(location.search).get('contrib');
+  const main = document.getElementById('home-main');
+  const paint = (title, body, withBtn) => {
+    main.innerHTML = `
     <div class="connect-state fade-up">
-      <h2>Te invitaron a sumar fotos</h2>
-      <p>Conectá tu cuenta de Google para empezar a subir fotos a este álbum. No hace falta tener cuenta en la app de antes.</p>
-      <button class="btn btn-primary" onclick="handleDriveBtn()">Conectar con Google Drive</button>
+      <h2>${title}</h2>
+      <p>${body}</p>
+      ${withBtn ? '<button class="btn btn-primary" onclick="handleDriveBtn()">Continuar con Google</button>' : ''}
     </div>`;
+  };
+  // Primero la versión genérica (instantánea); el nombre se completa apenas
+  // llega el preview, sin esperar a nadie para mostrar el botón.
+  paint('Te invitaron a sumar fotos', 'Iniciá sesión con Google para subir tus fotos a este álbum. No hace falta tener cuenta en la app de antes.', true);
+  if (!token) return;
+  const info = await getContributorInvitePreview(token);
+  if (!info) return;
+  // Si mientras tanto la pantalla cambió (ya conectó), no pisar nada.
+  if (!main.querySelector('.connect-state')) return;
+  if (info.status === 'not_found') { paint('Este link no es válido', 'El link de invitación no existe o ya no está disponible. Pedile a quien te invitó que te mande uno nuevo.', false); return; }
+  if (info.status === 'inactive') { paint('Este link ya no está activo', 'Quien te invitó dejó de aceptar nuevas fotos por este link.', false); return; }
+  if (info.status === 'expired') { paint('Este link ya venció', 'Pedile a quien te invitó que te mande uno nuevo.', false); return; }
+  if (info.albumName) {
+    paint(`Te invitaron a sumarte al álbum <em>${escHtml(info.albumName)}</em>`, 'Iniciá sesión con Google para poder ingresar y subir tus fotos. No hace falta tener cuenta en la app de antes.', true);
+  }
 }
 
 // handleContributorJoin() necesita `sessionToken` (billing.js) para poder
@@ -4112,7 +4130,7 @@ async function submitContributorInvite() {
   try {
     const isSharedTarget = !!shareTargetAlbum._shared;
     const folderId = isSharedTarget ? shareTargetAlbum.folderDriveId : await getAlbumFolderId(shareTargetAlbum.id);
-    const token = await createContributorInvite(folderId, expiresAtIso);
+    const token = await createContributorInvite(folderId, expiresAtIso, shareTargetAlbum.name);
     contributorInviteToken = token;
     contributorInviteFolderId = folderId;
     trackEvent('album_shared', { role: 'contributor' });

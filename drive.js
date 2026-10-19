@@ -1688,11 +1688,11 @@ function generateShareLink(folderId, name, dateFrom, dateTo) {
 // por el proxy ni por Drive en absoluto: es un endpoint directo,
 // autenticado por la sesión de la dueña, mismo patrón que
 // registerSharedAlbumOwner().
-async function createContributorInvite(folderDriveId, expiresAtIso) {
+async function createContributorInvite(folderDriveId, expiresAtIso, albumName) {
   const res = await fetch('/api/shared-album/invite/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, ...(await appCheckHeaders()) },
-    body: JSON.stringify({ folderDriveId, role: 'contributor', expiresAt: expiresAtIso || null }),
+    body: JSON.stringify({ folderDriveId, role: 'contributor', expiresAt: expiresAtIso || null, albumName: albumName || null }),
   });
   if (!res.ok) {
     let detail = null;
@@ -1791,6 +1791,22 @@ const CONTRIBUTOR_INVITE_JOIN_ERRORS = {
   invite_expired: 'Este link ya venció.',
   is_owner: 'Este es tu propio álbum, no hace falta que te unas.',
 };
+// v2.140: nombre y estado del link ANTES de iniciar sesión (modo preview del
+// mismo endpoint de unión, sin JWT). Nunca tira: devuelve null si falla, y la
+// pantalla cae a su texto genérico.
+async function getContributorInvitePreview(token) {
+  try {
+    const res = await fetch('/api/shared-album/invite/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await appCheckHeaders()) },
+      body: JSON.stringify({ token, preview: true }),
+    });
+    if (res.status === 404) return { status: 'not_found', albumName: null };
+    if (!res.ok) return null;
+    const d = await res.json();
+    return { status: d.status || 'ok', albumName: d.albumName || null };
+  } catch { return null; }
+}
 async function joinContributorInvite(token, via) {
   const res = await fetch('/api/shared-album/invite/join', {
     method: 'POST',

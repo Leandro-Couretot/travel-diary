@@ -47,7 +47,8 @@ exports.sharedAlbumInviteCreate = onRequest(
       return;
     }
 
-    const { folderDriveId, role, expiresAt } = req.body || {};
+    const { folderDriveId, role, expiresAt, albumName } = req.body || {};
+    const albumNameClean = (typeof albumName === 'string' && albumName.trim()) ? albumName.trim().slice(0, 120) : null;
     if (!folderDriveId || typeof folderDriveId !== 'string') {
       res.status(400).json({ error: 'bad_request', detail: 'missing_folder_drive_id' });
       return;
@@ -87,6 +88,7 @@ exports.sharedAlbumInviteCreate = onRequest(
           role,
           owner_google_sub: session.sub,
           expires_at: expiresAtIso,
+          album_name: albumNameClean,
         });
       if (insertErr) {
         console.error('shared-album-invite-create insert error:', insertErr);
