@@ -1336,6 +1336,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-body">
       <div id="onboarding-info-items"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:1rem;" id="onboarding-info-cta"></button>
+      <button class="btn btn-secondary" style="width:100%;margin-top:0.5rem;display:none;" id="onboarding-info-secondary"></button>
     </div>
   </div>
 </div>
@@ -1657,7 +1658,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.145';
+const APP_VERSION = '2.146';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2193,9 +2194,16 @@ function maybeShowPostLoginOnboarding(isNewUser) {
   decidePostLoginOnboarding(isNewUser);
 }
 function decidePostLoginOnboarding(isNewUser) {
+  afterOnboardingInfoClosed = maybeAskPushOptIn;
   if (isNewUser) { showWelcomeModal(); return; }
   if (!albums.length) { showFirstAlbumTipModal(); return; }
   maybeShowWhatsNewModal();
+  // Si no había novedades para mostrar, no hay modal que al cerrarse dispare
+  // la pregunta: se hace directo.
+  if (!document.getElementById('modal-onboarding-info').classList.contains('open')) {
+    afterOnboardingInfoClosed = null;
+    setTimeout(maybeAskPushOptIn, 1500);
+  }
 }
 
 // Changelog curado a mano, de cara al usuario — deliberadamente separado
@@ -2449,17 +2457,56 @@ document.getElementById('modal-notifications').addEventListener('click', e => { 
 // Único modal reusado por los 3 popups de arriba (bienvenida / primer
 // álbum / novedades) — misma idea que customConfirm(), arma el contenido
 // a mano en vez de tener 3 modales estáticos casi idénticos en el HTML.
-function showOnboardingInfoModal({ title, itemsHtml, ctaLabel, onCta }) {
+function showOnboardingInfoModal({ title, itemsHtml, ctaLabel, onCta, secondaryLabel }) {
   const modal = document.getElementById('modal-onboarding-info');
   document.getElementById('onboarding-info-title').textContent = title;
   document.getElementById('onboarding-info-items').innerHTML = itemsHtml;
   const btn = document.getElementById('onboarding-info-cta');
   btn.textContent = ctaLabel;
   btn.onclick = () => { closeOnboardingInfoModal(); if (onCta) onCta(); };
+  // v2.146: botón secundario opcional ("Ahora no"), solo lo usa el pedido de avisos.
+  const sec = document.getElementById('onboarding-info-secondary');
+  if (secondaryLabel) { sec.textContent = secondaryLabel; sec.style.display = ''; sec.onclick = () => closeOnboardingInfoModal(); }
+  else sec.style.display = 'none';
   modal.classList.add('open');
 }
 function closeOnboardingInfoModal() {
   document.getElementById('modal-onboarding-info').classList.remove('open');
+  // v2.146: después de bienvenida / novedades, ofrecer los avisos push.
+  if (afterOnboardingInfoClosed) {
+    const fn = afterOnboardingInfoClosed; afterOnboardingInfoClosed = null;
+    setTimeout(fn, 500);
+  }
+}
+let afterOnboardingInfoClosed = null;
+
+// v2.146: pregunta (una sola vez por dispositivo) si quiere recibir avisos
+// cuando alguien suba una foto o escriba algo en un álbum compartido. Se
+// muestra después de la bienvenida / novedades, o directo si no había nada
+// que mostrar. El permiso del navegador se pide recién al tocar "Activar
+// avisos" (iOS lo exige desde un toque). En iPhone, en una pestaña normal
+// de Safari no se pregunta (el push solo existe con la app instalada): ahí
+// la explicación queda en Notificaciones.
+const PUSH_ASKED_KEY = 'td_push_asked';
+async function maybeAskPushOptIn() {
+  try {
+    if (!sessionToken || currentView !== 'home') return;
+    if (localStorage.getItem(PUSH_ASKED_KEY)) return;
+    if (document.querySelector('.modal-overlay.open')) return; // hay otro modal arriba, se pregunta en otra ocasión
+    if (!pushSupported() || pushNeedsInstall() || Notification.permission !== 'default') return;
+    if ((await pushGetState()) !== 'off') return;
+    if (document.querySelector('.modal-overlay.open')) return;
+    localStorage.setItem(PUSH_ASKED_KEY, '1');
+    trackEvent('push_prompt_shown', {});
+    showOnboardingInfoModal({
+      title: '¿Querés enterarte de lo nuevo?',
+      itemsHtml: `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>Te avisamos en el celular cuando un amigo o familiar <strong>sube una foto</strong> o <strong>escribe algo</strong> en un álbum que compartís.</span></div>
+        <div class="help-item"><span class="help-item-dot">▸</span><span>No avisamos cuando se borra o se reordena algo. Podés cambiarlo cuando quieras desde Notificaciones (tu foto de perfil).</span></div>`,
+      ctaLabel: 'Activar avisos',
+      secondaryLabel: 'Ahora no',
+      onCta: () => { pushEnable().catch(() => {}); },
+    });
+  } catch (e) { console.warn('maybeAskPushOptIn:', e); }
 }
 // v2.50: pop-up (no un banner inline) para el aviso de "reconstruimos tus
 // álbumes" (ver renderAlbums(), wasReconstructed) — mismo modal genérico de
