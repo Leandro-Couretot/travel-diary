@@ -242,6 +242,31 @@ create table if not exists travel_diary.share_invitations (
 );
 create index if not exists share_invitations_guest_idx on travel_diary.share_invitations (guest_email, status);
 
+-- v2.145: notificaciones push (Web Push, VAPID). Una fila por dispositivo
+-- suscripto (endpoint único). `google_sub` = la cuenta que activó los avisos
+-- en ese dispositivo. Las filas muertas (404/410 del servicio push) se borran
+-- solas al intentar enviar.
+create table if not exists travel_diary.push_subscriptions (
+  endpoint      text primary key,
+  google_sub    text not null,
+  p256dh        text not null,
+  auth          text not null,
+  user_agent    text,
+  created_at    timestamptz not null default now(),
+  last_used_at  timestamptz
+);
+create index if not exists push_subscriptions_sub_idx on travel_diary.push_subscriptions (google_sub);
+
+-- Freno anti-spam: una fila por (quien hizo el cambio, álbum, tipo). Si el
+-- último aviso salió hace menos de la ventana, no se manda otro.
+create table if not exists travel_diary.push_throttle (
+  throttle_key  text primary key,
+  last_sent_at  timestamptz not null default now()
+);
+
+alter table travel_diary.push_subscriptions enable row level security;
+alter table travel_diary.push_throttle enable row level security;
+
 alter table travel_diary.subscriptions enable row level security;
 alter table travel_diary.subscription_events enable row level security;
 alter table travel_diary.usage_events enable row level security;

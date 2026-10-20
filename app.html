@@ -350,6 +350,10 @@ body:has(.save-bar[style*="display: flex"]) .fab-container { bottom: calc(5.5rem
 .notif-text { font-size: 0.9rem; color: var(--ink); line-height: 1.45; }
 .notif-msg { font-size: 0.8rem; color: var(--red); margin-top: 0.3rem; }
 .notif-msg:empty { display: none; }
+.push-settings { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--ink-faint); }
+.push-settings-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.3rem; }
+.push-settings-text { font-size: 0.82rem; color: var(--ink-muted); line-height: 1.5; margin: 0 0 0.7rem; }
+.push-settings-msg { font-size: 0.8rem; color: var(--red); margin-top: 0.5rem; }
 .notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
 .notif-actions .btn { flex: 1; min-width: 0; }
 .sheet-overlay {
@@ -1341,7 +1345,10 @@ audio { width: 100%; height: 32px; }
 <div class="modal-overlay" id="modal-notifications">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Notificaciones</div><button class="modal-close" onclick="closeNotificationsModal()">×</button></div>
-    <div class="modal-body"><div id="notifications-list"></div></div>
+    <div class="modal-body">
+      <div id="notifications-list"></div>
+      <div id="push-settings" class="push-settings"></div>
+    </div>
   </div>
 </div>
 
@@ -1650,7 +1657,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.144';
+const APP_VERSION = '2.145';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2213,6 +2220,10 @@ function decidePostLoginOnboarding(isNewUser) {
 // esto — queda fija como el punto de corte real.
 const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
+  { version: '2.145', items: [
+    'Ahora podés recibir avisos en el celular cuando alguien agrega fotos o escribe algo en un álbum que compartís.',
+    'Se activan desde Notificaciones (tocando tu foto de perfil). En iPhone hace falta tener Legado instalada en la pantalla de inicio.',
+  ]},
   { version: '2.116', items: [
     'Cuando alguien te comparta un álbum, te avisamos con un globito sobre tu foto de perfil, arriba a la derecha.',
     'Tocala para ver las notificaciones y aceptar el álbum con un toque.',
@@ -2362,7 +2373,44 @@ function renderNotificationsList() {
 function openNotificationsModal() {
   hideInvitationsBubble();
   renderNotificationsList();
+  renderPushSettings();
   document.getElementById('modal-notifications').classList.add('open');
+}
+
+// v2.145: avisos push de este dispositivo (ver billing.js → pushGetState()).
+async function renderPushSettings(errMsg) {
+  const el = document.getElementById('push-settings');
+  if (!el) return;
+  const intro = 'Te avisamos cuando alguien agrega fotos o escribe algo en un álbum que compartís. No avisamos cuando se borra o se reordena algo.';
+  el.innerHTML = `<div class="push-settings-title">Avisos en este dispositivo</div><p class="push-settings-text">${intro}</p>`;
+  let state = 'off';
+  try { state = await pushGetState(); } catch {}
+  let body = '';
+  if (state === 'needs_install') {
+    body = '<p class="push-settings-text">En iPhone y iPad los avisos solo funcionan con la app instalada: en Safari tocá Compartir, después "Agregar a pantalla de inicio", y abrí Legado desde ese ícono. Después volvé acá para activarlos.</p>';
+  } else if (state === 'unsupported') {
+    body = '<p class="push-settings-text">Este navegador no permite recibir avisos.</p>';
+  } else if (state === 'denied') {
+    body = '<p class="push-settings-text">Bloqueaste los avisos de Legado. Para activarlos, permitilos desde los ajustes del navegador o del teléfono y volvé acá.</p>';
+  } else if (state === 'on') {
+    body = '<p class="push-settings-text">Los avisos están activados en este dispositivo.</p><button class="btn btn-secondary" id="push-toggle-btn" onclick="togglePush(false)">Desactivar avisos</button>';
+  } else {
+    body = '<button class="btn btn-primary" id="push-toggle-btn" onclick="togglePush(true)">Activar avisos</button>';
+  }
+  el.insertAdjacentHTML('beforeend', body + `<div class="push-settings-msg" id="push-msg">${errMsg ? escHtml(errMsg) : ''}</div>`);
+}
+async function togglePush(enable) {
+  const btn = document.getElementById('push-toggle-btn');
+  if (btn) { btn.disabled = true; btn.textContent = enable ? 'Activando...' : 'Desactivando...'; }
+  let err = '';
+  try {
+    if (enable) await pushEnable(); else await pushDisable();
+  } catch (e) {
+    if (e.message === 'denied') err = 'No diste permiso. Si cambiás de idea, permitilos desde los ajustes del navegador.';
+    else if (e.message === 'dismissed') err = 'No se activaron los avisos.';
+    else err = 'No se pudo: ' + e.message;
+  }
+  renderPushSettings(err);
 }
 function closeNotificationsModal() { document.getElementById('modal-notifications').classList.remove('open'); }
 
@@ -5091,6 +5139,8 @@ async function retryBulkSave() {
 }
 
 function finishBulkUploadRun({ albumFolderId, progressEl, onSuccess, proxyAlbumId, total, failedTasks, quotaExceeded, results, incidentCode, hintEl }) {
+  // v2.145: aviso push a los demás del álbum por lo que sí se subió.
+  notifyAlbumActivity(albumFolderId, 'photo', total - failedTasks.length, albumNameForPush(albumFolderId));
 
   if (failedTasks.length) {
     const okCount = total - failedTasks.length;
@@ -5139,6 +5189,7 @@ async function confirmBulkUpload() {
   progress.textContent = 'Preparando...'; // feedback inmediato al tocar — antes quedaba en blanco varios segundos
   try {
     const albumFolderId = await getAlbumFolderId(albumId);
+    pushNameOverride = { folder: albumFolderId, name: album.name || '' };
     const allGroups = {};
     Object.keys(bulkGrouped.dated).forEach(date => {
       const kept = bulkGrouped.dated[date].filter(f => !f._excluded); // sin los duplicados destildados
@@ -5409,6 +5460,23 @@ let currentDayOriginalIds = new Set();
 const AUDIO_FREE_LIMIT = 4; // audios simultáneos permitidos en el plan gratis — borrar uno libera cupo
 let usageState = { version: 1, audioCount: 0, reconciled: false };
 let currentDayAudioCountAtLoad = 0;
+// v2.145: texto del día (título, notas, captions) al cargarlo, para saber si
+// un guardado agregó algo escrito y avisar a los demás del álbum.
+let currentDayTextAtLoad = '';
+function dayTextSnapshot(day) {
+  return JSON.stringify([day.title || '', day.notes || '', (day.media || []).map(m => m.caption || '')]);
+}
+function dayHasText(day) {
+  return !!((day.title || '').trim() || (day.notes || '').trim() || (day.media || []).some(m => (m.caption || '').trim()));
+}
+// Nombre del álbum para el texto del aviso push: el de la carga masiva en
+// curso si coincide, si no el del diario abierto.
+let pushNameOverride = { folder: null, name: '' };
+function albumNameForPush(folderId) {
+  if (pushNameOverride.folder && pushNameOverride.folder === folderId) return pushNameOverride.name;
+  const el = document.getElementById('header-subtitle');
+  return el ? (el.textContent || '').trim() : '';
+}
 let currentTab    = 'day';
 let allDates      = [];
 let galleryPendingDeletes = new Set(); // driveFileId marcados para eliminar en Galería, se aplican recién con "Guardar" (v2.144)
@@ -6072,6 +6140,8 @@ async function runContributorUploads(items) {
   const pendingItems = items.filter(it => it.state === 'pending');
   const okCount = items.filter(it => it.state === 'done').length;
   const failedResults = results.filter(r => r.status === 'rejected');
+  // v2.145: aviso push (la dueña y los demás) por lo que ya quedó en Drive.
+  notifyAlbumActivity(run.albumFolderId, 'photo', okCount + pendingItems.length, albumNameForPush(run.albumFolderId));
 
   const title = document.getElementById('cup-title');
   const actions = document.getElementById('cup-actions');
@@ -6181,6 +6251,7 @@ async function loadDay(dateStr) {
   else currentDay = day || emptyDay();
   currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
   currentDayAudioCountAtLoad = currentDay.media.filter(m => m.type === 'audio').length;
+  currentDayTextAtLoad = dayTextSnapshot(currentDay);
   const titleEl = document.getElementById('day-title');
   const notesEl = document.getElementById('day-notes');
   if (titleEl) { titleEl.value = currentDay.title || ''; autoResize(titleEl); }
@@ -6215,6 +6286,8 @@ let saveStatusHideTimer = null;
 async function saveCurrentDay() {
   if (saveStatusHideTimer) { clearTimeout(saveStatusHideTimer); saveStatusHideTimer = null; }
   setStatus('', 'Guardando...');
+  const prevIdsForPush = currentDayOriginalIds;
+  const prevTextForPush = currentDayTextAtLoad;
   try {
     // v2.62: en un álbum compartido con permiso de editor, se guarda con
     // el token de la DUEÑA vía el proxy (isSharedAlbum ? albumFolderId :
@@ -6227,6 +6300,17 @@ async function saveCurrentDay() {
     // audios), no solo fotos — se mantiene ese nombre porque así lo definió
     // ANALYTICS_PLAN.md, pero el conteo real es de todo el media[].
     trackEvent('day_saved', { photo_count: currentDay.media.length, has_title: !!currentDay.title, has_notes: !!currentDay.notes });
+    // v2.145: avisos push a los demás del álbum (el servidor ignora los
+    // álbumes que nunca se compartieron). Solo si se agregaron fotos/videos
+    // nuevos o se escribió algo; nunca por borrar ni por reordenar.
+    {
+      const newMedia = currentDay.media.filter(m => m.driveFileId && (m.type === 'image' || m.type === 'video') && !prevIdsForPush.has(m.driveFileId)).length;
+      const nowText = dayTextSnapshot(currentDay);
+      const pushName = albumNameForPush(albumFolderId);
+      if (newMedia > 0) notifyAlbumActivity(albumFolderId, 'photo', newMedia, pushName);
+      if (nowText !== prevTextForPush && dayHasText(currentDay)) notifyAlbumActivity(albumFolderId, 'note', 1, pushName);
+      currentDayTextAtLoad = nowText;
+    }
     // La portada "oficial" del álbum vive en el albums.json del DUEÑO —
     // un invitado (aunque sea editor) nunca tiene ese archivo en el suyo
     // propio, updateAlbumMeta() tiraría "Álbum no encontrado" acá. La
@@ -6475,6 +6559,7 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
   // compartidos incluso antes de que existiera la escritura vía proxy.
   const proxyAlbumId = isSharedAlbum ? albumFolderId : null;
   let skippedCount = 0;
+  let uploadedForPush = 0;
   try {
     for (const date of Object.keys(grouped.dated).sort()) {
       const files = grouped.dated[date];
@@ -6489,6 +6574,7 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
         const fileId = await uploadFile(blob, mediaFileName(isImg ? 'image' : 'video', file.name), dayFolderId, null, MEDIA_FILE_DESCRIPTION, proxyAlbumId);
         day.media.push({ type: isImg ? 'image' : 'video', name: file.name, driveFileId: fileId, caption: '' });
         existingNames.add(file.name);
+        uploadedForPush++;
       }
       await saveDayJson(dayFolderId, date, { version: 2, title: day.title, notes: day.notes, media: day.media }, proxyAlbumId);
       invalidateDayCache(albumFolderId, date);
@@ -6504,6 +6590,7 @@ async function saveFilesToCorrectDays(grouped, audioFiles) {
     trackEvent('error', { context: 'save_files_to_correct_days', message: String(e.message || e).slice(0, 200) });
     return;
   }
+  if (uploadedForPush > 0) notifyAlbumActivity(albumFolderId, 'photo', uploadedForPush, albumNameForPush(albumFolderId));
   const toCurrentDay = [...(grouped.undated || []), ...audioFiles];
   if (toCurrentDay.length) addFilesToCurrentDay(toCurrentDay);
   const skippedMsg = skippedCount ? ` (${skippedCount} ya estaba${skippedCount > 1 ? 'n' : ''} guardada${skippedCount > 1 ? 's' : ''}, se omitieron)` : '';

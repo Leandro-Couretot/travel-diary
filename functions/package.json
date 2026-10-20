@@ -10,6 +10,7 @@
     "@supabase/supabase-js": "^2.45.4",
     "firebase-admin": "^14.4.0",
     "firebase-functions": "^7.3.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "web-push": "^3.6.7"
   }
 }

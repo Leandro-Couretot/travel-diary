@@ -609,3 +609,89 @@ async function handleMercadoPagoReturn() {
     await new Promise(r => setTimeout(r, 2000));
   }
 }
+
+// ─── Notificaciones push (v2.145) ──────────────────────────────────────
+// Avisos de "X agregó fotos / escribió algo en tu álbum compartido". Todo
+// pasa por /api/push (functions/push.js). El permiso del navegador solo se
+// pide desde un toque del usuario (iOS lo exige, y solo funciona con la app
+// instalada en la pantalla de inicio, iOS/iPadOS 16.4+).
+async function pushApiCall(body) {
+  const headers = { 'Content-Type': 'application/json', ...(await appCheckHeaders()) };
+  if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+  const res = await fetch('/api/push', { method: 'POST', headers, body: JSON.stringify(body) });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok) { const e = new Error((data && data.error) || ('HTTP ' + res.status)); e.status = res.status; throw e; }
+  return data;
+}
+
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+// iPhone/iPad en una pestaña normal de Safari: el push web solo existe
+// dentro de la app instalada.
+function pushNeedsInstall() {
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  return isIos && !standalone;
+}
+
+function urlBase64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+// 'unsupported' | 'needs_install' | 'denied' | 'on' | 'off'
+async function pushGetState() {
+  if (pushNeedsInstall()) return 'needs_install';
+  if (!pushSupported()) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return 'off';
+    if (Notification.permission !== 'granted') return 'off';
+    // Confirma que el servidor siga teniendo este dispositivo para esta cuenta.
+    try {
+      const st = await pushApiCall({ action: 'status', endpoint: sub.endpoint });
+      return st && st.subscribed ? 'on' : 'off';
+    } catch { return 'on'; }
+  } catch { return 'off'; }
+}
+
+async function pushEnable() {
+  if (!sessionToken) throw new Error('Iniciá sesión para activar los avisos.');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error(perm === 'denied' ? 'denied' : 'dismissed');
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    const { publicKey } = await pushApiCall({ action: 'key' });
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+  }
+  await pushApiCall({ action: 'subscribe', subscription: sub.toJSON() });
+  trackEvent('push_enabled', {});
+}
+
+async function pushDisable() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) {
+    try { await pushApiCall({ action: 'unsubscribe', endpoint: sub.endpoint }); } catch {}
+    try { await sub.unsubscribe(); } catch {}
+  }
+  trackEvent('push_disabled', {});
+}
+
+// Fire-and-forget: avisa al servidor que hubo actividad en un álbum. El
+// servidor decide a quién avisar (y no hace nada si el álbum no está
+// compartido). kind: 'photo' (count = cantidad) o 'note'.
+function notifyAlbumActivity(folderDriveId, kind, count, albumName) {
+  try {
+    if (!sessionToken || !folderDriveId) return;
+    if (kind === 'photo' && !(count > 0)) return;
+    pushApiCall({ action: 'notify', folderDriveId, kind, count: count || 1, albumName: albumName || '' }).catch(() => {});
+  } catch {}
+}

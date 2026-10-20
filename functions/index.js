@@ -22,3 +22,4 @@ exports.sharedAlbumInviteJoin = require('./shared-album-invite-join').sharedAlbu
 exports.sharedAlbumInviteRevoke = require('./shared-album-invite-revoke').sharedAlbumInviteRevoke;
 exports.sharedAlbumInviteList = require('./shared-album-invite-list').sharedAlbumInviteList;
 exports.shareInvitations = require('./share-invitations').shareInvitations;
+exports.pushApi = require('./push').pushApi;

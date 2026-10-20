@@ -124,3 +124,33 @@ async function staleWhileRevalidate(req) {
 
   return new Response('', { status: 504, statusText: 'Sin conexión' });
 }
+
+// ─── Notificaciones push (v2.145) ────────────────────────────────
+// El servidor (functions/push.js) manda { title, body, url, tag } cuando
+// alguien agrega fotos o escribe una nota en un álbum compartido. Al tocar
+// el aviso se enfoca la app si ya está abierta, o se abre.
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
+  const title = data.title || 'Legado';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || '',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    data: { url: data.url || './app.html' },
+  }));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './app.html';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) {
+      if (new URL(c.url).origin === self.location.origin && 'focus' in c) return c.focus();
+    }
+    return self.clients.openWindow(target);
+  })());
+});
