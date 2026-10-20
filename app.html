@@ -1650,7 +1650,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.143';
+const APP_VERSION = '2.144';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2024,6 +2024,8 @@ function navigateTo(view, params = {}) {
   if (view === 'home') {
     document.querySelector('.save-bar').style.display = 'none';
     dirty = false;
+    galleryPendingDeletes.clear();
+    document.getElementById('btn-save').textContent = 'Guardar día';
     lastDiaryParams = null;
     clearLastLocation();
     document.getElementById('header-subtitle').textContent = '';
@@ -2031,6 +2033,8 @@ function navigateTo(view, params = {}) {
     renderAlbums();
     trackVirtualPageview('/home', 'Legado – Inicio');
   } else if (view === 'diary') {
+    galleryPendingDeletes.clear();
+    document.getElementById('btn-save').textContent = 'Guardar día';
     albumId        = params.albumId || null;
     isSharedAlbum  = params.shared  || false;
     albumFolderId  = params.folderId || null;
@@ -5407,6 +5411,7 @@ let usageState = { version: 1, audioCount: 0, reconciled: false };
 let currentDayAudioCountAtLoad = 0;
 let currentTab    = 'day';
 let allDates      = [];
+let galleryPendingDeletes = new Set(); // driveFileId marcados para eliminar en Galería, se aplican recién con "Guardar" (v2.144)
 let galleryPhotos = [];          // [{driveFileId, date, name}] — armado por renderListTab(), fuente para el modo selección en la tab Galería
 let calDayData    = {};
 let calYear       = new Date().getFullYear();
@@ -6555,7 +6560,7 @@ async function renderListTab() {
   const perDay = await Promise.all(allDates.slice().reverse().map(async date => {
     const day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum).catch(() => null) || { media: [] };
     return (day.media || [])
-      .filter(m => (m.type === 'image' || m.type === 'video') && m.driveFileId)
+      .filter(m => (m.type === 'image' || m.type === 'video') && m.driveFileId && !galleryPendingDeletes.has(m.driveFileId))
       .map(m => ({ type: m.type, driveFileId: m.driveFileId, date, name: m.name, caption: m.caption || '' }));
   }));
   if (albumFolderId !== navFolderId) return;
@@ -9037,7 +9042,7 @@ function diaryFabSheetRowsHtml() {
       </button>
       ${albumCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBulkDiary,50)">
         <span class="bottom-sheet-icon">${icon('upload')}</span>
-        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos</span></span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos en este álbum</span></span>
       </button>` : ''}
       ${bookCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookPageSizeModal,50)">
         <span class="bottom-sheet-icon">${icon('size')}</span>
@@ -9069,17 +9074,13 @@ function diaryFabSheetRowsHtml() {
   // individuales a la que aplicarle este modo.
   const canSelect = currentTab === 'day' || currentTab === 'list';
   return `
-    ${currentTab === 'day' && albumCanEdit ? `<button class="bottom-sheet-row" onclick="document.getElementById('file-input').click();closeDiaryFabSheet()">
-      <span class="bottom-sheet-icon">${icon('upload')}</span>
-      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos a este día</span></span>
-    </button>` : ''}
-    ${canSelect ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(enterSelectionMode,50)">
+        ${canSelect ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(enterSelectionMode,50)">
       <span class="bottom-sheet-icon">${icon('select')}</span>
       <span class="bottom-sheet-text"><span class="bottom-sheet-label">Seleccionar fotos</span></span>
     </button>` : ''}
     ${albumCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBulkDiary,50)">
       <span class="bottom-sheet-icon">${icon('upload')}</span>
-      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos</span></span>
+      <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos en este álbum</span></span>
     </button>` : ''}
     <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(playCurrentAlbum,50)">
       <span class="bottom-sheet-icon">${icon('play')}</span>
@@ -9268,45 +9269,59 @@ async function deleteSelected() {
   exitSelectionMode();
 }
 
-// Eliminar desde la Galería no puede diferir a "Guardar" como en el tab
-// Día (deleteSelected() de arriba) — las fotos seleccionadas pueden
-// pertenecer a días distintos, no hay un solo day.json "en edición" al
-// que aferrarse. Se agrupan por fecha y cada día afectado se guarda
-// directo a Drive (mismo mecanismo de papelera de siempre — 30 días
-// recuperable, vía saveDayToDrive con previousIds). Si el día
-// actualmente abierto en el tab Día tiene cambios sin guardar, se pide
-// confirmar que se descartan antes de tocar nada — evita pisar una
-// edición en curso con una lectura fresca de Drive.
+// Eliminar desde la Galería (v2.144): ya no toca Drive al momento. Las fotos
+// seleccionadas quedan marcadas en galleryPendingDeletes (se ocultan de la
+// grilla) y la barra "Guardar" muestra cuántas se van a eliminar; recién al
+// tocar "Guardar" se mandan a la papelera de Drive (applyGalleryDeletes()),
+// y "Descartar" las devuelve. Mismo criterio que el tab Día.
 async function deleteSelectedGallery() {
   if (!selectedIdxs.size) return;
-  const n = selectedIdxs.size;
   const items = [...selectedIdxs].map(i => galleryPhotos[i]).filter(Boolean);
-  const affectedDates = [...new Set(items.map(p => p.date))];
-  if (affectedDates.includes(currentDate) && dirty) {
-    if (!confirm('Tenés cambios sin guardar en uno de los días afectados. ¿Descartarlos y continuar?')) return;
-    dirty = false;
-  }
-  const ok = await customConfirm(
-    `¿Eliminar ${n} foto${n > 1 ? 's' : ''}? Se mandan a la papelera de Drive (recuperables 30 días).`,
-    { title: 'Eliminar fotos', confirmLabel: 'Eliminar' }
-  );
-  if (!ok) return;
-  // v2.62: `loadDayFromDrive` acá nunca pasaba `isSharedAlbum` — bug de
-  // fondo real (esta ruta ya fallaba en silencio para álbumes compartidos)
-  // encontrado al wirear la escritura vía proxy para invitados editores.
-  const byDate = new Map();
-  items.forEach(p => { if (!byDate.has(p.date)) byDate.set(p.date, []); byDate.get(p.date).push(p.driveFileId); });
-  for (const [date, ids] of byDate) {
+  items.forEach(p => galleryPendingDeletes.add(p.driveFileId));
+  exitSelectionMode(); // re-renderiza la Galería sin las marcadas
+  markGalleryDeletesPending();
+}
+
+function markGalleryDeletesPending() {
+  const n = galleryPendingDeletes.size;
+  if (!n) return;
+  setStatus('unsaved', `${n} archivo${n > 1 ? 's' : ''} para eliminar`);
+  document.querySelector('.save-bar').style.display = 'flex';
+  const saveBtn = document.getElementById('btn-save');
+  if (saveBtn) saveBtn.textContent = 'Guardar';
+}
+
+function discardGalleryDeletes() {
+  galleryPendingDeletes.clear();
+  if (currentTab === 'list') renderListTab();
+}
+
+// Aplica los borrados pendientes: agrupa por fecha y guarda cada día afectado
+// (papelera de Drive, 30 días recuperable, vía saveDayToDrive con previousIds).
+async function applyGalleryDeletes() {
+  const ids = new Set(galleryPendingDeletes);
+  if (!ids.size) return true;
+  setStatus('', 'Eliminando...');
+  let failed = 0;
+  for (const date of allDates.slice()) {
     try {
       const day = await loadDayFromDrive(albumFolderId, date, isSharedAlbum);
-      if (!day) continue;
+      if (!day || !day.media.some(m => ids.has(m.driveFileId))) continue;
       const previousIds = day.media.filter(m => m.driveFileId).map(m => m.driveFileId);
-      day.media = day.media.filter(m => !ids.includes(m.driveFileId));
+      day.media = day.media.filter(m => !ids.has(m.driveFileId));
       await saveDayToDrive(albumFolderId, date, day, previousIds, isSharedAlbum ? albumFolderId : null);
-      if (date === currentDate) currentDay.media = currentDay.media.filter(m => !ids.includes(m.driveFileId));
-    } catch (e) { console.warn('No se pudo eliminar fotos del día', date, e); }
+      if (date === currentDate && currentDay) {
+        currentDay.media = currentDay.media.filter(m => !ids.has(m.driveFileId));
+        currentDayOriginalIds = new Set(currentDay.media.filter(m => m.driveFileId).map(m => m.driveFileId));
+      }
+    } catch (e) { failed++; console.warn('No se pudo eliminar fotos del día', date, e); }
   }
-  exitSelectionMode();
+  if (failed) {
+    setStatus('unsaved', `No se pudieron eliminar fotos de ${failed} día${failed > 1 ? 's' : ''}. Tocá Guardar para reintentar`);
+    return false;
+  }
+  galleryPendingDeletes.clear();
+  return true;
 }
 
 // ─── Share media ──────────────────────────────────────────
@@ -9377,8 +9392,22 @@ function bindDiaryEvents() {
 }
 
 // ─── Static event listeners ───────────────────────────────
-document.getElementById('btn-save').addEventListener('click', saveCurrentDay);
+document.getElementById('btn-save').addEventListener('click', async () => {
+  if (galleryPendingDeletes.size) {
+    const ok = await applyGalleryDeletes();
+    if (!ok) return;
+    if (currentTab === 'list') renderListTab();
+    if (!dirty) {
+      setStatus('saved', 'Guardado en Drive ✓');
+      document.getElementById('btn-save').textContent = 'Guardar día';
+      setTimeout(() => { if (!dirty && !galleryPendingDeletes.size) document.querySelector('.save-bar').style.display = 'none'; }, 2200);
+      return;
+    }
+  }
+  saveCurrentDay();
+});
 document.getElementById('btn-discard').addEventListener('click', () => { 
+  if (galleryPendingDeletes.size) { discardGalleryDeletes(); document.getElementById('btn-save').textContent = 'Guardar día'; if (!dirty) { setStatus('', ''); document.querySelector('.save-bar').style.display = 'none'; return; } }
   loadDay(currentDate); 
   setStatus('', ''); 
   document.querySelector('.save-bar').style.display = 'none';

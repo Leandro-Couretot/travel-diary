@@ -1,1 +1,1 @@
-{"version": "2.143", "changelog": "Cuando tenés cambios sin guardar, el botón + ya no tapa el botón Guardar."}
+{"version": "2.144", "changelog": "En Galería, eliminar fotos ahora espera a que toques Guardar (y Descartar las devuelve). Se unificó el botón de agregar fotos del menú +."}
