@@ -322,7 +322,11 @@ img { transition: opacity 0.25s ease; }
    alternativas (mockup comparativo) y prefirió esta porque el fondo
    oscurecido deja clarísimo que la app está en un estado modal, algo
    que las pastillas flotando sobre la grilla no comunicaban. */
-.fab-container { position: fixed; right: 1.25rem; bottom: 1.5rem; z-index: 120; display: none; }
+.fab-container { position: fixed; right: 1.25rem; bottom: 1.5rem; z-index: 120; display: none; transition: bottom 0.2s ease; }
+/* v2.143: con la barra "Cambios sin guardar" visible (se muestra/oculta con
+   style.display en varios lugares, de ahí el selector por atributo) el "+"
+   sube para no taparla ni taparle el "Guardar". */
+body:has(.save-bar[style*="display: flex"]) .fab-container { bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)); }
 .fab-btn {
   width: 56px; height: 56px; border-radius: 50%; border: none;
   background: var(--ink); color: #fff; font-size: 1.6rem; line-height: 1;
@@ -1646,7 +1650,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.142';
+const APP_VERSION = '2.143';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
