@@ -480,6 +480,13 @@ audio { width: 100%; height: 32px; }
 .list-photo-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .list-photo-play svg { width: 14px; height: 14px; margin-left: 2px; }
 .list-photo-date { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.3rem 0.4rem 0.25rem; background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0)); color: white; font-size: 0.6rem; letter-spacing: 0.02em; pointer-events: none; }
+.contrib-intro { padding: 0.75rem 0.25rem 1rem; }
+.contrib-intro-title { font-family: 'DM Serif Display', serif; font-size: 1.35rem; color: var(--ink); line-height: 1.2; }
+.contrib-intro-sub { margin-top: 0.3rem; font-size: 0.875rem; color: var(--ink-muted); line-height: 1.4; }
+.contrib-empty { padding: 3.5rem 1.5rem; text-align: center; color: var(--ink-muted); }
+.contrib-empty-icon { font-size: 2.6rem; color: var(--ink-faint); margin-bottom: 0.9rem; }
+.contrib-empty-title { font-family: 'DM Serif Display', serif; font-size: 1.25rem; color: var(--ink); margin-bottom: 0.4rem; }
+.contrib-empty-text { font-size: 0.9rem; line-height: 1.5; max-width: 18rem; margin: 0 auto; }
 .list-empty { padding: 3rem 1.5rem; text-align: center; color: var(--ink-muted); font-size: 0.875rem; }
 /* Rol Contribuidor (v2.74, Paso 5): solo visible sobre una foto que el
    propio Contribuidor subió (uploadedBy === currentUserSub) — ver
@@ -1628,7 +1635,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.140';
+const APP_VERSION = '2.141';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -3418,17 +3425,8 @@ function stillOnThisAlbum(album) {
 async function verifySharedAlbumAccess(album) {
   try {
     const dates = await listDayFolders(album.folderDriveId, true);
-    if (!dates.length && stillOnThisAlbum(album)) {
-      // Acceso real confirmado (no tiró error) pero el álbum no tiene
-      // ningún día todavía — distinto de "no tenemos acceso", vale la
-      // pena aclararlo para no generar la misma duda de "¿por qué no veo
-      // nada?" con otra causa.
-      showOnboardingInfoModal({
-        title: 'Acceso confirmado',
-        itemsHtml: `<p style="font-size:0.9rem;color:var(--ink-muted);line-height:1.5;margin:0;">Ya podés ver este álbum, pero todavía no tiene ningún día con contenido cargado.</p>`,
-        ctaLabel: 'Entendido',
-      });
-    }
+    // Un álbum sin días todavía no necesita aviso: cada vista ya muestra su propio estado vacío.
+    void dates;
   } catch (e) {
     if (!stillOnThisAlbum(album)) return;
     showOnboardingInfoModal({
@@ -5717,6 +5715,16 @@ async function renderContributorDiaryPage() {
   await renderContributorGallery();
 }
 
+function contribEmptyHtml() {
+  return `<div class="contrib-empty"><div class="contrib-empty-icon">${icon('photo', { size: '1em' })}</div><div class="contrib-empty-title">Todavía no hay fotos</div><div class="contrib-empty-text">Sé el primero en sumar una. Tocá el botón ＋ de abajo para subir tus fotos y videos.</div></div>`;
+}
+function contribIntroHtml(photos) {
+  const name = (document.getElementById('header-subtitle').textContent || '').trim();
+  const nImg = photos.filter(p => p.type === 'image').length;
+  const nVid = photos.length - nImg;
+  const counts = `${nImg} ${nImg === 1 ? 'foto' : 'fotos'}` + (nVid ? ` y ${nVid} ${nVid === 1 ? 'video' : 'videos'}` : '');
+  return `<div class="contrib-intro"><div class="contrib-intro-title">${name ? 'Fotos de ' + escHtml(name) : 'Fotos compartidas'}</div><div class="contrib-intro-sub">${counts}. Tocá ＋ para sumar las tuyas.</div></div>`;
+}
 async function renderContributorGallery() {
   const wrap = document.getElementById('list-tab-content');
   wrap.innerHTML = '<div class="list-empty"><div class="spinner" style="margin:0 auto;"></div>Cargando fotos...</div>';
@@ -5726,7 +5734,7 @@ async function renderContributorGallery() {
   try { allDates = await listDayFolders(albumFolderId, true); }
   catch (e) { if (albumFolderId === navFolderId) wrap.innerHTML = '<div class="list-empty">Error al cargar las fotos y videos</div>'; return; }
   if (albumFolderId !== navFolderId) return;
-  if (!allDates.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos ni videos. Tocá "＋" para sumar el primero.</div>'; contributorPhotos = []; return; }
+  if (!allDates.length) { wrap.innerHTML = contribEmptyHtml(); contributorPhotos = []; return; }
 
   const perDay = await Promise.all(allDates.map(async date => {
     const day = await loadDayFromDrive(albumFolderId, date, true).catch(() => null) || { media: [] };
@@ -5738,9 +5746,9 @@ async function renderContributorGallery() {
   const allPhotos = perDay.flat().reverse(); // allDates viene ascendente — se invierte para mostrar el día más reciente primero
   contributorPhotos = allPhotos;
   galleryPhotos = allPhotos; // fuente del carrusel (openGalleryViewer), igual que en Galería
-  if (!allPhotos.length) { wrap.innerHTML = '<div class="list-empty">Todavía no hay fotos ni videos. Tocá "＋" para sumar el primero.</div>'; return; }
+  if (!allPhotos.length) { wrap.innerHTML = contribEmptyHtml(); return; }
 
-  wrap.innerHTML = '';
+  wrap.innerHTML = contribIntroHtml(allPhotos);
   const grid = document.createElement('div');
   grid.className = 'list-photo-grid';
   // Se recrea en cada render — mismo cuidado que coverObserver/
