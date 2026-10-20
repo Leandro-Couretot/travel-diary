@@ -637,6 +637,16 @@ audio { width: 100%; height: 32px; }
 .lightbox-play.loading { width: auto; height: auto; padding: 0.6rem 1rem; border-radius: 20px; }
 .lightbox-goto-day { position: absolute; bottom: 2.5rem; left: 1rem; background: rgba(255,255,255,0.15); border: none; color: white; padding: 0.5rem 1rem; border-radius: 20px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; cursor: pointer; display: none; }
 .lightbox-next { right: 0.75rem; }
+/* v2.142: pantalla de carga del visor. En vez de negro total mientras llega
+   la foto grande: la miniatura de la grilla (ya cargada) difuminada y un
+   aro girando encima. Se saca sola cuando la foto real termina de cargar. */
+.lightbox-loader { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; }
+.lightbox-loader.show { display: flex; }
+.lightbox-ph { position: absolute; top: 50%; left: 0; width: 100%; height: 85vh; transform: translateY(-50%); object-fit: contain; filter: blur(14px) brightness(0.75); display: none; animation: lbPhIn 0.25s ease both; }
+.lightbox-ph.has-src { display: block; }
+.lightbox-spin { position: relative; width: 38px; height: 38px; border: 3px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes lbPhIn { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lightbox-spin { animation-duration: 2s; } .lightbox-ph { animation: none; } }
 
 /* Slideshow */
 .slideshow-overlay { display: none; position: fixed; inset: 0; background: #000; z-index: 500; flex-direction: column; align-items: center; justify-content: center; }
@@ -1216,6 +1226,7 @@ audio { width: 100%; height: 32px; }
 <div class="lightbox" id="lightbox">
   <button class="lightbox-close" id="lightbox-close">✕</button>
   <button class="lightbox-btn lightbox-prev" id="lightbox-prev">←</button>
+  <div class="lightbox-loader" id="lightbox-loader"><img class="lightbox-ph" id="lightbox-ph" alt=""><div class="lightbox-spin"></div></div>
   <div class="lightbox-stage">
     <img class="lightbox-img" id="lightbox-img" src="" alt="">
     <video class="lightbox-video" id="lightbox-video" controls playsinline preload="none"></video>
@@ -1635,7 +1646,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.141';
+const APP_VERSION = '2.142';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2976,7 +2987,8 @@ function waitForSessionToken(timeoutMs = 6000) {
 
 async function handleContributorJoin(token, via) {
   const main = document.getElementById('home-main');
-  main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> Procesando invitación...</div>`;
+  main.innerHTML = `<div class="loading-albums"><div class="spinner"></div> <span id="join-step">Verificando tu invitación...</span></div>`;
+  const setJoinStep = t => { const el = document.getElementById('join-step'); if (el) el.textContent = t; };
   const ready = await waitForSessionToken();
   if (!ready) {
     main.innerHTML = `<div class="connect-state fade-up"><h2>No se pudo unir al álbum</h2><p>No se pudo establecer tu sesión todavía. Probá de nuevo en un momento.</p><button class="btn btn-primary" onclick="navigateTo('home')">Ir a mis recuerdos</button></div>`;
@@ -2991,7 +3003,9 @@ async function handleContributorJoin(token, via) {
     // con un nombre genérico hasta la próxima vez que se pinte la card
     // (refreshSharedAlbumCard(), que ya corre sola en Home).
     let meta = null;
+    setJoinStep('Abriendo el álbum...');
     try { meta = await resolveSharedAlbumMeta(result.folderDriveId); } catch {}
+    setJoinStep(meta?.name ? `Sumándote a ${meta.name}...` : 'Sumándote al álbum...');
     // Mismo mecanismo de siempre (shared-albums.json, el índice PROPIO del
     // invitado) — reusa joinSharedAlbum() tal cual, sin ningún campo de rol
     // nuevo (mismo criterio ya establecido para Lector/Co-propietario: el
@@ -8613,7 +8627,35 @@ function lbResetVideo() {
   const play = document.getElementById('lightbox-play');
   if (play) { play.style.display = 'none'; play.classList.remove('loading'); play.innerHTML = icon('play'); play.disabled = false; }
 }
-function closeLightbox() { lbResetVideo(); document.getElementById('lightbox').classList.remove('open'); }
+function closeLightbox() { lbHideLoading(); lbResetVideo(); document.getElementById('lightbox').classList.remove('open'); }
+// v2.142: pantalla de carga. Mira la clase `auth-img-loading` que pone
+// setAuthImg() (la saca en el load real de la foto) en vez de pisar su
+// onload (lección de v2.12). La miniatura de la grilla, si ya cargó, hace de
+// fondo difuminado para que nunca se vea negro.
+let lbLoadTimer = null;
+function lbHideLoading() {
+  if (lbLoadTimer) { clearInterval(lbLoadTimer); lbLoadTimer = null; }
+  const loader = document.getElementById('lightbox-loader'); if (loader) loader.classList.remove('show');
+  const ph = document.getElementById('lightbox-ph'); if (ph) { ph.classList.remove('has-src'); ph.removeAttribute('src'); }
+}
+function lbGridThumbSrc(idx) {
+  if (lbSource !== 'gallery') return '';
+  const items = document.querySelectorAll('#list-tab-content .list-photo-item');
+  const th = items[idx] && items[idx].querySelector('.list-photo-img');
+  return th && th.complete && th.naturalWidth > 0 && th.currentSrc ? th.currentSrc : '';
+}
+function lbShowLoading(img, idx) {
+  lbHideLoading();
+  const loader = document.getElementById('lightbox-loader'); const ph = document.getElementById('lightbox-ph');
+  if (!loader || !img.classList.contains('auth-img-loading')) return; // ya está lista (caché)
+  const src = lbGridThumbSrc(idx);
+  if (src) { ph.src = src; ph.classList.add('has-src'); }
+  loader.classList.add('show');
+  const started = Date.now();
+  lbLoadTimer = setInterval(() => {
+    if (!img.classList.contains('auth-img-loading') || Date.now() - started > 20000) lbHideLoading();
+  }, 80);
+}
 // El video se descarga recién cuando la persona toca play (nunca para
 // mostrar la miniatura ni al pasar de largo).
 async function lbPlayVideo() {
@@ -8641,13 +8683,14 @@ async function lbPlayVideo() {
 // (solo fotos: un video nunca se precarga).
 function lbPreloadNeighbors() {
   if (lbSource !== 'gallery') return;
-  [lbIdx - 1, lbIdx + 1].forEach(j => {
+  [lbIdx + 1, lbIdx - 1, lbIdx + 2].forEach(j => {
     const it = lbImages[j];
     if (!it || it.type !== 'image' || !it.driveFileId) return;
     setAuthImg(new Image(), it.driveFileId, 'w2000', isSharedAlbum ? albumFolderId : null);
   });
 }
 function renderLightbox() {
+  lbHideLoading();
   lbResetVideo();
   const item = lbImages[lbIdx]; const img = document.getElementById('lightbox-img');
   if (!item) return;
@@ -8676,6 +8719,7 @@ function renderLightbox() {
     } else {
       setAuthImg(img, item.driveFileId, 'w2000', isSharedAlbum ? albumFolderId : null);
     }
+    lbShowLoading(img, lbIdx);
   }
   const caption = lbSource === 'gallery'
     ? [item.date ? formatDate(item.date) : '', item.caption || ''].filter(Boolean).join(' · ')
