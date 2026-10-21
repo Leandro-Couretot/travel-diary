@@ -44,7 +44,7 @@ function clean(str, max) {
 function buildMessage({ kind, count, actorName, albumName }) {
   const who = clean(actorName, 40).split(/\s+/)[0] || 'Alguien';
   const album = albumName ? `"${albumName}"` : 'un álbum compartido';
-  if (kind === 'note') return { title: 'Legado', body: `${who} escribió algo en ${album}` };
+  if (kind === 'note') return { title: 'Legado', body: `${who} comentó una foto en ${album}` };
   const n = Math.max(1, Math.min(count || 1, 999));
   return { title: 'Legado', body: `${who} agregó ${n === 1 ? 'una foto o video' : n + ' fotos y videos'} a ${album}` };
 }
