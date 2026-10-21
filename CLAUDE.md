@@ -1547,6 +1547,7 @@ Ver convención #8. Este registro es la memoria de cómo le gusta al usuario que
 **Correcciones del usuario** (completar acá a medida que las dé):
 - 21/oct/2026: en los avisos push no hay que aclarar que no se notifica cuando se borra o se reordena algo. Moraleja: contar lo que sí pasa, no enumerar lo que no pasa.
 - 21/oct/2026 (texto de la notificación push, no de las novedades): en lugar de "X escribió algo en "Álbum"" el usuario pidió "X comentó una foto en "Álbum"". Ojo: ese mismo aviso también sale al cambiar el título o las notas de un día, no solo el texto de una foto; el usuario lo pidió así igual. Cambio solo en `functions/push.js` (`buildMessage`), sin bump de versión porque el frontend no cambió.
+- 21/oct/2026: en la notificación push el nombre del álbum pasa de ir entre comillas en el cuerpo a ir como título (las notificaciones no soportan negrita; el título se ve destacado). Quedó: título `Ama 1 año`, cuerpo `Ana comentó una foto` / `Ana agregó 5 fotos y videos`; sin nombre de álbum el título es `Legado`. Solo `functions/push.js`.
 - 21/oct/2026: hablar de "notificaciones", no de "avisos". No quiere "comenta" si la app no tiene comentarios: usar "se escribe algo en una foto". No quiere explicar dónde cambiar la preferencia dentro del cartel. Texto propio y directo: "Te notificamos cuando en un álbum compartido..." (voz de la app en primera persona del plural, sin adornos).
 
 ---
