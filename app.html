@@ -1665,7 +1665,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.146';
+const APP_VERSION = '2.147';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2201,16 +2201,9 @@ function maybeShowPostLoginOnboarding(isNewUser) {
   decidePostLoginOnboarding(isNewUser);
 }
 function decidePostLoginOnboarding(isNewUser) {
-  afterOnboardingInfoClosed = maybeAskPushOptIn;
   if (isNewUser) { showWelcomeModal(); return; }
   if (!albums.length) { showFirstAlbumTipModal(); return; }
   maybeShowWhatsNewModal();
-  // Si no había novedades para mostrar, no hay modal que al cerrarse dispare
-  // la pregunta: se hace directo.
-  if (!document.getElementById('modal-onboarding-info').classList.contains('open')) {
-    afterOnboardingInfoClosed = null;
-    setTimeout(maybeAskPushOptIn, 1500);
-  }
 }
 
 // Changelog curado a mano, de cara al usuario — deliberadamente separado
@@ -2235,6 +2228,10 @@ function decidePostLoginOnboarding(isNewUser) {
 // esto — queda fija como el punto de corte real.
 const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
+  { version: '2.147', items: [
+    'Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto.',
+    'Activá las notificaciones desde el menú de notificaciones, tocando tu foto de perfil.',
+  ]},
   { version: '2.145', items: [
     'Ahora podés recibir avisos en el celular cuando alguien agrega fotos o escribe algo en un álbum que compartís.',
     'Se activan desde Notificaciones (tocando tu foto de perfil). En iPhone hace falta tener Legado instalada en la pantalla de inicio.',
@@ -2396,17 +2393,17 @@ function openNotificationsModal() {
 async function renderPushSettings(errMsg) {
   const el = document.getElementById('push-settings');
   if (!el) return;
-  const intro = 'Te avisamos cuando alguien agrega fotos o escribe algo en un álbum que compartís.';
-  el.innerHTML = `<div class="push-settings-title">Avisos en este dispositivo</div><p class="push-settings-text">${intro}</p>`;
+  const intro = 'Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto.';
+  el.innerHTML = `<div class="push-settings-title">Notificaciones en este dispositivo</div><p class="push-settings-text">${intro}</p>`;
   let state = 'off';
   try { state = await pushGetState(); } catch {}
   let body = '';
   if (state === 'needs_install') {
-    body = '<p class="push-settings-text">En iPhone y iPad los avisos solo funcionan con la app instalada: en Safari tocá Compartir, después "Agregar a pantalla de inicio", y abrí Legado desde ese ícono. Después volvé acá para activarlos.</p>';
+    body = '<p class="push-settings-text">En iPhone y iPad las notificaciones solo funcionan con la app instalada: en Safari tocá Compartir, después "Agregar a pantalla de inicio", y abrí Legado desde ese ícono. Después volvé acá para activarlos.</p>';
   } else if (state === 'unsupported') {
-    body = '<p class="push-settings-text">Este navegador no permite recibir avisos.</p>';
+    body = '<p class="push-settings-text">Este navegador no permite recibir notificaciones.</p>';
   } else if (state === 'denied') {
-    body = '<p class="push-settings-text">Bloqueaste los avisos de Legado. Para activarlos, permitilos desde los ajustes del navegador o del teléfono y volvé acá.</p>';
+    body = '<p class="push-settings-text">Bloqueaste las notificaciones de Legado. Para activarlos, permitilos desde los ajustes del navegador o del teléfono y volvé acá.</p>';
   } else if (state === 'on') {
     body = pushSwitchHtml(true);
   } else {
@@ -2415,7 +2412,7 @@ async function renderPushSettings(errMsg) {
   el.insertAdjacentHTML('beforeend', body + `<div class="push-settings-msg" id="push-msg">${errMsg ? escHtml(errMsg) : ''}</div>`);
 }
 function pushSwitchHtml(isOn) {
-  return `<div class="push-switch-row"><span class="push-switch-label">Recibir avisos</span><button type="button" class="push-switch${isOn ? ' on' : ''}" id="push-toggle-btn" role="switch" aria-checked="${isOn}" aria-label="Recibir avisos" onclick="togglePush(${!isOn})"></button></div>`;
+  return `<div class="push-switch-row"><span class="push-switch-label">Activar notificaciones</span><button type="button" class="push-switch${isOn ? ' on' : ''}" id="push-toggle-btn" role="switch" aria-checked="${isOn}" aria-label="Activar notificaciones" onclick="togglePush(${!isOn})"></button></div>`;
 }
 async function togglePush(enable) {
   const btn = document.getElementById('push-toggle-btn');
@@ -2425,7 +2422,7 @@ async function togglePush(enable) {
     if (enable) await pushEnable(); else await pushDisable();
   } catch (e) {
     if (e.message === 'denied') err = 'No diste permiso. Si cambiás de idea, permitilos desde los ajustes del navegador.';
-    else if (e.message === 'dismissed') err = 'No se activaron los avisos.';
+    else if (e.message === 'dismissed') err = 'No se activaron las notificaciones.';
     else err = 'No se pudo: ' + e.message;
   }
   renderPushSettings(err);
@@ -2490,34 +2487,6 @@ function closeOnboardingInfoModal() {
 }
 let afterOnboardingInfoClosed = null;
 
-// v2.146: pregunta (una sola vez por dispositivo) si quiere recibir avisos
-// cuando alguien suba una foto o escriba algo en un álbum compartido. Se
-// muestra después de la bienvenida / novedades, o directo si no había nada
-// que mostrar. El permiso del navegador se pide recién al tocar "Activar
-// avisos" (iOS lo exige desde un toque). En iPhone, en una pestaña normal
-// de Safari no se pregunta (el push solo existe con la app instalada): ahí
-// la explicación queda en Notificaciones.
-const PUSH_ASKED_KEY = 'td_push_asked';
-async function maybeAskPushOptIn() {
-  try {
-    if (!sessionToken || currentView !== 'home') return;
-    if (localStorage.getItem(PUSH_ASKED_KEY)) return;
-    if (document.querySelector('.modal-overlay.open')) return; // hay otro modal arriba, se pregunta en otra ocasión
-    if (!pushSupported() || pushNeedsInstall() || Notification.permission !== 'default') return;
-    if ((await pushGetState()) !== 'off') return;
-    if (document.querySelector('.modal-overlay.open')) return;
-    localStorage.setItem(PUSH_ASKED_KEY, '1');
-    trackEvent('push_prompt_shown', {});
-    showOnboardingInfoModal({
-      title: '¿Querés enterarte de lo nuevo?',
-      itemsHtml: `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>Te avisamos en el celular cuando un amigo o familiar <strong>sube una foto</strong> o <strong>escribe algo</strong> en un álbum que compartís.</span></div>
-        <div class="help-item"><span class="help-item-dot">▸</span><span>Podés cambiarlo cuando quieras desde Notificaciones (tu foto de perfil).</span></div>`,
-      ctaLabel: 'Activar avisos',
-      secondaryLabel: 'Ahora no',
-      onCta: () => { pushEnable().catch(() => {}); },
-    });
-  } catch (e) { console.warn('maybeAskPushOptIn:', e); }
-}
 // v2.50: pop-up (no un banner inline) para el aviso de "reconstruimos tus
 // álbumes" (ver renderAlbums(), wasReconstructed) — mismo modal genérico de
 // arriba. Redacción en tiempo pasado porque la reconstrucción ya terminó

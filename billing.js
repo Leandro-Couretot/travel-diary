@@ -662,7 +662,7 @@ async function pushGetState() {
 }
 
 async function pushEnable() {
-  if (!sessionToken) throw new Error('Iniciá sesión para activar los avisos.');
+  if (!sessionToken) throw new Error('Iniciá sesión para activar las notificaciones.');
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error(perm === 'denied' ? 'denied' : 'dismissed');
   const reg = await navigator.serviceWorker.ready;
