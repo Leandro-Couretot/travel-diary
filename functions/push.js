@@ -105,7 +105,9 @@ async function handleNotify(req, res, supabase, session) {
   recipientSubs.delete(session.sub);
   if (!recipientSubs.size) { res.status(200).json({ ok: true, sent: 0, reason: 'no_recipients' }); return; }
 
-  const { data: devices } = await supabase.from('push_subscriptions').select('endpoint,p256dh,auth').in('google_sub', [...recipientSubs]);
+  // Cada dispositivo elige qué tipos quiere recibir (v2.148).
+  const prefCol = kind === 'note' ? 'notify_text' : 'notify_media';
+  const { data: devices } = await supabase.from('push_subscriptions').select('endpoint,p256dh,auth').in('google_sub', [...recipientSubs]).eq(prefCol, true);
   if (!devices || !devices.length) { res.status(200).json({ ok: true, sent: 0, reason: 'no_devices' }); return; }
 
   webpush.setVapidDetails('https://legadofamiliar.com.ar', VAPID_PUBLIC_KEY.value(), VAPID_PRIVATE_KEY.value());
@@ -158,10 +160,16 @@ exports.pushApi = onRequest(
           res.status(400).json({ error: 'bad_subscription' });
           return;
         }
-        const { error } = await supabase.from('push_subscriptions').upsert({
+        const row = {
           endpoint, google_sub: session.sub, p256dh: String(p256dh), auth: String(auth),
           user_agent: clean(req.headers['user-agent'], 300),
-        });
+        };
+        const prefs = req.body.prefs;
+        if (prefs && typeof prefs === 'object') {
+          row.notify_media = prefs.media !== false;
+          row.notify_text = prefs.text !== false;
+        }
+        const { error } = await supabase.from('push_subscriptions').upsert(row);
         if (error) { console.error('push subscribe error:', error); res.status(500).json({ error: 'subscribe_failed' }); return; }
         res.status(200).json({ ok: true });
         return;
@@ -178,8 +186,27 @@ exports.pushApi = onRequest(
       if (action === 'status') {
         const endpoint = req.body.endpoint;
         if (typeof endpoint !== 'string') { res.status(200).json({ ok: true, subscribed: false }); return; }
-        const { data } = await supabase.from('push_subscriptions').select('endpoint').eq('endpoint', endpoint).eq('google_sub', session.sub).maybeSingle();
-        res.status(200).json({ ok: true, subscribed: !!data });
+        const { data } = await supabase.from('push_subscriptions').select('endpoint,notify_media,notify_text').eq('endpoint', endpoint).eq('google_sub', session.sub).maybeSingle();
+        res.status(200).json({
+          ok: true,
+          subscribed: !!data,
+          prefs: data ? { media: data.notify_media !== false, text: data.notify_text !== false } : null,
+        });
+        return;
+      }
+
+      if (action === 'prefs') {
+        const endpoint = req.body.endpoint;
+        const prefs = req.body.prefs || {};
+        if (typeof endpoint !== 'string' || typeof prefs.media !== 'boolean' || typeof prefs.text !== 'boolean') {
+          res.status(400).json({ error: 'bad_request' });
+          return;
+        }
+        const { data, error } = await supabase.from('push_subscriptions')
+          .update({ notify_media: prefs.media, notify_text: prefs.text })
+          .eq('endpoint', endpoint).eq('google_sub', session.sub).select('endpoint');
+        if (error) { console.error('push prefs error:', error); res.status(500).json({ error: 'prefs_failed' }); return; }
+        res.status(200).json({ ok: true, updated: !!(data && data.length) });
         return;
       }
 

@@ -257,6 +257,11 @@ create table if not exists travel_diary.push_subscriptions (
 );
 create index if not exists push_subscriptions_sub_idx on travel_diary.push_subscriptions (google_sub);
 
+-- v2.148: qué tipos de notificación quiere cada dispositivo (fotos/videos
+-- nuevos, textos nuevos). Si los dos quedan apagados se borra la fila.
+alter table travel_diary.push_subscriptions add column if not exists notify_media boolean not null default true;
+alter table travel_diary.push_subscriptions add column if not exists notify_text boolean not null default true;
+
 -- Freno anti-spam: una fila por (quien hizo el cambio, álbum, tipo). Si el
 -- último aviso salió hace menos de la ventana, no se manda otro.
 create table if not exists travel_diary.push_throttle (

@@ -643,46 +643,76 @@ function urlBase64ToUint8Array(b64) {
   return Uint8Array.from(raw, c => c.charCodeAt(0));
 }
 
-// 'unsupported' | 'needs_install' | 'denied' | 'on' | 'off'
-async function pushGetState() {
+// Estado sincrónico (sin tocar la red): sirve para pintar la pantalla al toque.
+// 'unsupported' | 'needs_install' | 'denied' | null (null = hay que consultar).
+function pushQuickState() {
   if (pushNeedsInstall()) return 'needs_install';
   if (!pushSupported()) return 'unsupported';
   if (Notification.permission === 'denied') return 'denied';
+  return null;
+}
+
+// Último estado conocido de este dispositivo ({media, text}), para pintar los
+// interruptores sin esperar. Preferencia liviana, nunca contenido.
+const PUSH_UI_KEY = 'td_push_ui';
+function pushCachedPrefs() {
+  try {
+    const c = JSON.parse(localStorage.getItem(PUSH_UI_KEY) || 'null');
+    if (c && typeof c.media === 'boolean' && typeof c.text === 'boolean') return { media: c.media, text: c.text };
+  } catch {}
+  return { media: false, text: false };
+}
+function pushCachePrefs(p) {
+  try { localStorage.setItem(PUSH_UI_KEY, JSON.stringify({ media: !!p.media, text: !!p.text })); } catch {}
+}
+
+// Consulta real: { state: 'unsupported'|'needs_install'|'denied'|'ready', media, text }
+async function pushGetPrefs() {
+  const quick = pushQuickState();
+  if (quick) return { state: quick, media: false, text: false };
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
-    if (!sub) return 'off';
-    if (Notification.permission !== 'granted') return 'off';
+    if (!sub || Notification.permission !== 'granted') { pushCachePrefs({ media: false, text: false }); return { state: 'ready', media: false, text: false }; }
     // Confirma que el servidor siga teniendo este dispositivo para esta cuenta.
     try {
       const st = await pushApiCall({ action: 'status', endpoint: sub.endpoint });
-      return st && st.subscribed ? 'on' : 'off';
-    } catch { return 'on'; }
-  } catch { return 'off'; }
+      const p = st && st.subscribed && st.prefs ? { media: !!st.prefs.media, text: !!st.prefs.text } : { media: false, text: false };
+      pushCachePrefs(p);
+      return { state: 'ready', ...p };
+    } catch { return { state: 'ready', ...pushCachedPrefs() }; }
+  } catch { return { state: 'ready', media: false, text: false }; }
 }
 
-async function pushEnable() {
+// Cambia las preferencias de este dispositivo. Pide permiso y suscribe la
+// primera vez que se prende algo; si quedan las dos apagadas, borra la
+// suscripción de este dispositivo.
+async function pushSetPrefs(prefs) {
   if (!sessionToken) throw new Error('Iniciá sesión para activar las notificaciones.');
-  const perm = await Notification.requestPermission();
+  if (!prefs.media && !prefs.text) {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      try { await pushApiCall({ action: 'unsubscribe', endpoint: sub.endpoint }); } catch {}
+      try { await sub.unsubscribe(); } catch {}
+    }
+    pushCachePrefs(prefs);
+    trackEvent('push_disabled', {});
+    return;
+  }
+  const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
   if (perm !== 'granted') throw new Error(perm === 'denied' ? 'denied' : 'dismissed');
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
+  const isNew = !sub;
   if (!sub) {
     const { publicKey } = await pushApiCall({ action: 'key' });
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
   }
-  await pushApiCall({ action: 'subscribe', subscription: sub.toJSON() });
-  trackEvent('push_enabled', {});
-}
-
-async function pushDisable() {
-  const reg = await navigator.serviceWorker.ready;
-  const sub = await reg.pushManager.getSubscription();
-  if (sub) {
-    try { await pushApiCall({ action: 'unsubscribe', endpoint: sub.endpoint }); } catch {}
-    try { await sub.unsubscribe(); } catch {}
-  }
-  trackEvent('push_disabled', {});
+  // subscribe es un upsert: sirve para alta y para actualizar preferencias.
+  await pushApiCall({ action: 'subscribe', subscription: sub.toJSON(), prefs: { media: !!prefs.media, text: !!prefs.text } });
+  pushCachePrefs(prefs);
+  if (isNew) trackEvent('push_enabled', {});
 }
 
 // Fire-and-forget: avisa al servidor que hubo actividad en un álbum. El

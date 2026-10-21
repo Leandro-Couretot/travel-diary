@@ -354,13 +354,16 @@ body:has(.save-bar[style*="display: flex"]) .fab-container { bottom: calc(5.5rem
 .push-settings-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.3rem; }
 .push-settings-text { font-size: 0.82rem; color: var(--ink-muted); line-height: 1.5; margin: 0 0 0.7rem; }
 .push-settings-msg { font-size: 0.8rem; color: var(--red); margin-top: 0.5rem; }
-.push-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; }
+.push-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.55rem 0; }
+.push-switch-info { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .push-switch-label { font-size: 0.9rem; }
+.push-switch-desc { font-size: 0.78rem; color: var(--ink-muted); line-height: 1.4; }
 .push-switch { position: relative; width: 46px; height: 28px; flex: none; border: none; border-radius: 14px; background: var(--ink-faint); cursor: pointer; padding: 0; transition: background 0.2s; }
 .push-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s; }
 .push-switch.on { background: var(--accent); }
 .push-switch.on::after { transform: translateX(18px); }
 .push-switch:disabled { opacity: 0.6; cursor: default; }
+#notifications-list { max-height: 19rem; overflow-y: auto; }
 .notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
 .notif-actions .btn { flex: 1; min-width: 0; }
 .sheet-overlay {
@@ -1665,7 +1668,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.147';
+const APP_VERSION = '2.148';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2389,42 +2392,68 @@ function openNotificationsModal() {
   document.getElementById('modal-notifications').classList.add('open');
 }
 
-// v2.145: avisos push de este dispositivo (ver billing.js → pushGetState()).
+// v2.148: notificaciones push de este dispositivo, un interruptor por tipo
+// (ver billing.js → pushGetPrefs()). Se pinta al toque con lo último conocido y
+// se corrige cuando llega el estado real.
+const PUSH_KINDS = [
+  { key: 'media', label: 'Fotos y videos nuevos', desc: 'Cuando alguien suma fotos o videos a un álbum compartido.' },
+  { key: 'text', label: 'Textos nuevos', desc: 'Cuando alguien escribe algo en un álbum compartido (título, notas o texto de una foto).' },
+];
+let pushUi = { state: 'ready', media: false, text: false };
+let pushRenderToken = 0;
+let pushBusy = false;
+
+function pushStateMessage(state) {
+  if (state === 'needs_install') return 'En iPhone y iPad las notificaciones solo funcionan con la app instalada: en Safari tocá Compartir, después "Agregar a pantalla de inicio", y abrí Legado desde ese ícono. Después volvé acá para activarlas.';
+  if (state === 'unsupported') return 'Este navegador no permite recibir notificaciones.';
+  if (state === 'denied') return 'Bloqueaste las notificaciones de Legado. Para activarlas, permitilas desde los ajustes del navegador o del teléfono y volvé acá.';
+  return '';
+}
+function pushSettingsHtml(errMsg) {
+  const blocked = pushUi.state !== 'ready';
+  const note = blocked ? `<p class="push-settings-text">${escHtml(pushStateMessage(pushUi.state))}</p>` : '';
+  const rows = PUSH_KINDS.map(k => {
+    const on = !blocked && !!pushUi[k.key];
+    return `<div class="push-switch-row"><div class="push-switch-info"><span class="push-switch-label">${k.label}</span><span class="push-switch-desc">${k.desc}</span></div><button type="button" class="push-switch${on ? ' on' : ''}" id="push-sw-${k.key}" role="switch" aria-checked="${on}" aria-label="${k.label}" ${blocked || pushBusy ? 'disabled' : ''} onclick="togglePushKind('${k.key}')"></button></div>`;
+  }).join('');
+  return `<div class="push-settings-title">Notificaciones en este dispositivo</div>${note}${rows}<div class="push-settings-msg" id="push-msg">${errMsg ? escHtml(errMsg) : ''}</div>`;
+}
 async function renderPushSettings(errMsg) {
   const el = document.getElementById('push-settings');
   if (!el) return;
-  const intro = 'Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto.';
-  el.innerHTML = `<div class="push-settings-title">Notificaciones en este dispositivo</div><p class="push-settings-text">${intro}</p>`;
-  let state = 'off';
-  try { state = await pushGetState(); } catch {}
-  let body = '';
-  if (state === 'needs_install') {
-    body = '<p class="push-settings-text">En iPhone y iPad las notificaciones solo funcionan con la app instalada: en Safari tocá Compartir, después "Agregar a pantalla de inicio", y abrí Legado desde ese ícono. Después volvé acá para activarlos.</p>';
-  } else if (state === 'unsupported') {
-    body = '<p class="push-settings-text">Este navegador no permite recibir notificaciones.</p>';
-  } else if (state === 'denied') {
-    body = '<p class="push-settings-text">Bloqueaste las notificaciones de Legado. Para activarlos, permitilos desde los ajustes del navegador o del teléfono y volvé acá.</p>';
-  } else if (state === 'on') {
-    body = pushSwitchHtml(true);
-  } else {
-    body = pushSwitchHtml(false);
+  const token = ++pushRenderToken;
+  const quick = pushQuickState();
+  pushUi = quick ? { state: quick, media: false, text: false } : { state: 'ready', ...pushCachedPrefs() };
+  el.innerHTML = pushSettingsHtml(errMsg);
+  if (quick) return;
+  let real = null;
+  try { real = await pushGetPrefs(); } catch {}
+  if (token !== pushRenderToken || !real) return;
+  if (real.state !== pushUi.state || real.media !== pushUi.media || real.text !== pushUi.text) {
+    pushUi = { state: real.state, media: real.media, text: real.text };
+    const msg = document.getElementById('push-msg');
+    el.innerHTML = pushSettingsHtml(msg ? msg.textContent : errMsg);
   }
-  el.insertAdjacentHTML('beforeend', body + `<div class="push-settings-msg" id="push-msg">${errMsg ? escHtml(errMsg) : ''}</div>`);
 }
-function pushSwitchHtml(isOn) {
-  return `<div class="push-switch-row"><span class="push-switch-label">Activar notificaciones</span><button type="button" class="push-switch${isOn ? ' on' : ''}" id="push-toggle-btn" role="switch" aria-checked="${isOn}" aria-label="Activar notificaciones" onclick="togglePush(${!isOn})"></button></div>`;
-}
-async function togglePush(enable) {
-  const btn = document.getElementById('push-toggle-btn');
-  if (btn) { btn.disabled = true; btn.classList.toggle('on', enable); btn.setAttribute('aria-checked', String(enable)); }
+async function togglePushKind(key) {
+  if (pushBusy || pushUi.state !== 'ready') return;
+  const next = { media: pushUi.media, text: pushUi.text };
+  next[key] = !next[key];
+  const el = document.getElementById('push-settings');
+  const prev = { ...pushUi };
+  pushBusy = true;
+  pushUi = { state: 'ready', ...next };
+  el.innerHTML = pushSettingsHtml('');
   let err = '';
   try {
-    if (enable) await pushEnable(); else await pushDisable();
+    await pushSetPrefs(next);
   } catch (e) {
-    if (e.message === 'denied') err = 'No diste permiso. Si cambiás de idea, permitilos desde los ajustes del navegador.';
+    pushUi = prev;
+    if (e.message === 'denied') err = 'No diste permiso. Si cambiás de idea, permitilas desde los ajustes del navegador.';
     else if (e.message === 'dismissed') err = 'No se activaron las notificaciones.';
     else err = 'No se pudo: ' + e.message;
   }
+  pushBusy = false;
   renderPushSettings(err);
 }
 function closeNotificationsModal() { document.getElementById('modal-notifications').classList.remove('open'); }
