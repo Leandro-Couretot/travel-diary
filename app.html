@@ -354,6 +354,13 @@ body:has(.save-bar[style*="display: flex"]) .fab-container { bottom: calc(5.5rem
 .push-settings-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.3rem; }
 .push-settings-text { font-size: 0.82rem; color: var(--ink-muted); line-height: 1.5; margin: 0 0 0.7rem; }
 .push-settings-msg { font-size: 0.8rem; color: var(--red); margin-top: 0.5rem; }
+.push-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; }
+.push-switch-label { font-size: 0.9rem; }
+.push-switch { position: relative; width: 46px; height: 28px; flex: none; border: none; border-radius: 14px; background: var(--ink-faint); cursor: pointer; padding: 0; transition: background 0.2s; }
+.push-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s; }
+.push-switch.on { background: var(--accent); }
+.push-switch.on::after { transform: translateX(18px); }
+.push-switch:disabled { opacity: 0.6; cursor: default; }
 .notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
 .notif-actions .btn { flex: 1; min-width: 0; }
 .sheet-overlay {
@@ -2389,7 +2396,7 @@ function openNotificationsModal() {
 async function renderPushSettings(errMsg) {
   const el = document.getElementById('push-settings');
   if (!el) return;
-  const intro = 'Te avisamos cuando alguien agrega fotos o escribe algo en un álbum que compartís. No avisamos cuando se borra o se reordena algo.';
+  const intro = 'Te avisamos cuando alguien agrega fotos o escribe algo en un álbum que compartís.';
   el.innerHTML = `<div class="push-settings-title">Avisos en este dispositivo</div><p class="push-settings-text">${intro}</p>`;
   let state = 'off';
   try { state = await pushGetState(); } catch {}
@@ -2401,15 +2408,18 @@ async function renderPushSettings(errMsg) {
   } else if (state === 'denied') {
     body = '<p class="push-settings-text">Bloqueaste los avisos de Legado. Para activarlos, permitilos desde los ajustes del navegador o del teléfono y volvé acá.</p>';
   } else if (state === 'on') {
-    body = '<p class="push-settings-text">Los avisos están activados en este dispositivo.</p><button class="btn btn-secondary" id="push-toggle-btn" onclick="togglePush(false)">Desactivar avisos</button>';
+    body = pushSwitchHtml(true);
   } else {
-    body = '<button class="btn btn-primary" id="push-toggle-btn" onclick="togglePush(true)">Activar avisos</button>';
+    body = pushSwitchHtml(false);
   }
   el.insertAdjacentHTML('beforeend', body + `<div class="push-settings-msg" id="push-msg">${errMsg ? escHtml(errMsg) : ''}</div>`);
 }
+function pushSwitchHtml(isOn) {
+  return `<div class="push-switch-row"><span class="push-switch-label">Recibir avisos</span><button type="button" class="push-switch${isOn ? ' on' : ''}" id="push-toggle-btn" role="switch" aria-checked="${isOn}" aria-label="Recibir avisos" onclick="togglePush(${!isOn})"></button></div>`;
+}
 async function togglePush(enable) {
   const btn = document.getElementById('push-toggle-btn');
-  if (btn) { btn.disabled = true; btn.textContent = enable ? 'Activando...' : 'Desactivando...'; }
+  if (btn) { btn.disabled = true; btn.classList.toggle('on', enable); btn.setAttribute('aria-checked', String(enable)); }
   let err = '';
   try {
     if (enable) await pushEnable(); else await pushDisable();
@@ -2501,7 +2511,7 @@ async function maybeAskPushOptIn() {
     showOnboardingInfoModal({
       title: '¿Querés enterarte de lo nuevo?',
       itemsHtml: `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>Te avisamos en el celular cuando un amigo o familiar <strong>sube una foto</strong> o <strong>escribe algo</strong> en un álbum que compartís.</span></div>
-        <div class="help-item"><span class="help-item-dot">▸</span><span>No avisamos cuando se borra o se reordena algo. Podés cambiarlo cuando quieras desde Notificaciones (tu foto de perfil).</span></div>`,
+        <div class="help-item"><span class="help-item-dot">▸</span><span>Podés cambiarlo cuando quieras desde Notificaciones (tu foto de perfil).</span></div>`,
       ctaLabel: 'Activar avisos',
       secondaryLabel: 'Ahora no',
       onCta: () => { pushEnable().catch(() => {}); },

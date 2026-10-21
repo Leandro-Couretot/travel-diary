@@ -1518,6 +1518,31 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 6. **Deployar a Firebase (la producción real) no depende de `main`** — es `firebase deploy`, corrido a mano por el usuario desde su máquina, parado en la rama que tenga el código que quiere publicar. Terminar de commitear/pushear a la rama de trabajo no implica que ya esté en producción: avisar siempre que falta ese paso manual (ver "Cómo hacer deploy"), no asumir que el usuario ya lo corrió. **Claude también puede dispararlo solo**, vía GitHub Actions — ver "Qué es" más arriba para el mecanismo exacto.
 7. **CLAUDE.md es la fuente de verdad, no el historial de chat** (pedido explícito del usuario): cada sesión de Claude arranca sin memoria de las anteriores — lo único que persiste entre sesiones es este archivo. Por eso, cada vez que se termina algo que vale la pena recordar (una feature, un fix, una decisión de diseño, un dato de infraestructura como "Claude puede disparar el deploy" o "el dominio de la app es legadofamiliar.com.ar"), hay que agregarlo ACÁ antes de dar por terminada la tarea — no alcanza con haberlo discutido en el chat, porque la próxima sesión no lo va a ver. Esto aplica en particular a: (a) cada entrega de código real → una entrada nueva en "Funcionando bien", con su número de versión (ver convención #4 para dónde más bumpear la versión); (b) cualquier decisión de producto/negocio acordada con el usuario (ver "Suscripciones", "Meta Ads", etc. — todas documentadas ahí, no solo en la conversación donde se decidieron); (c) cualquier capacidad o límite del entorno de trabajo de Claude que convenga no tener que re-descubrir cada vez (ej. qué puede y no puede hacer el proxy de salida de la sandbox, qué secrets ya están cargados, qué pasos manuales ya resolvió el usuario). Ante la duda de "¿esto amerita una línea en CLAUDE.md?", pecar de anotar de más — es más barato releer una línea de más que perder un contexto que costó horas reconstruir.
 
+8. **Las novedades se redactan con el usuario, nunca solas** (pedido explícito del usuario, 21/oct/2026): cada vez que una entrega necesite texto de novedades de cara al usuario (una entrada nueva de `USER_CHANGELOG` en `app.html` y/o la frase de `changelog` en `version.json`), Claude **primero le propone la redacción al usuario y espera su confirmación** antes de escribirla en el código, bumpear la versión o deployar (mientras tanto se puede commitear y pushear el código sin novedades). El usuario dijo que el tono y las cosas que Claude cuenta no son como él las contaría. Para ir aprendiendo, después de cada entrega con novedades hay que anotar en "Registro de novedades" (abajo) qué se propuso, qué corrigió el usuario y cómo quedó el texto final. Antes de proponer una redacción nueva, releer ese registro. Si una entrega no tiene nada que contarle al usuario, no se inventa una novedad. Lo mismo vale para cualquier otro texto nuevo de cara al usuario que sea más que una etiqueta (modales, avisos): ante la duda, mostrar el texto antes de pushearlo.
+
+---
+
+## Registro de novedades: qué contamos y cómo
+
+Ver convención #8. Este registro es la memoria de cómo le gusta al usuario que se cuenten las novedades. **Releerlo antes de proponer una redacción y actualizarlo en cada entrega con novedades** (qué se propuso, qué corrigió el usuario, texto final).
+
+**Lo que el usuario ya dijo que no le gusta** (21/oct/2026): el tono y las cosas que Claude cuenta en las novedades no coinciden con cómo él las contaría. Todavía no explicó el detalle, así que en la próxima novedad hay que proponer con cautela y preguntarle qué cambiaría. Reglas ya conocidas de antes: sin raya larga "—" en texto de cara al usuario; voseo argentino; frases cortas.
+
+**Dónde viven las novedades:** `USER_CHANGELOG` en `app.html` (lista que ve la cuenta al abrir la app, 1 a 3 frases por versión, se acumulan si se salteó varias) y la frase única de `changelog` en `version.json` (banner de "hay una versión nueva").
+
+**Historial de lo que se contó** (texto tal como salió, sin haber sido validado por el usuario salvo que diga lo contrario):
+
+| Versión | Texto en `USER_CHANGELOG` | Validado por el usuario |
+|---|---|---|
+| 2.94 | "El aviso de "Novedades" ahora te sigue a tu cuenta, no al dispositivo — si entrás desde otro celular o compu, no repite lo que ya viste." | No. Es técnica y usa raya larga. |
+| 2.103 | ""Importar desde Drive" ahora funciona en iPhone: se abre el selector de archivos del teléfono y desde "Explorar" elegís Google Drive." | No |
+| 2.116 | "Cuando alguien te comparta un álbum, te avisamos con un globito sobre tu foto de perfil, arriba a la derecha." + "Tocala para ver las notificaciones y aceptar el álbum con un toque." | No |
+| 2.145 | "Ahora podés recibir avisos en el celular cuando alguien agrega fotos o escribe algo en un álbum que compartís." + "Se activan desde Notificaciones (tocando tu foto de perfil). En iPhone hace falta tener Legado instalada en la pantalla de inicio." | No |
+| 2.146 | Solo `version.json`: "Al entrar te preguntamos si querés recibir avisos cuando alguien suba una foto o escriba algo en un álbum compartido." | No |
+
+**Correcciones del usuario** (completar acá a medida que las dé):
+- 21/oct/2026: en los avisos push no hay que aclarar que no se notifica cuando se borra o se reordena algo. Moraleja: contar lo que sí pasa, no enumerar lo que no pasa.
+
 ---
 
 ## Cómo hacer deploy
