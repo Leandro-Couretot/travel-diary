@@ -1,6 +1,6 @@
 # Fotolibro: avances del artefacto de diseño
 
-Estado al 22/oct/2026 (versión 24 del artefacto). Retomar desde acá.
+Estado al 22/oct/2026 (versión 25 del artefacto). Retomar desde acá.
 
 - **Artefacto (Design):** https://claude.ai/artifact/1swSxbxYkgivRmNgRRnqwz ("Fotolibro Legado")
 - **Archivo del artefacto:** `project/Main.dc.html` (un solo artboard de 390x844, `canvas.json` sin cambios). Para retomarlo: `Artifact` con `action: "read"` sobre la URL de arriba, leer `project/Main.dc.html`, editarlo y republicar en la misma URL con `root` y `file_path`.
@@ -22,14 +22,14 @@ Sin tabs adentro de tabs (la app ya tiene Galería / Calendario / Fotolibro). Ar
     - *Rayado:* tela con rayas verticales (antes "Lino"), texto abajo. Subtítulo en negrita con letras separadas. Pasa el texto al centro al elegirlo.
     - *Marco:* sin foto, color liso con doble filete fino y el título centrado. Pasa el texto al centro al elegirlo.
     - *Editorial:* sin foto, título grande arriba con una rayita debajo y subtítulo chico abajo.
-    - *Foto* (el último de la lista, decisión del usuario 22/oct): foto a página completa con el texto sobre un degradé que va del color de arriba al de abajo sobre toda la tapa. Es el único con foto. Mientras no se elige ninguna, muestra un cuadro vacío punteado con un ícono y "Tu foto va acá" para que se note dónde va (también en la miniatura del panel Diseño). El libro arranca con el diseño *Rayado*.
-  - **Color:** sin combinaciones listas (decisión del usuario, 22/oct). Tres selectores libres: "Color de arriba", "Color de abajo" y "Color del texto", con una barrita que muestra el degradé resultante. El fondo de la tapa es siempre el degradé entre arriba y abajo (si son iguales queda liso); en *Foto* el degradé cubre toda la tapa por encima de la foto (arriba 60% de opacidad, abajo casi sólido), así el color de arriba también se nota. Los colores de ejemplo no son los del brandbook.
+    - *Foto* (el último de la lista, decisión del usuario 22/oct): la foto va dentro de un cuadro arriba (no ocupa toda la tapa, decisión del usuario 22/oct) y el fondo es el mismo degradé que los otros diseños, con el texto abajo. Es el único con foto. Mientras no se elige ninguna, el cuadro se ve vacío y punteado, con un ícono y "Tu foto va acá" (también en la miniatura del panel Diseño). El libro arranca con el diseño *Rayado*.
+  - **Color:** sin combinaciones listas (decisión del usuario, 22/oct). Tres selectores libres: "Color de arriba", "Color de abajo" y "Color del texto", con una barrita que muestra el degradé resultante. El fondo de la tapa es siempre el degradé entre arriba y abajo (si son iguales queda liso). Los colores de ejemplo no son los del brandbook.
   - **Ubicación:** texto a izquierda, centro o derecha.
   - **Tipografía del título:** Clásica (DM Serif Display), Elegante (Cormorant Garamond), Manuscrita (Nothing You Could Do), Moderna (Montserrat, mayúsculas espaciadas). El subtítulo queda siempre en DM Sans.
 - Diseño y color están separados (pedido del usuario). Se sacó el collage y la "Franja".
 - Referencia de estilo que mandó el usuario: tapa de tela clara con "Lu & Lea" en letra manuscrita rosa y "2025" en negrita espaciada, abajo y centrado. Es la base del diseño Rayado.
 
-- **Contratapa:** selector "Tapa | Contratapa" arriba de la vista previa. La contratapa es siempre lisa, con el mismo degradé arriba/abajo de la tapa (cambia sola si cambian los colores), sin texto, con el lomo del lado derecho. Sin controles propios; tiene un botón "Cambiar colores de la tapa". En el paso 3, tocar la contratapa abre esta vista. Decisión del usuario (22/oct): queda siempre totalmente lisa.
+- **Contratapa:** selector "Tapa | Contratapa" arriba de la vista previa. La contratapa es siempre lisa (sin texto ni foto) y usa exactamente el mismo fondo que la tapa: el mismo degradé, y en *Rayado* también la misma tela con rayas, para que tapa y contratapa se vean del mismo color (pedido del usuario, 22/oct). Cambia sola si cambian los colores, con el lomo del lado derecho. Sin controles propios; tiene un botón "Cambiar colores de la tapa". En el paso 3, tocar la contratapa abre esta vista. Decisión del usuario (22/oct): queda siempre totalmente lisa.
 
 ## Paso 2: Páginas
 
