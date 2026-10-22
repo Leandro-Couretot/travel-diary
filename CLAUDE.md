@@ -486,6 +486,7 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
+- v2.151 · Fotolibro: tapa y contratapa (entrega 1 del rediseño; código listo, sin deployar hasta acordar la novedad)
 - v2.150 · Ayuda: sección "Instalar la app" con los pasos del dispositivo
 - v2.149 · Novedades sin repetir y con reglas
 - v2.148 · Notificaciones: un interruptor por tipo y el modal se pinta al toque

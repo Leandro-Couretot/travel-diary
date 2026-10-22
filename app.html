@@ -565,6 +565,44 @@ audio { width: 100%; height: 32px; }
    margen de un libro real, en vez de una barra pegada arriba de las
    fotos (ver CLAUDE.md → "Fotolibro: vista única en miniatura"). */
 .book-reorder-tile-grid { position: relative; aspect-ratio: 1; overflow: hidden; background: white; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+.book-cover-tile { flex: 0 0 150px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 0.35rem; }
+.book-cover-tile.editable { cursor: pointer; }
+.book-cover-tile-card { position: relative; border-radius: 3px 6px 6px 3px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.18); line-height: 0; }
+.book-cover-tile-card.back { border-radius: 6px 3px 3px 6px; }
+.cover-side-toggle { display: flex; gap: 4px; padding: 4px; background: var(--paper, #efe9df); border-radius: 12px; margin-bottom: 0.9rem; }
+.cover-side-toggle button { flex: 1; height: 36px; border: none; border-radius: 9px; background: transparent; color: var(--ink-muted); font-family: 'DM Sans', sans-serif; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+.cover-side-toggle button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(40,30,20,0.15); }
+.cover-preview-wrap { display: flex; justify-content: center; margin-bottom: 1rem; line-height: 0; }
+.cover-preview-wrap canvas { border-radius: 3px 6px 6px 3px; box-shadow: 4px 4px 0 #e6dfd2, 6px 6px 0 #d6cebf, 8px 12px 24px rgba(40,30,20,0.25); }
+.cover-preview-wrap.back canvas { border-radius: 6px 3px 3px 6px; box-shadow: -4px 4px 0 #e6dfd2, -6px 6px 0 #d6cebf, -8px 12px 24px rgba(40,30,20,0.25); }
+.cover-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; margin: 0.25rem 0 0.75rem; }
+.cover-tool { min-width: 0; border: 1px solid var(--border, #e3ddd1); background: #fff; border-radius: 10px; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.cover-tool.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cover-tool-label { font-size: 0.72rem; color: var(--ink-muted); }
+.cover-tool-value { font-size: 0.78rem; color: var(--ink); font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cover-tool-swatch { width: 26px; height: 14px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.12); }
+.cover-panel { border: 1px solid var(--border, #e3ddd1); border-radius: 12px; padding: 10px; margin-bottom: 0.9rem; display: flex; flex-direction: column; gap: 8px; }
+.cover-panel-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.cover-panel-row { flex-direction: row; }
+.cover-option { border: 2px solid transparent; border-radius: 10px; background: #fff; padding: 4px 2px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font-family: 'DM Sans', sans-serif; font-size: 0.72rem; color: var(--ink); min-width: 0; }
+.cover-option.on { border-color: var(--accent); }
+.cover-option-canvas { border-radius: 2px 4px 4px 2px; }
+.cover-align { flex: 1; height: 44px; justify-content: center; border-color: var(--border, #e3ddd1); }
+.cover-align.on { border-color: var(--accent); }
+.cover-font-sample { height: 30px; display: flex; align-items: center; color: var(--ink); }
+.cover-color-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 8px; border: 1px solid var(--border, #e3ddd1); border-radius: 10px; cursor: pointer; }
+.cover-color-row input { width: 34px; height: 34px; padding: 0; border: 1px solid #d9d3c7; border-radius: 8px; background: none; cursor: pointer; flex: 0 0 34px; }
+.cover-color-label { flex: 1; font-size: 0.88rem; color: var(--ink); }
+.cover-color-hex { font-size: 0.75rem; color: var(--ink-muted); }
+.cover-grad-bar { height: 24px; border-radius: 8px; border: 1px solid #d9d3c7; }
+.cover-panel-note { font-size: 0.82rem; font-weight: 600; color: var(--ink); }
+.cover-photo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; }
+.cover-photo { aspect-ratio: 1; padding: 0; border: none; border-radius: 6px; overflow: hidden; cursor: pointer; background: #eee; outline-offset: 2px; }
+.cover-photo.on { outline: 3px solid var(--accent); }
+.cover-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover-back-note { font-size: 0.85rem; color: var(--ink-muted); text-align: center; line-height: 1.4; margin-bottom: 0.9rem; }
+.cover-actions { display: flex; gap: 8px; margin-top: 0.5rem; }
+.cover-actions .btn { flex: 1; }
 .book-reorder-tile-label { font-size: 0.68rem; text-align: center; color: var(--ink-muted); display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .book-reorder-page-handle { cursor: grab; font-size: 0.8rem; line-height: 1; }
 .book-insert-gap {
@@ -1369,6 +1407,13 @@ audio { width: 100%; height: 32px; }
     <div class="modal-body">
       <div class="book-layout-options" id="book-layout-options"></div>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-book-cover">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Tapa y contratapa</div><button class="modal-close" onclick="closeBookCoverEditor()">×</button></div>
+    <div class="modal-body" id="book-cover-body"></div>
   </div>
 </div>
 
@@ -6875,7 +6920,7 @@ function calNavMonth(delta) { calMonth += delta; if (calMonth < 0) { calMonth = 
 // arriesgar olvidarlo) en cada uno, mismo aprendizaje que ya dejó agregar
 // `framing`/`pageSize` a los mismos 9 lugares en su momento (ver v1.57/v2.03).
 function persistBookLayout() {
-  const payload = { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming };
+  const payload = { pages: bookPages, drawer: bookDrawer, pageSize: bookPageSize, framing: bookFraming, cover: bookCover };
   return isSharedAlbum ? saveSharedBookLayout(albumFolderId, payload) : saveBookLayout(albumFolderId, payload);
 }
 function calGoDay(dateStr) { if (dirty && !confirm('Tenés cambios sin guardar. ¿Querés descartarlos?')) return; switchTab('day'); loadDay(dateStr); }
@@ -6921,6 +6966,7 @@ async function renderBook() {
   try { saved = isSharedAlbum ? await loadSharedBookLayout(albumFolderId) : await loadBookLayout(albumFolderId); } catch(e) { saved = null; }
   if (albumFolderId !== navFolderId) return;
   bookPageSize = (saved && saved.pageSize) || defaultBookPageSize();
+  bookCover = (saved && saved.cover) || null;
 
   if (!saved) {
     bookPages = chunkArray(currentIds, 4).map(images => buildFixedCapacityPage(images, null));
@@ -7161,11 +7207,15 @@ function renderBookReorderGrid() {
   // del botón global "Agregar página", que siempre iba al final) y
   // además sirve de blanco de drop al arrastrar una página existente
   // (ver resolveBookPageDropIndex/initBookPageDragReorder).
+  // Tapa al principio y contratapa al final (v2.151) — no son páginas:
+  // no se arrastran ni reciben fotos, tocarlas abre el editor de tapa.
+  container.appendChild(buildBookCoverTile('front'));
   if (bookCanEdit) container.appendChild(buildBookInsertGap(0));
   bookPages.forEach((page, idx) => {
     container.appendChild(buildBookReorderTile(page, idx));
     if (bookCanEdit) container.appendChild(buildBookInsertGap(idx + 1));
   });
+  container.appendChild(buildBookCoverTile('back'));
   // El drawer ("Sin ubicar") es puro reacomodo — sin permiso de edición
   // no hay nada que hacer ahí, se oculta entero (mismo alcance que ya
   // tenía: antes solo aparecía en el modo Reordenar, que ya estaba
@@ -7183,6 +7233,417 @@ function renderBookReorderGrid() {
   }
   applyBookTextVisibility();
   scheduleBookGridWatchdog();
+}
+
+// ─── Fotolibro: tapa y contratapa (v2.151) ───────────────────────
+// Paso 1 del rediseño del fotolibro (ver FOTOLIBRO_DISENO.md). La tapa
+// se dibuja SIEMPRE con drawBookCover() sobre un <canvas>, tanto en
+// pantalla (miniatura de la grilla y editor) como en el PDF: una sola
+// función de dibujo, así lo que se ve es exactamente lo que se imprime.
+// Las medidas salen del mockup (una tapa de 260 px de lado): todo se
+// expresa en unidades `u = lado menor / 260`.
+const BOOK_COVER_DESIGN_LIST = [
+  { id: 'linen', name: 'Rayado' },
+  { id: 'frame', name: 'Marco' },
+  { id: 'edit', name: 'Editorial' },
+  { id: 'full', name: 'Foto' },
+];
+const BOOK_COVER_FONT_LIST = [
+  { id: 'serif', name: 'Clásica', fam: "'DM Serif Display', serif", weight: 400, size: 26, ls: 0, upper: false },
+  { id: 'elegant', name: 'Elegante', fam: "'Cormorant Garamond', serif", weight: 600, size: 31, ls: 0.01, upper: false },
+  { id: 'script', name: 'Manuscrita', fam: "'Nothing You Could Do', cursive", weight: 400, size: 32, ls: 0, upper: false },
+  { id: 'modern', name: 'Moderna', fam: "'Montserrat', sans-serif", weight: 500, size: 17, ls: 0.14, upper: true },
+];
+const BOOK_COVER_ALIGN_NAMES = { left: 'Izquierda', center: 'Centro', right: 'Derecha' };
+let bookCover = null; // lo guardado en book.json; null = todavía sin tocar (se usa defaultBookCover())
+
+function defaultBookCover() {
+  const name = (albumMeta && albumMeta.name) || (document.getElementById('header-subtitle')?.textContent || '').trim();
+  const from = albumMeta && albumMeta.dateFrom, to = albumMeta && albumMeta.dateTo;
+  const subtitle = from && to ? `${formatDate(from)} a ${formatDate(to)}` : (from ? formatDate(from) : '');
+  return { design: 'linen', top: '#5f7a6b', bottom: '#2f3d36', ink: '#f3ecdc', align: 'center', font: 'serif', title: name || '', subtitle, photoFileId: null };
+}
+function effectiveBookCover() { return bookCover || defaultBookCover(); }
+
+// Las tipografías de la tapa (salvo DM Serif Display y DM Sans, que ya
+// carga style.css) se piden recién la primera vez que hace falta dibujar
+// una tapa, para no sumar peso a cada carga de la app.
+let _coverFontsPromise = null;
+function ensureCoverFontsLoaded() {
+  if (_coverFontsPromise) return _coverFontsPromise;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Montserrat:wght@500&family=Nothing+You+Could+Do&family=DM+Sans:wght@400;600&family=DM+Serif+Display&display=swap';
+  document.head.appendChild(link);
+  const loads = ["400 20px 'DM Serif Display'", "600 20px 'Cormorant Garamond'", "400 20px 'Nothing You Could Do'", "500 20px 'Montserrat'", "400 20px 'DM Sans'", "600 20px 'DM Sans'"]
+    .map(f => document.fonts && document.fonts.load ? document.fonts.load(f).catch(() => null) : null);
+  _coverFontsPromise = Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 4000))]);
+  return _coverFontsPromise;
+}
+
+function hexToRgbParts(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
+}
+function coverRgba(hex, a) { const [r, g, b] = hexToRgbParts(hex); return `rgba(${r},${g},${b},${a})`; }
+
+// Ancho de un texto con espaciado entre letras (canvas no lo soporta en
+// todos los navegadores, así que se mide y se dibuja letra por letra).
+function coverTextWidth(ctx, text, spacing) {
+  if (!spacing) return ctx.measureText(text).width;
+  let w = 0; for (const ch of text) w += ctx.measureText(ch).width + spacing;
+  return w - spacing;
+}
+function coverDrawText(ctx, text, x, y, align, spacing) {
+  const w = coverTextWidth(ctx, text, spacing);
+  let start = align === 'center' ? x - w / 2 : (align === 'right' ? x - w : x);
+  ctx.textAlign = 'left';
+  if (!spacing) { ctx.fillText(text, start, y); return; }
+  for (const ch of text) { ctx.fillText(ch, start, y); start += ctx.measureText(ch).width + spacing; }
+}
+function coverWrapLines(ctx, text, maxW, spacing) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = []; let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (cur && coverTextWidth(ctx, test, spacing) > maxW) { lines.push(cur); cur = w; } else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 4);
+}
+
+// Bloque de texto (título + subtítulo). `measure:true` solo devuelve el alto.
+function coverTextBlock(ctx, c, u, box, opts) {
+  const fnt = BOOK_COVER_FONT_LIST.find(f => f.id === c.font) || BOOK_COVER_FONT_LIST[0];
+  const big = !!opts.big;
+  const tSize = fnt.size * u * (big ? 1.5 : 1);
+  const tLine = tSize * (big ? 1.05 : 1.1);
+  const tSpacing = fnt.ls * tSize;
+  const title = fnt.upper ? (c.title || '').toUpperCase() : (c.title || '');
+  ctx.font = `${fnt.weight} ${tSize}px ${fnt.fam}`;
+  const tLines = coverWrapLines(ctx, title, box.w, tSpacing);
+  const linen = c.design === 'linen';
+  const sSize = (linen ? 13 : 12) * u;
+  const sSpacing = linen ? 0.22 * sSize : 0;
+  const sFont = `${linen ? 600 : 400} ${sSize}px 'DM Sans', sans-serif`;
+  ctx.font = sFont;
+  const sLines = opts.noSub ? [] : coverWrapLines(ctx, c.subtitle, box.w, sSpacing);
+  const sGap = linen ? 10 * u : 6 * u;
+  const sLine = sSize * 1.3;
+  const height = tLines.length * tLine + (sLines.length ? sGap + sLines.length * sLine : 0);
+  if (opts.measure) return { height, titleHeight: tLines.length * tLine };
+  const ax = c.align === 'center' ? box.x + box.w / 2 : (c.align === 'right' ? box.x + box.w : box.x);
+  ctx.fillStyle = c.ink; ctx.textBaseline = 'top';
+  let y = box.y;
+  ctx.font = `${fnt.weight} ${tSize}px ${fnt.fam}`;
+  for (const line of tLines) { coverDrawText(ctx, line, ax, y + (tLine - tSize) / 2, c.align, tSpacing); y += tLine; }
+  if (sLines.length) {
+    y += sGap; ctx.font = sFont;
+    for (const line of sLines) { coverDrawText(ctx, line, ax, y + (sLine - sSize) / 2, c.align, sSpacing); y += sLine; }
+  }
+  return { height };
+}
+
+function coverRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+}
+
+// Dibuja la tapa (`side:'front'`) o la contratapa (`'back'`) en `ctx`, que
+// mide W x H px. `trim` es el rectángulo de la hoja sin el sangrado (en el
+// PDF el fondo cubre también el sangrado y el contenido se ubica dentro de
+// `trim`); en pantalla trim = todo el canvas. `photoImg` es la foto de la
+// tapa ya cargada (o null). `placeholder:true` dibuja el cuadro vacío
+// "Tu foto va acá" (solo en pantalla, nunca en el PDF).
+function drawBookCover(ctx, W, H, c, side, photoImg, trim, opts = {}) {
+  const t = trim || { x: 0, y: 0, w: W, h: H };
+  const u = Math.min(t.w, t.h) / 260;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, c.top); grad.addColorStop(1, c.bottom);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  if (c.design === 'linen') {
+    const px = Math.max(1, u);
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    for (let x = 0; x < W; x += 9 * u) ctx.fillRect(x, 0, px, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    for (let x = 0; x < W; x += 4 * u) ctx.fillRect(x, 0, px, H);
+  }
+  if (side === 'back') return;
+
+  if (c.design === 'linen') {
+    const box = { x: t.x + 20 * u, w: t.w - 40 * u };
+    const h = coverTextBlock(ctx, c, u, box, { measure: true }).height;
+    coverTextBlock(ctx, c, u, { ...box, y: t.y + t.h - 34 * u - h }, {});
+  } else if (c.design === 'frame') {
+    ctx.strokeStyle = c.ink;
+    ctx.lineWidth = 1.5 * u; ctx.strokeRect(t.x + 14 * u, t.y + 14 * u, t.w - 28 * u, t.h - 28 * u);
+    ctx.globalAlpha = 0.6; ctx.lineWidth = 0.75 * u; ctx.strokeRect(t.x + 20 * u, t.y + 20 * u, t.w - 40 * u, t.h - 40 * u); ctx.globalAlpha = 1;
+    const box = { x: t.x + 34 * u, w: t.w - 68 * u };
+    const h = coverTextBlock(ctx, c, u, box, { measure: true }).height;
+    coverTextBlock(ctx, c, u, { ...box, y: t.y + (t.h - h) / 2 }, {});
+  } else if (c.design === 'edit') {
+    const box = { x: t.x + 26 * u, w: t.w - 52 * u };
+    const top = t.y + 28 * u;
+    const th = coverTextBlock(ctx, c, u, { ...box, y: top }, { big: true, noSub: true }).height;
+    const rx = c.align === 'center' ? box.x + box.w / 2 - 18 * u : (c.align === 'right' ? box.x + box.w - 36 * u : box.x);
+    ctx.fillStyle = c.ink; ctx.fillRect(rx, top + th + 12 * u, 36 * u, 2 * u);
+    if (c.subtitle) {
+      const sub = { ...c, title: '' };
+      const h = coverTextBlock(ctx, sub, u, box, { measure: true }).height;
+      coverTextBlock(ctx, sub, u, { ...box, y: t.y + t.h - 26 * u - h }, {});
+    }
+  } else {
+    // Foto: la foto va en un cuadro arriba, el texto abajo (decisión del usuario).
+    const sx = t.x + 22 * u, sy = t.y + 22 * u, sw = t.w - 44 * u, sh = t.h * 128 / 260;
+    if (photoImg) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 6 * u; ctx.shadowOffsetY = 2 * u;
+      coverRoundRect(ctx, sx, sy, sw, sh, 4 * u); ctx.fillStyle = c.bottom; ctx.fill();
+      ctx.restore();
+      ctx.save(); coverRoundRect(ctx, sx, sy, sw, sh, 4 * u); ctx.clip();
+      const crop = coverCropToCanvas(photoImg, sw / sh, null);
+      ctx.drawImage(crop, sx, sy, sw, sh);
+      ctx.restore();
+    } else if (opts.placeholder) {
+      coverRoundRect(ctx, sx, sy, sw, sh, 4 * u);
+      ctx.fillStyle = coverRgba(c.ink, 0.06); ctx.fill();
+      ctx.setLineDash([4 * u, 3 * u]); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = coverRgba(c.ink, 0.75); ctx.stroke(); ctx.setLineDash([]);
+      const cx = sx + sw / 2, cy = sy + sh / 2 - 8 * u;
+      ctx.strokeStyle = c.ink; ctx.lineWidth = 1.6 * u * 1.25; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.strokeRect(cx - 15 * u, cy - 11 * u, 30 * u, 22 * u);
+      ctx.beginPath(); ctx.moveTo(cx - 15 * u, cy + 5 * u); ctx.lineTo(cx - 6 * u, cy - 3 * u); ctx.lineTo(cx + 1 * u, cy + 4 * u); ctx.lineTo(cx + 6 * u, cy - 1 * u); ctx.lineTo(cx + 15 * u, cy + 7 * u); ctx.stroke();
+      ctx.fillStyle = c.ink; ctx.font = `400 ${12 * u}px 'DM Sans', sans-serif`; ctx.textBaseline = 'top';
+      coverDrawText(ctx, 'Tu foto va acá', cx, cy + 18 * u, 'center', 0);
+    }
+    const box = { x: t.x + 24 * u, w: t.w - 48 * u };
+    const h = coverTextBlock(ctx, c, u, box, { measure: true }).height;
+    coverTextBlock(ctx, c, u, { ...box, y: t.y + t.h - 22 * u - h }, {});
+  }
+}
+
+// Foto de la tapa para la vista previa: se baja una vez por sesión.
+const _coverPhotoCache = new Map();
+async function loadCoverPreviewPhoto(fileId) {
+  if (!fileId) return null;
+  if (_coverPhotoCache.has(fileId)) return _coverPhotoCache.get(fileId);
+  const p = (async () => {
+    const url = await fetchAuthImgUrl(fileId, isSharedAlbum ? albumFolderId : null);
+    if (!url) return null;
+    try { return await loadImageElementFromUrl(url); } catch (e) { return null; }
+  })();
+  _coverPhotoCache.set(fileId, p);
+  return p;
+}
+
+// Dibuja una tapa en un <canvas> de pantalla de cssW x cssH.
+async function renderCoverCanvas(canvas, cssW, cssH, cover, side) {
+  const token = (canvas._coverToken || 0) + 1; canvas._coverToken = token;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  const draw = (img) => {
+    if (canvas._coverToken !== token) return;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBookCover(ctx, canvas.width, canvas.height, cover, side, img, null, { placeholder: true });
+  };
+  draw(null);
+  await ensureCoverFontsLoaded();
+  const img = (side === 'front' && cover.design === 'full') ? await loadCoverPreviewPhoto(cover.photoFileId) : null;
+  draw(img);
+}
+
+// Miniatura de tapa/contratapa en la grilla del Fotolibro.
+function buildBookCoverTile(side) {
+  const tile = document.createElement('div'); tile.className = 'book-cover-tile';
+  const wrap = document.createElement('div'); wrap.className = 'book-cover-tile-card' + (side === 'back' ? ' back' : '');
+  const canvas = document.createElement('canvas');
+  wrap.appendChild(canvas); tile.appendChild(wrap);
+  const label = document.createElement('div'); label.className = 'book-reorder-tile-label';
+  label.textContent = side === 'back' ? 'Contratapa' : 'Tapa';
+  tile.appendChild(label);
+  const w = 150, h = Math.round(150 * bookPageSize.h / bookPageSize.w);
+  renderCoverCanvas(canvas, w, h, effectiveBookCover(), side);
+  if (bookCanEdit) { tile.classList.add('editable'); tile.addEventListener('click', () => openBookCoverEditor(side)); }
+  return tile;
+}
+
+// ─── Editor de tapa ──────────────────────────────────────────────
+let coverDraft = null;
+let coverEditorSide = 'front';
+let coverEditorPanel = null;
+
+function openBookCoverEditor(side) {
+  coverDraft = { ...effectiveBookCover() };
+  coverEditorSide = side || 'front';
+  coverEditorPanel = null;
+  renderBookCoverEditor();
+  document.getElementById('modal-book-cover').classList.add('open');
+}
+function closeBookCoverEditor() {
+  document.getElementById('modal-book-cover').classList.remove('open');
+  coverDraft = null;
+}
+async function saveBookCoverEditor() {
+  if (!coverDraft) return;
+  const btn = document.getElementById('book-cover-save');
+  coverDraft.title = (document.getElementById('book-cover-title')?.value ?? coverDraft.title).trim();
+  coverDraft.subtitle = (document.getElementById('book-cover-subtitle')?.value ?? coverDraft.subtitle).trim();
+  bookCover = { ...coverDraft };
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+  try {
+    await persistBookLayout();
+    closeBookCoverEditor();
+    renderBookReorderGrid();
+  } catch (e) {
+    console.warn('No se pudo guardar la tapa:', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+    alert('No se pudo guardar la tapa. Probá de nuevo.');
+  }
+}
+
+function coverPreviewSize() {
+  const w = Math.min(260, (document.querySelector('#modal-book-cover .modal')?.clientWidth || 320) - 64);
+  return { w, h: Math.round(w * bookPageSize.h / bookPageSize.w) };
+}
+function redrawCoverPreview() {
+  const canvas = document.getElementById('book-cover-preview');
+  if (!canvas || !coverDraft) return;
+  const { w, h } = coverPreviewSize();
+  renderCoverCanvas(canvas, w, h, coverDraft, coverEditorSide);
+}
+
+function coverToolDefs() {
+  const c = coverDraft;
+  const design = BOOK_COVER_DESIGN_LIST.find(d => d.id === c.design);
+  const font = BOOK_COVER_FONT_LIST.find(f => f.id === c.font);
+  const tools = [
+    { id: 'design', label: 'Diseño', value: design ? design.name : '' },
+    { id: 'color', label: 'Color', value: '', swatch: true },
+    { id: 'align', label: 'Ubicación', value: BOOK_COVER_ALIGN_NAMES[c.align] },
+    { id: 'font', label: 'Letra', value: font ? font.name : '' },
+  ];
+  if (c.design === 'full') tools.push({ id: 'photo', label: 'Foto', value: c.photoFileId ? 'Cambiar' : 'Elegir' });
+  return tools;
+}
+
+function coverPanelHtml() {
+  const c = coverDraft;
+  if (coverEditorPanel === 'design') {
+    return `<div class="cover-panel cover-panel-grid4">${BOOK_COVER_DESIGN_LIST.map(d => `
+      <button type="button" class="cover-option${c.design === d.id ? ' on' : ''}" onclick="pickCoverDesign('${d.id}')">
+        <canvas class="cover-option-canvas" data-design="${d.id}"></canvas>
+        <span>${d.name}</span>
+      </button>`).join('')}</div>`;
+  }
+  if (coverEditorPanel === 'color') {
+    const row = (key, label) => `<label class="cover-color-row"><input type="color" value="${c[key]}" oninput="setCoverColor('${key}', this.value)"><span class="cover-color-label">${label}</span><span class="cover-color-hex" id="cover-hex-${key}">${c[key]}</span></label>`;
+    return `<div class="cover-panel"><div class="cover-grad-bar" id="cover-grad-bar" style="background:linear-gradient(to right, ${c.top}, ${c.bottom})"></div>${row('top', 'Color de arriba')}${row('bottom', 'Color de abajo')}${row('ink', 'Color del texto')}</div>`;
+  }
+  if (coverEditorPanel === 'align') {
+    const paths = { left: 'M4 6h16M4 12h10M4 18h13', center: 'M4 6h16M7 12h10M5.5 18h13', right: 'M4 6h16M10 12h10M7 18h13' };
+    return `<div class="cover-panel cover-panel-row">${['left', 'center', 'right'].map(a => `
+      <button type="button" class="cover-option cover-align${c.align === a ? ' on' : ''}" aria-label="${BOOK_COVER_ALIGN_NAMES[a]}" onclick="pickCoverAlign('${a}')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${paths[a]}"></path></svg>
+      </button>`).join('')}</div>`;
+  }
+  if (coverEditorPanel === 'font') {
+    return `<div class="cover-panel cover-panel-grid4">${BOOK_COVER_FONT_LIST.map(f => `
+      <button type="button" class="cover-option${c.font === f.id ? ' on' : ''}" onclick="pickCoverFont('${f.id}')">
+        <span class="cover-font-sample" style="font-family:${f.fam.replace(/"/g, "'")};font-weight:${f.weight};font-size:${f.id === 'modern' ? 18 : 24}px">Aa</span>
+        <span>${f.name}</span>
+      </button>`).join('')}</div>`;
+  }
+  if (coverEditorPanel === 'photo') {
+    const ids = [...bookPhotoByFileId.keys()];
+    if (!ids.length) return `<div class="cover-panel"><div class="cover-panel-note">Todavía no hay fotos en este álbum.</div></div>`;
+    return `<div class="cover-panel"><div class="cover-panel-note">Elegí la foto de la tapa</div><div class="cover-photo-grid">${ids.map(id => `
+      <button type="button" class="cover-photo${c.photoFileId === id ? ' on' : ''}" onclick="pickCoverPhoto('${id}')"><img data-cover-photo="${id}" alt=""></button>`).join('')}</div></div>`;
+  }
+  return '';
+}
+
+function renderBookCoverEditor() {
+  const body = document.getElementById('book-cover-body');
+  if (!body || !coverDraft) return;
+  const c = coverDraft;
+  const front = coverEditorSide === 'front';
+  body.innerHTML = `
+    <div class="cover-side-toggle">
+      <button type="button" class="${front ? 'on' : ''}" onclick="setCoverSide('front')">Tapa</button>
+      <button type="button" class="${front ? '' : 'on'}" onclick="setCoverSide('back')">Contratapa</button>
+    </div>
+    <div class="cover-preview-wrap${front ? '' : ' back'}"><canvas id="book-cover-preview"></canvas></div>
+    ${front ? `
+      <div class="form-field"><label class="form-label">Título</label><input class="form-input" id="book-cover-title" maxlength="120" value="${escHtml(c.title)}" oninput="setCoverText('title', this.value)"></div>
+      <div class="form-field"><label class="form-label">Subtítulo</label><input class="form-input" id="book-cover-subtitle" maxlength="120" value="${escHtml(c.subtitle)}" oninput="setCoverText('subtitle', this.value)"></div>
+      <div class="cover-tools">${coverToolDefs().map(t => `
+        <button type="button" class="cover-tool${coverEditorPanel === t.id ? ' on' : ''}" onclick="toggleCoverPanel('${t.id}')">
+          <span class="cover-tool-label">${t.label}</span>
+          ${t.swatch ? `<span class="cover-tool-swatch" style="background:linear-gradient(to bottom, ${c.top}, ${c.bottom})"></span>` : `<span class="cover-tool-value">${escHtml(t.value)}</span>`}
+        </button>`).join('')}</div>
+      ${coverPanelHtml()}
+    ` : `
+      <div class="cover-back-note">La contratapa no lleva texto ni foto y usa el mismo fondo que tu tapa. Si cambiás los colores de la tapa, cambia sola.</div>
+      <button type="button" class="btn btn-secondary" style="width:100%" onclick="editCoverColorsFromBack()">Cambiar colores de la tapa</button>
+    `}
+    <div class="cover-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeBookCoverEditor()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="book-cover-save" onclick="saveBookCoverEditor()">Guardar</button>
+    </div>`;
+  redrawCoverPreview();
+  body.querySelectorAll('.cover-option-canvas').forEach(cv => {
+    renderCoverCanvas(cv, 56, Math.round(56 * bookPageSize.h / bookPageSize.w), { ...coverDraft, design: cv.dataset.design, title: coverDraft.title || ' ' }, 'front');
+  });
+  body.querySelectorAll('img[data-cover-photo]').forEach(img => setAuthImg(img, img.dataset.coverPhoto, 'w200', isSharedAlbum ? albumFolderId : null));
+}
+
+function setCoverSide(side) { coverEditorSide = side; coverEditorPanel = null; renderBookCoverEditor(); }
+function toggleCoverPanel(id) { coverEditorPanel = coverEditorPanel === id ? null : id; renderBookCoverEditor(); }
+function editCoverColorsFromBack() { coverEditorSide = 'front'; coverEditorPanel = 'color'; renderBookCoverEditor(); }
+function setCoverText(key, value) { if (!coverDraft) return; coverDraft[key] = value; redrawCoverPreview(); }
+function pickCoverDesign(id) {
+  if (!coverDraft) return;
+  coverDraft.design = id;
+  if (id === 'linen' || id === 'frame') coverDraft.align = 'center';
+  renderBookCoverEditor();
+}
+function pickCoverAlign(a) { if (!coverDraft) return; coverDraft.align = a; renderBookCoverEditor(); }
+function pickCoverFont(id) { if (!coverDraft) return; coverDraft.font = id; renderBookCoverEditor(); }
+function pickCoverPhoto(id) { if (!coverDraft) return; coverDraft.photoFileId = id; renderBookCoverEditor(); }
+function setCoverColor(key, value) {
+  if (!coverDraft) return;
+  coverDraft[key] = value;
+  const hex = document.getElementById(`cover-hex-${key}`); if (hex) hex.textContent = value;
+  const bar = document.getElementById('cover-grad-bar'); if (bar) bar.style.background = `linear-gradient(to right, ${coverDraft.top}, ${coverDraft.bottom})`;
+  const sw = document.querySelector('.cover-tool-swatch'); if (sw) sw.style.background = `linear-gradient(to bottom, ${coverDraft.top}, ${coverDraft.bottom})`;
+  redrawCoverPreview();
+}
+
+// Tapa o contratapa como una hoja del PDF, a 300 DPI (con tope de 4000 px
+// por lado). El fondo cubre también el sangrado; el contenido va dentro
+// de la hoja real.
+async function renderCoverPdfCanvas(side, pageWmm, pageHmm, bleedMm) {
+  await ensureCoverFontsLoaded();
+  const c = effectiveBookCover();
+  const maxMm = Math.max(pageWmm, pageHmm);
+  const pxPerMm = Math.min(300 / 25.4, 4000 / maxMm);
+  const W = Math.round(pageWmm * pxPerMm), H = Math.round(pageHmm * pxPerMm);
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+  const trim = { x: bleedMm * pxPerMm, y: bleedMm * pxPerMm, w: W - 2 * bleedMm * pxPerMm, h: H - 2 * bleedMm * pxPerMm };
+  let img = null, blobUrl = null;
+  if (side === 'front' && c.design === 'full' && c.photoFileId) {
+    try {
+      blobUrl = await fetchFileAsDataUrl(c.photoFileId, isSharedAlbum ? albumFolderId : null);
+      if (blobUrl) img = await loadImageElementFromUrl(blobUrl);
+    } catch (e) { console.warn('No se pudo cargar la foto de la tapa para el PDF:', e); }
+  }
+  try { drawBookCover(canvas.getContext('2d'), W, H, c, side, img, trim, {}); }
+  finally { if (blobUrl) URL.revokeObjectURL(blobUrl); }
+  return canvas;
 }
 
 // ─── Fotolibro: encuadre (zoom + pan) por foto ───────────────────
@@ -7813,9 +8274,13 @@ async function generateBookPdf(bleedMm, onProgress) {
   const pagesWithPhotos = bookPages.filter(p => p.images.some(id => bookPhotoByFileId.has(id)));
   if (!pagesWithPhotos.length) throw new Error('El libro no tiene fotos para exportar');
   const doc = new jsPDF({ unit: 'mm', format: [pageWmm, pageHmm], compress: true });
+  // v2.151: la tapa va como primera hoja y la contratapa como última.
+  const totalSheets = pagesWithPhotos.length + 2;
+  if (onProgress) onProgress(1, totalSheets);
+  doc.addImage(await renderCoverPdfCanvas('front', pageWmm, pageHmm, bleedMm), 'JPEG', 0, 0, pageWmm, pageHmm);
   for (let i = 0; i < pagesWithPhotos.length; i++) {
-    if (i > 0) doc.addPage([pageWmm, pageHmm]);
-    if (onProgress) onProgress(i + 1, pagesWithPhotos.length);
+    doc.addPage([pageWmm, pageHmm]);
+    if (onProgress) onProgress(i + 2, totalSheets);
     const page = pagesWithPhotos[i];
     const def = bookLayoutDef(page.layout);
     // Por índice real, nunca compactando — una celda vacía (foto todavía
@@ -7835,6 +8300,9 @@ async function generateBookPdf(bleedMm, onProgress) {
       }
     }
   }
+  doc.addPage([pageWmm, pageHmm]);
+  if (onProgress) onProgress(totalSheets, totalSheets);
+  doc.addImage(await renderCoverPdfCanvas('back', pageWmm, pageHmm, bleedMm), 'JPEG', 0, 0, pageWmm, pageHmm);
   return doc;
 }
 
@@ -7934,7 +8402,7 @@ async function startBookExport() {
   reviewBtn.style.display = 'none';
   progressEl.style.display = ''; progressEl.textContent = 'Generando PDF...';
   try {
-    const doc = await generateBookPdf(bleedMm, (page, total) => { progressEl.textContent = `Generando PDF... página ${page}/${total}`; });
+    const doc = await generateBookPdf(bleedMm, (page, total) => { progressEl.textContent = `Generando PDF... hoja ${page}/${total}`; });
     const albumName = (document.getElementById('header-subtitle').textContent || 'fotolibro').trim();
     doc.save(`Fotolibro - ${albumName}.pdf`);
     await recordBookExportUsage();
@@ -9239,7 +9707,11 @@ function diaryFabSheetRowsHtml() {
         <span class="bottom-sheet-icon">${icon('upload')}</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">Agregar fotos y videos en este álbum</span></span>
       </button>` : ''}
-      ${bookCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookPageSizeModal,50)">
+      ${bookCanEdit ? `<button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(()=>openBookCoverEditor('front'),50)">
+        <span class="bottom-sheet-icon">${icon('book')}</span>
+        <span class="bottom-sheet-text"><span class="bottom-sheet-label">Tapa y contratapa</span></span>
+      </button>
+      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(openBookPageSizeModal,50)">
         <span class="bottom-sheet-icon">${icon('size')}</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">Tamaño de hoja</span></span>
       </button>

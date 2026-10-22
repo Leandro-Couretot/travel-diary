@@ -1325,28 +1325,52 @@ function normalizeBookFraming(raw) {
   return out;
 }
 
+// ─── FOTOLIBRO: tapa y contratapa (v2.151) ───────────────────────
+// Diseño de la tapa elegido por el usuario. La contratapa no guarda nada
+// propio: usa el mismo fondo que la tapa (ver drawBookCover() en app.html).
+// Un valor roto se descarta campo por campo en vez de romper el libro.
+const BOOK_COVER_DESIGNS = ['linen', 'frame', 'edit', 'full'];
+const BOOK_COVER_FONTS = ['serif', 'elegant', 'script', 'modern'];
+function normalizeBookCover(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const hex = v => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)) ? v : null;
+  const text = v => (typeof v === 'string' ? v.slice(0, 120) : '');
+  return {
+    design: BOOK_COVER_DESIGNS.includes(raw.design) ? raw.design : 'linen',
+    top: hex(raw.top) || '#5f7a6b',
+    bottom: hex(raw.bottom) || '#2f3d36',
+    ink: hex(raw.ink) || '#f3ecdc',
+    align: ['left', 'center', 'right'].includes(raw.align) ? raw.align : 'center',
+    font: BOOK_COVER_FONTS.includes(raw.font) ? raw.font : 'serif',
+    title: text(raw.title),
+    subtitle: text(raw.subtitle),
+    photoFileId: (typeof raw.photoFileId === 'string' && raw.photoFileId) ? raw.photoFileId : null,
+  };
+}
+
 async function loadBookLayout(albumFolderId) {
   const fileId = await findFileInFolderMigrating(BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId);
   if (!fileId) return null;
   const data = await readJsonFile(fileId);
   const pageSize = normalizeBookPageSize(data?.pageSize);
   const framing = normalizeBookFraming(data?.framing);
+  const cover = normalizeBookCover(data?.cover);
   if (Array.isArray(data?.pages)) {
-    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [], pageSize, framing };
+    return { pages: data.pages, drawer: Array.isArray(data.drawer) ? data.drawer : [], pageSize, framing, cover };
   }
   if (Array.isArray(data?.order)) {
     const pages = [];
     for (let i = 0; i < data.order.length; i += 4) pages.push({ images: data.order.slice(i, i + 4), layout: null });
-    return { pages, drawer: [], pageSize, framing, _migrated: true };
+    return { pages, drawer: [], pageSize, framing, cover, _migrated: true };
   }
   return null;
 }
 
-async function saveBookLayout(albumFolderId, { pages, drawer, pageSize, framing }) {
+async function saveBookLayout(albumFolderId, { pages, drawer, pageSize, framing, cover }) {
   // v3 (ver CLAUDE.md → "Fotolibro"): cada página tiene un layout siempre
   // concreto (nunca null) del que sale su capacidad — `images` es un
   // array de ese largo fijo, con `null` en los huecos vacíos.
-  await writeJsonFileMigrating({ version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
+  await writeJsonFileMigrating({ version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing), cover: normalizeBookCover(cover) }, BOOK_JSON_NAME, BOOK_JSON_OLD_NAME, albumFolderId, BOOK_JSON_DESCRIPTION);
 }
 
 // v2.68 — Fotolibro PERSONAL por invitado (ver CLAUDE.md → "Fotolibro
@@ -1376,14 +1400,15 @@ async function loadSharedBookLayout(folderDriveId) {
     drawer: Array.isArray(raw.drawer) ? raw.drawer : [],
     pageSize: normalizeBookPageSize(raw.pageSize),
     framing: normalizeBookFraming(raw.framing),
+    cover: normalizeBookCover(raw.cover),
   };
 }
 
-async function saveSharedBookLayout(folderDriveId, { pages, drawer, pageSize, framing }) {
+async function saveSharedBookLayout(folderDriveId, { pages, drawer, pageSize, framing, cover }) {
   const stored = await loadSharedAlbums();
   const entry = stored.sharedAlbums.find(a => a.folderDriveId === folderDriveId);
   if (!entry) throw new Error('Álbum compartido no encontrado');
-  entry.book = { version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing) };
+  entry.book = { version: 3, pages, drawer, pageSize: normalizeBookPageSize(pageSize), framing: normalizeBookFraming(framing), cover: normalizeBookCover(cover) };
   await saveSharedAlbums(stored);
 }
 
