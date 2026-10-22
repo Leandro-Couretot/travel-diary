@@ -1,6 +1,6 @@
 # Fotolibro: avances del artefacto de diseño
 
-Estado al 22/oct/2026 (versión 17 del artefacto). Retomar desde acá.
+Estado al 22/oct/2026 (versión 18 del artefacto). Retomar desde acá.
 
 - **Artefacto (Design):** https://claude.ai/artifact/1swSxbxYkgivRmNgRRnqwz ("Fotolibro Legado")
 - **Archivo del artefacto:** `project/Main.dc.html` (un solo artboard de 390x844, `canvas.json` sin cambios). Para retomarlo: `Artifact` con `action: "read"` sobre la URL de arriba, leer `project/Main.dc.html`, editarlo y republicar en la misma URL con `root` y `file_path`.
@@ -19,11 +19,11 @@ Sin tabs adentro de tabs (la app ya tiene Galería / Calendario / Fotolibro). Ar
 - La vista previa de la tapa es fija. **No se cambia al tocarla** (decisión del usuario). Hoy no hay forma de elegir la foto de portada, ver "Pendientes".
 - Debajo de la vista previa: campos de **título** y **subtítulo**, y una fila de 4 botones que abren un panel justo abajo (uno a la vez, tocar de nuevo lo cierra). Cada botón muestra su valor actual.
   - **Diseño:** 4 diseños distintos entre sí.
-    - *Foto:* foto a página completa con el texto sobre un degradé que va del color de arriba (transparente) al color de abajo. Es el único con foto.
+    - *Foto:* foto a página completa con el texto sobre un degradé que va del color de arriba al de abajo sobre toda la tapa. Es el único con foto.
     - *Rayado:* tela con rayas verticales (antes "Lino"), texto abajo. Subtítulo en negrita con letras separadas. Pasa el texto al centro al elegirlo.
     - *Marco:* sin foto, color liso con doble filete fino y el título centrado. Pasa el texto al centro al elegirlo.
     - *Editorial:* sin foto, título grande arriba con una rayita debajo y subtítulo chico abajo.
-  - **Color:** sin combinaciones listas (decisión del usuario, 22/oct). Tres selectores libres: "Color de arriba", "Color de abajo" y "Color del texto", con una barrita que muestra el degradé resultante. El fondo de la tapa es siempre el degradé entre arriba y abajo (si son iguales queda liso); en *Foto* el degradé se superpone a la foto, transparente arriba y casi sólido abajo. Los colores de ejemplo no son los del brandbook.
+  - **Color:** sin combinaciones listas (decisión del usuario, 22/oct). Tres selectores libres: "Color de arriba", "Color de abajo" y "Color del texto", con una barrita que muestra el degradé resultante. El fondo de la tapa es siempre el degradé entre arriba y abajo (si son iguales queda liso); en *Foto* el degradé cubre toda la tapa por encima de la foto (arriba 60% de opacidad, abajo casi sólido), así el color de arriba también se nota. Los colores de ejemplo no son los del brandbook.
   - **Ubicación:** texto a izquierda, centro o derecha.
   - **Tipografía del título:** Clásica (DM Serif Display), Elegante (Cormorant Garamond), Manuscrita (Nothing You Could Do), Moderna (Montserrat, mayúsculas espaciadas). El subtítulo queda siempre en DM Sans.
 - Diseño y color están separados (pedido del usuario). Se sacó el collage y la "Franja".
