@@ -546,9 +546,6 @@ audio { width: 100%; height: 32px; }
 .bp.dragging { opacity: 0.35; }
 .bp.drag-over { outline: 3px solid var(--accent); outline-offset: -3px; }
 .bp-empty { background: var(--accent-light); border: 1.5px dashed var(--ink-muted); }
-.bp-chip { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.5rem 0.6rem 0.4rem; background: linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0)); color: white; line-height: 1.3; transition: opacity 0.3s; pointer-events: none; }
-.bp-chip-date { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85; }
-.bp-chip-caption { display: block; font-size: 0.72rem; margin-top: 0.1rem; }
 .bp-drag-handle { position: absolute; top: 0.4rem; right: 0.4rem; width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: grab; z-index: 5; }
 .bp-frame-btn { position: absolute; top: 0.4rem; left: 0.4rem; width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%; background: rgba(0,0,0,0.45); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; cursor: pointer; z-index: 5; }
 .bp-frame-btn:hover { background: rgba(0,0,0,0.7); }
@@ -603,6 +600,43 @@ audio { width: 100%; height: 32px; }
 .cover-back-note { font-size: 0.85rem; color: var(--ink-muted); text-align: center; line-height: 1.4; margin-bottom: 0.9rem; }
 .cover-actions { display: flex; gap: 8px; margin-top: 0.5rem; }
 .cover-actions .btn { flex: 1; }
+/* v2.155: hoja de página con margen fijo, título y pie en el margen
+   (buildBookPageSheet()). `--pu` = 1% del lado menor de la hoja. */
+.book-sheet { position: relative; background: #fff; container-type: inline-size; overflow: hidden; }
+.book-sheet-grid { position: absolute; }
+.book-sheet-title { position: absolute; top: 0; display: flex; align-items: center; justify-content: center; min-width: 0; font-family: 'DM Serif Display', serif; font-size: calc(var(--pu) * 4.2); line-height: 1.1; color: #1c1a17; pointer-events: none; }
+.book-sheet-title span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.book-sheet-foot { position: absolute; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--pu) * 2); min-width: 0; pointer-events: none; }
+.book-sheet-footer { flex: 1; min-width: 0; font-family: 'DM Serif Display', serif; font-style: italic; font-size: calc(var(--pu) * 3); color: #1c1a17; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book-sheet-date { flex-shrink: 0; max-width: 60%; font-family: 'DM Sans', sans-serif; font-size: calc(var(--pu) * 2.4); color: #6b655b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book-reorder-tile-grid { cursor: pointer; }
+.book-blank-tile { flex: 0 0 150px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 0.35rem; }
+.book-blank-tile .book-reorder-tile-grid { cursor: default; }
+.bp-empty-plus { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 1.6rem; color: var(--ink-muted); cursor: pointer; }
+.bp-selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+#modal-book-page { padding-top: 12px; }
+.modal-book-page { max-width: 440px; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }
+.modal-book-page .modal-body { flex: 1; min-height: 0; overflow-y: auto; padding-top: 0.9rem; }
+.bpe-stage { display: flex; justify-content: center; margin-bottom: 0.5rem; }
+.bpe-stage .book-sheet { flex-shrink: 0; box-shadow: 0 1px 0 #e3ddd1, 3px 3px 0 #ece6db, 0 10px 24px rgba(40,30,20,0.16); }
+.bpe-stage .bp { cursor: pointer; }
+.bpe-hint { font-size: 0.8rem; color: var(--ink-muted); text-align: center; min-height: 1.3em; margin-bottom: 0.5rem; line-height: 1.3; }
+.bpe-hint button { background: none; border: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.bpe-nav { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 0.6rem; }
+.bpe-nav .btn-nav { font-size: 0.82rem; font-family: 'DM Sans', sans-serif; }
+.bpe-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 0.6rem; }
+.bpe-tools .cover-tool { padding: 8px 2px; }
+.bpe-tools .cover-tool svg { width: 20px; height: 20px; }
+.bpe-date-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bpe-date-row span { font-size: 0.88rem; color: var(--ink); }
+.bpe-date-auto { align-self: flex-start; background: none; border: none; padding: 0; color: var(--accent); font-family: 'DM Sans', sans-serif; font-size: 0.8rem; text-decoration: underline; cursor: pointer; }
+.bpe-tray { border-top: 1px solid var(--ink-faint); background: #fbf9f5; padding: 0.6rem 1.25rem 0.8rem; flex-shrink: 0; }
+.bpe-tray-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.75rem; color: var(--ink-muted); margin-bottom: 0.45rem; }
+.bpe-tray-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.bpe-tray-list::-webkit-scrollbar { display: none; }
+.bpe-tray-item { flex: 0 0 56px; height: 56px; padding: 0; border: none; border-radius: 6px; overflow: hidden; background: #eee; cursor: pointer; }
+.bpe-tray-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bpe-tray-empty { font-size: 0.8rem; color: var(--ink-muted); padding: 0.3rem 0; }
 .book-reorder-tile-label { font-size: 0.68rem; text-align: center; color: var(--ink-muted); display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .book-reorder-page-handle { cursor: grab; font-size: 0.8rem; line-height: 1; }
 .book-insert-gap {
@@ -1477,6 +1511,14 @@ body:not(.book-tester) .book-only { display: none !important; }
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-book-page" onclick="if(event.target===this)closeBookPageEditor()">
+  <div class="modal modal-book-page">
+    <div class="modal-header"><div class="modal-title" id="bpe-title">Página</div><button class="modal-close" onclick="closeBookPageEditor()">×</button></div>
+    <div class="modal-body" id="bpe-body"></div>
+    <div class="bpe-tray" id="bpe-tray"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-book-frame">
   <div class="modal modal-book-frame">
     <div class="modal-header"><div class="modal-title">Encuadrar foto</div><button class="modal-close" onclick="closeBookFrameModal()">×</button></div>
@@ -1718,7 +1760,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.154';
+const APP_VERSION = '2.155';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -5654,7 +5696,6 @@ let galleryPhotos = [];          // [{driveFileId, date, name}] — armado por r
 let calDayData    = {};
 let calYear       = new Date().getFullYear();
 let calMonth      = new Date().getMonth();
-let bookShowText  = true;
 let bookPages     = [];          // [{ images: [driveFileId,...], layout: string|null }]
 let bookDrawer    = [];          // [driveFileId,...] fotos sin ubicar en ninguna página
 let bookPhotoByFileId = new Map(); // driveFileId -> { driveFileId, date, caption }
@@ -7024,7 +7065,7 @@ async function renderBook() {
       if (!page.layout) changed = true;
       const { images: withHoles, layout } = buildFixedCapacityPage(page.images, page.layout);
       const images = withHoles.map(id => (id && !currentSet.has(id)) ? (changed = true, null) : id);
-      cleanedPages.push({ images, layout });
+      cleanedPages.push({ images, layout, ...cleanBookPageText(page) });
     }
     const cleanedDrawer = saved.drawer.filter(id => currentSet.has(id));
     if (cleanedDrawer.length !== saved.drawer.length) changed = true;
@@ -7197,6 +7238,71 @@ function computeCellRectMm(pageWmm, pageHmm, def, cellIdx, gapMm) {
   return { x, y, w, h };
 }
 
+// ─── Fotolibro: margen fijo de página (v2.155) ─────────────────────
+// Pedido del usuario: el título y el pie van en el margen, así las fotos
+// quedan siempre del mismo tamaño, haya texto o no (como el fotolibro que
+// imprime con su esposa). Todas las páginas tienen un margen blanco fijo
+// en los cuatro lados, proporcional al lado menor de la hoja: 7,5% arriba
+// y abajo (donde van título y pie) y 5% a los costados — en una hoja de
+// 20 × 20 cm son 1,5 cm y 1 cm, lo que piden las imprentas para que el
+// corte no se coma el texto. Las fotos se acomodan dentro de esa caja.
+// Unidades libres (cm, mm o px): todo es proporcional.
+const BOOK_MARGIN_TB = 0.075, BOOK_MARGIN_SIDE = 0.05;
+function bookContentBox(pageW, pageH) {
+  const s = Math.min(pageW, pageH);
+  const mt = s * BOOK_MARGIN_TB, ms = s * BOOK_MARGIN_SIDE;
+  return { x: ms, y: mt, w: pageW - 2 * ms, h: pageH - 2 * mt, mt, ms, s };
+}
+// Igual que computeCellRectMm(), pero dentro de la caja con margen y con
+// x/y relativos a la hoja entera (sin sangrado).
+function bookCellRectInPage(pageW, pageH, def, cellIdx, gap) {
+  const box = bookContentBox(pageW, pageH);
+  const r = computeCellRectMm(box.w, box.h, def, cellIdx, gap);
+  return { x: box.x + r.x, y: box.y + r.y, w: r.w, h: r.h };
+}
+// Tamaño de letra de los textos de página, como fracción del lado menor
+// de la hoja — los mismos números para la pantalla (CSS, ver
+// buildBookPageSheet()) y para el PDF (drawBookPageTextStrip()).
+const BOOK_TEXT_TITLE = 0.042, BOOK_TEXT_FOOTER = 0.03, BOOK_TEXT_DATE = 0.024;
+
+// ─── Fotolibro: título, pie y fecha por página (v2.155) ────────────
+// Campos opcionales de cada página en book.json: `title`, `footer`,
+// `showDate` y `dateText` (texto de la fecha escrito a mano; ausente =
+// la fecha automática, calculada de las fotos de la página).
+const BOOK_PAGE_TEXT_MAX = 80;
+function cleanBookPageText(raw) {
+  const out = {};
+  const t = v => (typeof v === 'string' ? v.slice(0, BOOK_PAGE_TEXT_MAX) : '');
+  if (t(raw && raw.title)) out.title = t(raw.title);
+  if (t(raw && raw.footer)) out.footer = t(raw.footer);
+  if (raw && raw.showDate === true) out.showDate = true;
+  if (raw && typeof raw.dateText === 'string') out.dateText = raw.dateText.slice(0, BOOK_PAGE_TEXT_MAX);
+  return out;
+}
+const BOOK_MONTHS_LONG = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+// "13 de agosto de 2026" / "13 al 15 de agosto de 2026" /
+// "28 de julio al 2 de agosto de 2026" /
+// "28 de diciembre de 2025 al 2 de enero de 2026".
+function formatBookDateRange(dates) {
+  const sorted = [...new Set(dates.filter(Boolean))].sort();
+  if (!sorted.length) return '';
+  const parse = str => { const [y, m, d] = str.split('-').map(Number); return { y, m, d }; };
+  const a = parse(sorted[0]), b = parse(sorted[sorted.length - 1]);
+  const mon = x => BOOK_MONTHS_LONG[x.m - 1];
+  if (sorted.length === 1) return `${a.d} de ${mon(a)} de ${a.y}`;
+  if (a.y === b.y && a.m === b.m) return `${a.d} al ${b.d} de ${mon(b)} de ${b.y}`;
+  if (a.y === b.y) return `${a.d} de ${mon(a)} al ${b.d} de ${mon(b)} de ${b.y}`;
+  return `${a.d} de ${mon(a)} de ${a.y} al ${b.d} de ${mon(b)} de ${b.y}`;
+}
+function autoBookPageDate(page) {
+  return formatBookDateRange(page.images.map(id => { const p = id && bookPhotoByFileId.get(id); return p ? p.date : null; }));
+}
+// Lo que efectivamente se ve/imprime de la página: { title, footer, date }.
+function bookPageTexts(page) {
+  const date = page.showDate ? (typeof page.dateText === 'string' ? page.dateText : autoBookPageDate(page)) : '';
+  return { title: page.title || '', footer: page.footer || '', date: date || '' };
+}
+
 // Layouts válidos por cantidad de fotos — derivado del registro de
 // arriba agrupando por cuántas celdas tiene cada uno, usado tanto para
 // elegir el automático (pickLayout) como para validar uno forzado
@@ -7248,6 +7354,7 @@ function renderBookReorderGrid() {
   // Tapa al principio y contratapa al final (v2.151) — no son páginas:
   // no se arrastran ni reciben fotos, tocarlas abre el editor de tapa.
   container.appendChild(buildBookCoverTile('front'));
+  container.appendChild(buildBookBlankTile());
   if (bookCanEdit) container.appendChild(buildBookInsertGap(0));
   bookPages.forEach((page, idx) => {
     container.appendChild(buildBookReorderTile(page, idx));
@@ -7269,7 +7376,6 @@ function renderBookReorderGrid() {
     initBookPageDragReorder(container);
     initBookPageTouchReorder(container);
   }
-  applyBookTextVisibility();
   scheduleBookGridWatchdog();
 }
 
@@ -7731,34 +7837,25 @@ function applyBookFramingTransform(imgEl, fileId, frameAspect) {
   else imgEl.addEventListener('load', apply, { once: true });
 }
 
-// Botón "+" chico entre dos páginas — ver el comentario en
-// renderBookReorderGrid() para por qué existe y qué doble rol cumple.
-function buildBookInsertGap(insertIdx) {
-  const btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'book-insert-gap'; btn.dataset.insertIdx = insertIdx;
-  btn.title = 'Agregar página acá';
-  btn.textContent = '+';
-  btn.addEventListener('click', () => openBookAddPageModal(insertIdx));
-  return btn;
-}
-
-function buildBookReorderTile(page, idx) {
-  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
-  const wrap = document.createElement('div'); wrap.className = 'book-reorder-tile-grid';
-  wrap.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
-  // Un álbum compartido de solo lectura muestra las páginas tal cual
-  // están, sin ningún affordance de edición — antes esta vista solo se
-  // alcanzaba a través del botón "Reordenar", ya gateado por
-  // `albumCanEdit`; ahora que es la única vista del Libro, el gate pasa
-  // a estar acá adentro, por `bookCanEdit` (el fotolibro es personal —
-  // hasta un viewer del álbum puede armar el suyo, ver v2.68 más arriba).
-  if (bookCanEdit) tile.draggable = true;
-  const grid = document.createElement('div'); grid.className = 'book-layout-grid'; grid.style.height = '100%';
-  wrap.appendChild(grid);
-  // Misma fuente (BOOK_LAYOUTS/computeCellRectMm) que ya usa el editor de
-  // encuadre y el export a PDF — necesaria acá para conocer la proporción
-  // REAL de cada celda (frameAspect) y así aplicar el encuadre guardado
-  // sin el bug de v2.28 (ver applyBookFramingTransform()).
+// ─── Hoja de página (v2.155) ───────────────────────────────────────
+// Una sola función arma la página como se imprime: hoja blanca con la
+// proporción real, margen fijo (bookContentBox()), fotos dentro de la caja
+// y título/pie/fecha en el margen. La usan la miniatura de la grilla
+// (`opts.tile`) y el editor de página por página (`opts.editor`), así las
+// dos se ven igual. Posiciones en % de la hoja; letras en `--pu` (1% del
+// lado menor, expresado en `cqw` del contenedor), así escalan solas con el
+// tamaño en pantalla.
+function buildBookPageSheet(page, idx, opts = {}) {
+  const W = bookPageSize.w, H = bookPageSize.h;
+  const box = bookContentBox(W, H);
+  const sheet = document.createElement('div'); sheet.className = 'book-sheet';
+  sheet.style.aspectRatio = `${W} / ${H}`;
+  sheet.style.setProperty('--pu', `${(box.s / W)}cqw`);
+  const pctX = v => `${(v / W) * 100}%`, pctY = v => `${(v / H) * 100}%`;
+  const grid = document.createElement('div'); grid.className = 'book-layout-grid book-sheet-grid';
+  grid.style.left = pctX(box.x); grid.style.top = pctY(box.y);
+  grid.style.width = pctX(box.w); grid.style.height = pctY(box.h);
+  sheet.appendChild(grid);
   const layoutDef = bookLayoutDef(page.layout);
   // Se recorre page.images por índice real (nunca compactando) — un
   // hueco (null) se dibuja como celda placeholder en su lugar exacto,
@@ -7768,22 +7865,26 @@ function buildBookReorderTile(page, idx) {
     if (!photo) {
       const cell = document.createElement('div'); cell.className = 'bp bp-empty';
       cell.dataset.pageIdx = idx; cell.dataset.slotIdx = slotIdx;
+      if (opts.editor) { cell.innerHTML = '<span class="bp-empty-plus">+</span>'; cell.addEventListener('click', () => onBookEditorSlotTap(slotIdx)); }
       grid.appendChild(cell);
       return cell;
     }
-    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId; cell.draggable = bookCanEdit;
-    const imgEl = document.createElement('img'); imgEl.loading = 'lazy'; imgEl.alt = ''; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES, isSharedAlbum ? albumFolderId : null);
-    const cellRect = computeCellRectMm(bookPageSize.w, bookPageSize.h, layoutDef, slotIdx, 0);
+    const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId;
+    const imgEl = document.createElement('img'); imgEl.alt = '';
+    if (opts.editor) { setAuthImg(imgEl, photo.driveFileId, 'w800', isSharedAlbum ? albumFolderId : null); }
+    else { imgEl.loading = 'lazy'; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES, isSharedAlbum ? albumFolderId : null); }
+    // Misma fuente (BOOK_LAYOUTS/bookCellRectInPage) que ya usa el editor
+    // de encuadre y el export a PDF — necesaria acá para conocer la
+    // proporción REAL de cada celda (frameAspect) y así aplicar el encuadre
+    // guardado sin el bug de v2.28 (ver applyBookFramingTransform()).
+    const cellRect = bookCellRectInPage(W, H, layoutDef, slotIdx, 0);
     applyBookFramingTransform(imgEl, photo.driveFileId, cellRect.w / cellRect.h);
     cell.appendChild(imgEl);
-    // Mismo chip de fecha/caption que mostraba la vista inmersiva (sacada
-    // en v2.02, ver CLAUDE.md) — se porta acá para que el toggle "Texto"
-    // del menú "···" siga teniendo un efecto real en la única vista que
-    // queda del Libro.
-    const chip = document.createElement('div'); chip.className = 'bp-chip book-text';
-    chip.innerHTML = `<span class="bp-chip-date">${formatDate(photo.date)}</span>${photo.caption ? `<span class="bp-chip-caption">${escHtml(photo.caption)}</span>` : ''}`;
-    cell.appendChild(chip);
-    if (bookCanEdit) {
+    if (opts.editor) {
+      if (opts.selectedSlot === slotIdx) cell.classList.add('bp-selected');
+      cell.addEventListener('click', () => onBookEditorSlotTap(slotIdx));
+    } else if (opts.tile && bookCanEdit) {
+      cell.draggable = true;
       const handle = document.createElement('div'); handle.className = 'bp-drag-handle'; handle.innerHTML = icon('drag'); cell.appendChild(handle);
       // Encuadre por foto (zoom + paneo) — pedido de la esposa del usuario
       // (diseñadora). Vive DENTRO de `.bp`, que es `draggable` (a
@@ -7804,6 +7905,337 @@ function buildBookReorderTile(page, idx) {
     return cell;
   });
   applyBookLayoutGrid(grid, page.layout, cellEls);
+  const { title, footer, date } = bookPageTexts(page);
+  if (title) {
+    const t = document.createElement('div'); t.className = 'book-sheet-title';
+    t.style.left = t.style.right = pctX(box.ms); t.style.height = pctY(box.mt);
+    t.innerHTML = `<span>${escHtml(title)}</span>`;
+    sheet.appendChild(t);
+  }
+  if (footer || date) {
+    const f = document.createElement('div'); f.className = 'book-sheet-foot';
+    f.style.left = f.style.right = pctX(box.ms); f.style.height = pctY(box.mt);
+    f.innerHTML = `<span class="book-sheet-footer">${escHtml(footer)}</span><span class="book-sheet-date">${escHtml(date)}</span>`;
+    sheet.appendChild(f);
+  }
+  return { sheet, grid, cellEls };
+}
+
+// Página 1 del libro: siempre en blanco y fija (decisión del usuario,
+// FOTOLIBRO_DISENO.md). No se guarda en book.json: se dibuja acá y se
+// agrega en el PDF, así ningún libro existente pierde ni mueve fotos.
+function buildBookBlankTile() {
+  const tile = document.createElement('div'); tile.className = 'book-blank-tile';
+  const sheet = document.createElement('div'); sheet.className = 'book-sheet book-reorder-tile-grid';
+  sheet.style.aspectRatio = `${bookPageSize.w} / ${bookPageSize.h}`;
+  tile.appendChild(sheet);
+  const label = document.createElement('div'); label.className = 'book-reorder-tile-label';
+  label.textContent = 'Página 1 (en blanco)';
+  tile.appendChild(label);
+  return tile;
+}
+
+// ─── Fotolibro: editor de página por página (v2.155) ───────────────
+// Paso 2 ("Páginas") del rediseño, ver FOTOLIBRO_DISENO.md. Se abre al
+// tocar una página de la grilla. Para cambiar una foto se toca la foto y
+// después una de "Fotos sin usar" (no hay botón "Cambiar", decisión del
+// usuario); un lugar vacío muestra un "+" que suma la primera foto sin
+// usar. Cada cambio se guarda solo (persistencia con una pequeña espera,
+// para no escribir book.json en cada tecla del título).
+let bookEditorIdx = null;
+let bookEditorSel = null;    // lugar (slot) seleccionado en la página
+let bookEditorPanel = null;  // null | 'layout' | 'text'
+let bookEditorHint = '';
+let _bookPersistTimer = null;
+
+function scheduleBookPersist() {
+  clearTimeout(_bookPersistTimer);
+  _bookPersistTimer = setTimeout(() => { _bookPersistTimer = null; persistBookLayout().catch(e => console.warn('No se pudo guardar el libro:', e)); }, 700);
+}
+function flushBookPersist() {
+  if (!_bookPersistTimer) return;
+  clearTimeout(_bookPersistTimer); _bookPersistTimer = null;
+  persistBookLayout().catch(e => console.warn('No se pudo guardar el libro:', e));
+}
+
+function openBookPageEditor(idx) {
+  if (!bookCanEdit || !bookPages[idx]) return;
+  bookEditorIdx = idx; bookEditorSel = null; bookEditorPanel = null; bookEditorHint = '';
+  document.getElementById('modal-book-page').classList.add('open');
+  renderBookPageEditor();
+}
+
+function closeBookPageEditor() {
+  const idx = bookEditorIdx;
+  document.getElementById('modal-book-page').classList.remove('open');
+  bookEditorIdx = null; bookEditorSel = null; bookEditorPanel = null;
+  flushBookPersist();
+  renderBookReorderGrid();
+  const tile = document.querySelector(`#book-reorder-container .book-reorder-tile[data-page-idx="${idx}"]`);
+  if (tile) tile.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function bookEditorPage() { return bookEditorIdx === null ? null : bookPages[bookEditorIdx]; }
+
+const BPE_ICON_LAYOUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"></rect><path d="M3 12h18M12 3v9"></path></svg>';
+const BPE_ICON_FRAME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>';
+const BPE_ICON_TEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 6h14M12 6v13M9 19h6"></path></svg>';
+
+function renderBookPageEditor() {
+  const page = bookEditorPage();
+  if (!page) return;
+  document.getElementById('bpe-title').textContent = `Página ${bookEditorIdx + 2} de ${bookPages.length + 1}`;
+  const body = document.getElementById('bpe-body');
+  body.innerHTML = `
+    <div class="bpe-stage" id="bpe-stage"></div>
+    <div class="bpe-hint" id="bpe-hint"></div>
+    <div class="bpe-nav">
+      <button type="button" class="btn-nav" onclick="bookEditorGo(-1)" ${bookEditorIdx > 0 ? '' : 'disabled'}>‹ Página anterior</button>
+      <button type="button" class="btn-nav" onclick="bookEditorGo(1)" ${bookEditorIdx < bookPages.length - 1 ? '' : 'disabled'}>Página siguiente ›</button>
+    </div>
+    <div class="bpe-tools">
+      <button type="button" class="cover-tool${bookEditorPanel === 'layout' ? ' on' : ''}" onclick="toggleBookEditorPanel('layout')">${BPE_ICON_LAYOUT}<span class="cover-tool-label">Diseño</span></button>
+      <button type="button" class="cover-tool" onclick="bookEditorFrame()">${BPE_ICON_FRAME}<span class="cover-tool-label">Encuadrar</span></button>
+      <button type="button" class="cover-tool${bookEditorPanel === 'text' ? ' on' : ''}" onclick="toggleBookEditorPanel('text')">${BPE_ICON_TEXT}<span class="cover-tool-label">Texto</span></button>
+    </div>
+    <div id="bpe-panel"></div>`;
+  refreshBookEditorSheet();
+  renderBookEditorPanel();
+  renderBookEditorTray();
+}
+
+// Redibuja solo la hoja y la línea de ayuda (no los campos de texto, así
+// escribir el título no pierde el foco).
+function refreshBookEditorSheet() {
+  const page = bookEditorPage();
+  const stage = document.getElementById('bpe-stage');
+  if (!page || !stage) return;
+  const { sheet } = buildBookPageSheet(page, bookEditorIdx, { editor: true, selectedSlot: bookEditorSel });
+  // La hoja entra a lo ancho y no ocupa más del 42% del alto de la pantalla.
+  const maxW = Math.min(stage.clientWidth || 340, 360);
+  const maxH = window.innerHeight * 0.42;
+  const ratio = bookPageSize.w / bookPageSize.h;
+  sheet.style.width = `${Math.min(maxW, maxH * ratio)}px`;
+  stage.innerHTML = '';
+  stage.appendChild(sheet);
+  const hint = document.getElementById('bpe-hint');
+  if (bookEditorHint) hint.textContent = bookEditorHint;
+  else if (bookEditorSel !== null) hint.innerHTML = 'Tocá una foto de abajo para cambiarla. <button type="button" onclick="bookEditorRemoveSelected()">Sacar de la página</button>';
+  else hint.textContent = page.images.some(id => !id) ? 'Tocá un + para sumar una foto, o una foto para cambiarla.' : 'Tocá una foto para cambiarla.';
+}
+
+function renderBookEditorPanel() {
+  const panel = document.getElementById('bpe-panel');
+  const page = bookEditorPage();
+  if (!panel || !page) return;
+  panel.innerHTML = '';
+  if (bookEditorPanel === 'layout') {
+    const wrapEl = document.createElement('div'); wrapEl.className = 'cover-panel';
+    const opts = document.createElement('div'); opts.className = 'book-layout-options';
+    Object.keys(BOOK_LAYOUTS).forEach(layoutClass => {
+      opts.appendChild(buildBookLayoutOption(BOOK_LAYOUT_NAMES[layoutClass] || layoutClass, layoutClass, bookLayoutDef(layoutClass).cells.length, page.layout === layoutClass, () => bookEditorPickLayout(layoutClass)));
+    });
+    wrapEl.appendChild(opts);
+    panel.appendChild(wrapEl);
+  } else if (bookEditorPanel === 'text') {
+    const auto = autoBookPageDate(page);
+    const custom = typeof page.dateText === 'string';
+    panel.innerHTML = `
+      <div class="cover-panel">
+        <div class="form-field"><label class="form-label">Título (arriba de las fotos)</label><input class="form-input" id="bpe-title-input" maxlength="${BOOK_PAGE_TEXT_MAX}" placeholder="Sin título" oninput="setBookPageText('title', this.value)"></div>
+        <div class="form-field"><label class="form-label">Pie de página (abajo de las fotos)</label><input class="form-input" id="bpe-footer-input" maxlength="${BOOK_PAGE_TEXT_MAX}" placeholder="Sin pie de página" oninput="setBookPageText('footer', this.value)"></div>
+        <div class="bpe-date-row"><span>Mostrar la fecha</span><button type="button" class="push-switch${page.showDate ? ' on' : ''}" role="switch" aria-checked="${!!page.showDate}" aria-label="Mostrar la fecha" onclick="toggleBookPageDate()"></button></div>
+        ${page.showDate ? `
+          <div class="form-field"><label class="form-label">Fecha</label><input class="form-input" id="bpe-date-input" maxlength="${BOOK_PAGE_TEXT_MAX}" placeholder="${auto ? '' : 'Sin fecha'}" oninput="setBookPageDate(this.value)"></div>
+          <button type="button" class="bpe-date-auto" id="bpe-date-auto" style="${custom ? '' : 'display:none'}" onclick="resetBookPageDate()">Usar fecha automática</button>` : ''}
+      </div>`;
+    document.getElementById('bpe-title-input').value = page.title || '';
+    document.getElementById('bpe-footer-input').value = page.footer || '';
+    const dateInput = document.getElementById('bpe-date-input');
+    if (dateInput) dateInput.value = custom ? page.dateText : auto;
+  }
+}
+
+let _bpeTrayObserver = null;
+function renderBookEditorTray() {
+  const tray = document.getElementById('bpe-tray');
+  if (!tray) return;
+  tray.innerHTML = `<div class="bpe-tray-head"><span>Fotos sin usar (${bookDrawer.length})</span>${bookDrawer.length ? '<span>Tocá una para sumarla</span>' : ''}</div>`;
+  if (!bookDrawer.length) { tray.insertAdjacentHTML('beforeend', '<div class="bpe-tray-empty">Todas las fotos del álbum ya están en el libro.</div>'); return; }
+  const list = document.createElement('div'); list.className = 'bpe-tray-list';
+  if (_bpeTrayObserver) _bpeTrayObserver.disconnect();
+  _bpeTrayObserver = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      obs.unobserve(entry.target);
+      setAuthImg(entry.target, entry.target.dataset.fileId, 'w200', isSharedAlbum ? albumFolderId : null);
+    });
+  }, { root: list, rootMargin: '0px 200px' });
+  bookDrawer.forEach((id, i) => {
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'bpe-tray-item'; btn.setAttribute('aria-label', 'Usar esta foto');
+    const img = document.createElement('img'); img.alt = ''; img.dataset.fileId = id;
+    btn.appendChild(img);
+    btn.addEventListener('click', () => onBookEditorTrayTap(i));
+    list.appendChild(btn);
+    _bpeTrayObserver.observe(img);
+  });
+  tray.appendChild(list);
+}
+
+function bookEditorGo(delta) {
+  const next = bookEditorIdx + delta;
+  if (next < 0 || next >= bookPages.length) return;
+  bookEditorIdx = next; bookEditorSel = null; bookEditorHint = '';
+  renderBookPageEditor();
+}
+
+function bookEditorChanged() {
+  bookEditorHint = '';
+  refreshBookEditorSheet();
+  renderBookEditorTray();
+  if (bookEditorPanel === 'text') renderBookEditorPanel(); // la fecha automática puede cambiar con las fotos
+  scheduleBookPersist();
+}
+
+function onBookEditorSlotTap(slotIdx) {
+  const page = bookEditorPage();
+  if (!page) return;
+  if (!page.images[slotIdx]) {
+    if (!bookDrawer.length) { bookEditorHint = 'No quedan fotos sin usar.'; refreshBookEditorSheet(); return; }
+    page.images[slotIdx] = bookDrawer.shift();
+    bookEditorSel = null;
+    bookEditorChanged();
+    return;
+  }
+  bookEditorSel = bookEditorSel === slotIdx ? null : slotIdx;
+  bookEditorHint = '';
+  refreshBookEditorSheet();
+}
+
+function onBookEditorTrayTap(drawerIdx) {
+  const page = bookEditorPage();
+  const id = bookDrawer[drawerIdx];
+  if (!page || !id) return;
+  let slot = bookEditorSel;
+  if (slot === null) {
+    slot = page.images.findIndex(x => !x);
+    if (slot < 0) { bookEditorHint = 'Tocá primero la foto de la página que querés cambiar.'; refreshBookEditorSheet(); return; }
+  }
+  const old = page.images[slot];
+  page.images[slot] = id;
+  if (old) bookDrawer.splice(drawerIdx, 1, old); else bookDrawer.splice(drawerIdx, 1);
+  bookEditorSel = null;
+  bookEditorChanged();
+}
+
+function bookEditorRemoveSelected() {
+  const page = bookEditorPage();
+  if (!page || bookEditorSel === null) return;
+  const old = page.images[bookEditorSel];
+  if (old) bookDrawer.unshift(old);
+  page.images[bookEditorSel] = null;
+  bookEditorSel = null;
+  bookEditorChanged();
+}
+
+function bookEditorFrame() {
+  const page = bookEditorPage();
+  if (!page) return;
+  let slot = bookEditorSel;
+  if (slot === null) {
+    const filled = page.images.map((id, i) => id ? i : -1).filter(i => i >= 0);
+    if (filled.length === 1) slot = filled[0];
+  }
+  if (slot === null || !page.images[slot]) {
+    bookEditorHint = page.images.some(Boolean) ? 'Tocá primero la foto que querés encuadrar.' : 'Esta página todavía no tiene fotos.';
+    refreshBookEditorSheet();
+    return;
+  }
+  openBookFrameModal(page.images[slot], bookEditorIdx, slot);
+}
+
+function toggleBookEditorPanel(id) {
+  bookEditorPanel = bookEditorPanel === id ? null : id;
+  renderBookPageEditor();
+}
+
+function bookEditorPickLayout(layoutClass) {
+  const page = bookEditorPage();
+  if (!page) return;
+  changeBookPageLayout(page, layoutClass);
+  bookEditorSel = null;
+  renderBookPageEditor();
+  scheduleBookPersist();
+}
+
+function setBookPageText(key, value) {
+  const page = bookEditorPage();
+  if (!page) return;
+  const v = value.slice(0, BOOK_PAGE_TEXT_MAX);
+  if (v.trim()) page[key] = v; else delete page[key];
+  refreshBookEditorSheet();
+  scheduleBookPersist();
+}
+
+function toggleBookPageDate() {
+  const page = bookEditorPage();
+  if (!page) return;
+  if (page.showDate) delete page.showDate; else page.showDate = true;
+  renderBookEditorPanel();
+  refreshBookEditorSheet();
+  scheduleBookPersist();
+}
+
+// Fecha escrita a mano: queda aunque después cambien las fotos de la
+// página. Si se escribe exactamente la automática, vuelve a ser automática.
+function setBookPageDate(value) {
+  const page = bookEditorPage();
+  if (!page) return;
+  const v = value.slice(0, BOOK_PAGE_TEXT_MAX);
+  if (v === autoBookPageDate(page)) delete page.dateText; else page.dateText = v;
+  const autoBtn = document.getElementById('bpe-date-auto');
+  if (autoBtn) autoBtn.style.display = typeof page.dateText === 'string' ? '' : 'none';
+  refreshBookEditorSheet();
+  scheduleBookPersist();
+}
+
+function resetBookPageDate() {
+  const page = bookEditorPage();
+  if (!page) return;
+  delete page.dateText;
+  renderBookEditorPanel();
+  refreshBookEditorSheet();
+  scheduleBookPersist();
+}
+
+// Botón "+" chico entre dos páginas — ver el comentario en
+// renderBookReorderGrid() para por qué existe y qué doble rol cumple.
+function buildBookInsertGap(insertIdx) {
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'book-insert-gap'; btn.dataset.insertIdx = insertIdx;
+  btn.title = 'Agregar página acá';
+  btn.textContent = '+';
+  btn.addEventListener('click', () => openBookAddPageModal(insertIdx));
+  return btn;
+}
+
+function buildBookReorderTile(page, idx) {
+  const tile = document.createElement('div'); tile.className = 'book-reorder-tile'; tile.dataset.pageIdx = idx;
+  // Un álbum compartido de solo lectura muestra las páginas tal cual
+  // están, sin ningún affordance de edición — el gate es `bookCanEdit`
+  // (el fotolibro es personal — hasta un viewer del álbum puede armar el
+  // suyo, ver v2.68).
+  if (bookCanEdit) tile.draggable = true;
+  const { sheet: wrap } = buildBookPageSheet(page, idx, { tile: true });
+  wrap.classList.add('book-reorder-tile-grid');
+  // v2.155: tocar la página (fuera de los botones y manijas) abre el
+  // editor de página por página.
+  if (bookCanEdit) {
+    wrap.addEventListener('click', e => {
+      if (e.target.closest('button, .bp-drag-handle')) return;
+      openBookPageEditor(idx);
+    });
+  }
   tile.appendChild(wrap);
   // La leyenda "Página N" va DEBAJO de la tarjeta (no como una barra
   // encima de las fotos, como era hasta v2.01) — mismo criterio que un
@@ -7820,7 +8252,7 @@ function buildBookReorderTile(page, idx) {
     const pageHandle = document.createElement('span'); pageHandle.className = 'book-reorder-page-handle'; pageHandle.innerHTML = icon('drag'); pageHandle.title = 'Arrastrar para reordenar';
     label.appendChild(pageHandle);
   }
-  const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 1}`;
+  const labelText = document.createElement('span'); labelText.textContent = `Página ${idx + 2}`; // la 1 es la página en blanco
   label.appendChild(labelText);
   if (bookCanEdit) {
     // "⊞"/"✕" vivían flotando sobre las esquinas de la tarjeta (wrap) hasta
@@ -7830,10 +8262,9 @@ function buildBookReorderTile(page, idx) {
     // mudan acá, a la leyenda de abajo (mismo lugar que pidió el usuario:
     // "pondría el botón por abajo") — ninguna foto vive ahí, así que no hay
     // con qué competir.
-    // Con capacidad 1 no hay ningún otro layout entre los que elegir — no
-    // tiene sentido mostrar el botón. `page.images.length` es la capacidad
-    // fija de la página (v3), no la cantidad de fotos puestas ahora.
-    if (page.images.length > 1) {
+    // v2.155: el selector ya permite cambiar la cantidad de lugares, así
+    // que el botón aparece en todas las páginas (antes no en las de 1).
+    {
       const layoutBtn = document.createElement('button');
       layoutBtn.type = 'button'; layoutBtn.className = 'book-reorder-layout-btn'; layoutBtn.title = 'Elegir layout';
       layoutBtn.textContent = '⊞';
@@ -7920,20 +8351,40 @@ function buildFixedCapacityPage(images, existingLayout) {
 // de página, no de "distribución", y no es lo que resuelve este modal).
 let bookLayoutModalPageIdx = null;
 
+// v2.155 (paso "Páginas" del rediseño): el selector ofrece los 7 layouts,
+// no solo los de la misma capacidad — ver changeBookPageLayout().
+const BOOK_LAYOUT_NAMES = {
+  'book-layout-1': '1 foto', 'book-layout-2h': '2 apiladas', 'book-layout-2v': '2 lado a lado',
+  'book-layout-3a': '3, grande arriba', 'book-layout-3b': '3, grande abajo',
+  'book-layout-4a': '4 parejas', 'book-layout-4b': '4, grande al costado',
+};
 function openBookLayoutModal(idx) {
   const page = bookPages[idx];
   if (!page) return;
-  const capacity = bookLayoutDef(page.layout).cells.length;
-  const options = BOOK_LAYOUTS_BY_COUNT[capacity] || [];
-  if (options.length <= 1) return;
   bookLayoutModalPageIdx = idx;
-
   const container = document.getElementById('book-layout-options');
   container.innerHTML = '';
-  options.forEach(layoutClass => {
-    container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_LABELS[layoutClass] || layoutClass, layoutClass, capacity, page.layout === layoutClass, () => chooseBookLayout(layoutClass)));
+  Object.keys(BOOK_LAYOUTS).forEach(layoutClass => {
+    container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_NAMES[layoutClass] || layoutClass, layoutClass, bookLayoutDef(layoutClass).cells.length, page.layout === layoutClass, () => chooseBookLayout(layoutClass)));
   });
   document.getElementById('modal-book-layout').classList.add('open');
+}
+
+// Cambia el layout de una página. Con la misma cantidad de lugares solo
+// cambia la distribución (cada foto queda en su lugar). Con otra cantidad
+// (mockup, decisión del usuario): conserva las fotos que ya tenía, en
+// orden; los lugares nuevos se completan con "Fotos sin usar" (o quedan
+// vacíos si no hay) y las que no entran vuelven a "Fotos sin usar", al
+// principio, para encontrarlas rápido.
+function changeBookPageLayout(page, layoutClass) {
+  const newCap = bookLayoutDef(layoutClass).cells.length;
+  if (newCap === page.images.length) { page.layout = layoutClass; return; }
+  const real = page.images.filter(Boolean);
+  const kept = real.slice(0, newCap);
+  bookDrawer.unshift(...real.slice(newCap));
+  while (kept.length < newCap) kept.push(bookDrawer.length ? bookDrawer.shift() : null);
+  page.images = kept;
+  page.layout = layoutClass;
 }
 
 function buildBookLayoutOption(label, previewLayoutClass, count, active, onClick) {
@@ -7955,7 +8406,7 @@ function buildBookLayoutOption(label, previewLayoutClass, count, active, onClick
 function chooseBookLayout(layoutClass) {
   if (bookLayoutModalPageIdx === null) return;
   const page = bookPages[bookLayoutModalPageIdx];
-  if (page) page.layout = layoutClass; // siempre un layout concreto, misma capacidad (ver openBookLayoutModal)
+  if (page) changeBookPageLayout(page, layoutClass);
   closeBookLayoutModal();
   renderBookReorderGrid();
   persistBookLayout().catch(e => console.warn('No se pudo guardar el layout:', e));
@@ -8135,23 +8586,6 @@ function closeBookPageSizeModal() {
   document.getElementById('modal-book-page-size').classList.remove('open');
 }
 
-// El botón que dispara esto vive en el FAB unificado del diario (v2.88,
-// ver diaryFabSheetRowsHtml()), que se reconstruye cada vez que se abre
-// — no hay ningún elemento persistente al que pisarle una clase; el
-// estado (`bookShowText`) y su efecto real (applyBookTextVisibility)
-// alcanzan solos, y la próxima vez que se abra la hoja su label ya
-// refleja el estado actual.
-function toggleBookText() {
-  bookShowText = !bookShowText;
-  applyBookTextVisibility();
-}
-
-// Se llama también después de cada reorder (renderBookReorderGrid) para
-// que el estado del toggle sobreviva a un re-render de las páginas.
-function applyBookTextVisibility() {
-  document.querySelectorAll('.book-text').forEach(el => { el.style.opacity = bookShowText ? '' : '0'; });
-}
-
 // ─── Fotolibro → PDF (Paso 3 de la exportación imprimible) ─────────
 // Separación entre celdas EN LA IMPRESIÓN — deliberadamente fija y chica
 // (no derivada de los 2px de pantalla, que no tienen ningún significado
@@ -8217,7 +8651,7 @@ async function checkBookExportResolution(pageWmm, pageHmm) {
     const dims = await getImageDimensions(photo.driveFileId, isSharedAlbum ? albumFolderId : null);
     if (!dims) return null;
     const def = bookLayoutDef(layoutClass);
-    const rect = computeCellRectMm(pageWmm, pageHmm, def, cellIdx, EXPORT_GAP_MM);
+    const rect = bookCellRectInPage(bookPageSize.w * 10, bookPageSize.h * 10, def, cellIdx, EXPORT_GAP_MM); // tamaño real de la celda, sin sangrado
     const framing = bookFraming[photo.driveFileId];
     const scale = (framing && framing.scale) || 1;
     const dpi = effectiveDpiForCell(dims, rect, framing);
@@ -8297,6 +8731,48 @@ function coverCropToCanvas(imgEl, targetAspect, framing) {
   return canvas;
 }
 
+// Franja de margen (arriba o abajo) de una página del PDF, a 300 DPI,
+// fondo blanco igual que la hoja. Mismas letras y proporciones que la
+// pantalla (BOOK_TEXT_*, ver buildBookPageSheet()): título centrado en
+// DM Serif Display; pie a la izquierda en cursiva y fecha a la derecha en
+// DM Sans gris. Lo que no entra se corta con "…", igual que en pantalla.
+function drawBookPageTextStrip(side, texts, trimW, box) {
+  const pxPerMm = 300 / 25.4;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(trimW * pxPerMm); canvas.height = Math.round(box.mt * pxPerMm);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const left = box.ms * pxPerMm, right = canvas.width - box.ms * pxPerMm, midY = canvas.height / 2;
+  const fit = (text, maxW) => {
+    if (ctx.measureText(text).width <= maxW) return text;
+    let t = text;
+    while (t.length && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+    return t + '…';
+  };
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#1c1a17';
+  if (side === 'top') {
+    ctx.font = `400 ${box.s * BOOK_TEXT_TITLE * pxPerMm}px 'DM Serif Display', serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(fit(texts.title, right - left), canvas.width / 2, midY);
+    return canvas;
+  }
+  let dateW = 0;
+  if (texts.date) {
+    ctx.font = `400 ${box.s * BOOK_TEXT_DATE * pxPerMm}px 'DM Sans', sans-serif`;
+    ctx.fillStyle = '#6b655b'; ctx.textAlign = 'right';
+    const d = fit(texts.date, (right - left) * 0.6);
+    dateW = ctx.measureText(d).width + box.s * 0.02 * pxPerMm;
+    ctx.fillText(d, right, midY);
+  }
+  if (texts.footer) {
+    ctx.font = `italic 400 ${box.s * BOOK_TEXT_FOOTER * pxPerMm}px 'DM Serif Display', serif`;
+    ctx.fillStyle = '#1c1a17'; ctx.textAlign = 'left';
+    ctx.fillText(fit(texts.footer, right - left - dateW), left, midY);
+  }
+  return canvas;
+}
+
 // El exportador en sí: arma un PDF con una página por cada página del
 // libro (nunca el drawer), del tamaño de `bookPageSize` + `bleedMm` de
 // sangrado en cada borde — mismo `BOOK_LAYOUTS`/`computeCellRectMm` que
@@ -8309,25 +8785,40 @@ async function generateBookPdf(bleedMm, onProgress) {
   const { jsPDF } = window.jspdf;
   const pageWmm = bookPageSize.w * 10 + bleedMm * 2;
   const pageHmm = bookPageSize.h * 10 + bleedMm * 2;
-  const pagesWithPhotos = bookPages.filter(p => p.images.some(id => bookPhotoByFileId.has(id)));
-  if (!pagesWithPhotos.length) throw new Error('El libro no tiene fotos para exportar');
+  const trimW = bookPageSize.w * 10, trimH = bookPageSize.h * 10;
+  // Entran las páginas con fotos o con algún texto; una página del todo
+  // vacía no se imprime.
+  const pagesWithPhotos = bookPages.filter(p => p.images.some(id => bookPhotoByFileId.has(id)) || Object.values(bookPageTexts(p)).some(Boolean));
+  if (!pagesWithPhotos.some(p => p.images.some(id => bookPhotoByFileId.has(id)))) throw new Error('El libro no tiene fotos para exportar');
   const doc = new jsPDF({ unit: 'mm', format: [pageWmm, pageHmm], compress: true });
   // v2.151: la tapa va como primera hoja y la contratapa como última.
-  const totalSheets = pagesWithPhotos.length + 2;
+  // v2.155: después de la tapa va la página 1, siempre en blanco.
+  const totalSheets = pagesWithPhotos.length + 3;
   if (onProgress) onProgress(1, totalSheets);
   doc.addImage(await renderCoverPdfCanvas('front', pageWmm, pageHmm, bleedMm), 'JPEG', 0, 0, pageWmm, pageHmm);
+  doc.addPage([pageWmm, pageHmm]);
+  await ensureCoverFontsLoaded();
+  try { await document.fonts.load("italic 400 20px 'DM Serif Display'"); } catch (e) { /* sin la cursiva, el canvas usa la normal */ }
   for (let i = 0; i < pagesWithPhotos.length; i++) {
     doc.addPage([pageWmm, pageHmm]);
-    if (onProgress) onProgress(i + 2, totalSheets);
+    if (onProgress) onProgress(i + 3, totalSheets);
     const page = pagesWithPhotos[i];
     const def = bookLayoutDef(page.layout);
+    // v2.155: título arriba y pie/fecha abajo, cada uno en su franja de
+    // margen (bookContentBox()), dibujados con las mismas letras y
+    // proporciones que la pantalla.
+    const box = bookContentBox(trimW, trimH);
+    const texts = bookPageTexts(page);
+    if (texts.title) doc.addImage(drawBookPageTextStrip('top', texts, trimW, box), 'JPEG', bleedMm, bleedMm, trimW, box.mt);
+    if (texts.footer || texts.date) doc.addImage(drawBookPageTextStrip('bottom', texts, trimW, box), 'JPEG', bleedMm, bleedMm + trimH - box.mt, trimW, box.mt);
     // Por índice real, nunca compactando — una celda vacía (foto todavía
     // sin ubicar en esa página) sale en blanco en el PDF en su lugar
     // exacto, en vez de correr las fotos reales a celdas equivocadas.
     for (let c = 0; c < page.images.length; c++) {
       const fileId = page.images[c];
       if (!fileId || !bookPhotoByFileId.has(fileId)) continue;
-      const rect = computeCellRectMm(pageWmm, pageHmm, def, c, EXPORT_GAP_MM);
+      const r = bookCellRectInPage(trimW, trimH, def, c, EXPORT_GAP_MM);
+      const rect = { x: r.x + bleedMm, y: r.y + bleedMm, w: r.w, h: r.h };
       const blobUrl = await fetchFileAsDataUrl(fileId, isSharedAlbum ? albumFolderId : null);
       try {
         const imgEl = await loadImageElementFromUrl(blobUrl);
@@ -8389,7 +8880,7 @@ function renderExportLowResList(lowRes) {
     <div class="export-lowres-item">
       <img class="export-lowres-thumb" id="export-lowres-thumb-${i}" alt="">
       <div class="export-lowres-info">
-        <div class="export-lowres-page">Página ${item.pageIdx + 1} · ${item.dpi} DPI</div>
+        <div class="export-lowres-page">Página ${item.pageIdx + 2} · ${item.dpi} DPI</div>
         <div class="export-lowres-detail">Tiene ~${item.actualPx.w}×${item.actualPx.h}px, necesitaría al menos ~${item.requiredPx.w}×${item.requiredPx.h}px para verse nítida (${EXPORT_MIN_DPI} DPI) a este tamaño.</div>
       </div>
     </div>`).join('');
@@ -8532,7 +9023,7 @@ function openBookFrameModal(fileId, pageIdx, slotIdx) {
   // (no un tamaño en mm real) — 0 alcanza, la relación de aspecto no
   // cambia de forma perceptible por un gap de 1-2mm sobre una hoja de
   // varios cm.
-  const rect = computeCellRectMm(bookPageSize.w, bookPageSize.h, def, slotIdx, 0);
+  const rect = bookCellRectInPage(bookPageSize.w, bookPageSize.h, def, slotIdx, 0);
 
   bookFrameFileId = fileId;
   bookFramePageIdx = pageIdx;
@@ -8717,7 +9208,7 @@ function confirmBookFrame() {
   // que limpia bookFramePageIdx/bookFrameSlotIdx.
   const editedPage = bookPages[bookFramePageIdx];
   const editedFrameAspect = editedPage
-    ? (() => { const r = computeCellRectMm(bookPageSize.w, bookPageSize.h, bookLayoutDef(editedPage.layout), bookFrameSlotIdx, 0); return r.w / r.h; })()
+    ? (() => { const r = bookCellRectInPage(bookPageSize.w, bookPageSize.h, bookLayoutDef(editedPage.layout), bookFrameSlotIdx, 0); return r.w / r.h; })()
     : 1;
   closeBookFrameModal();
   // Bug real (v2.25): acá antes se llamaba a renderBookReorderGrid(), un
@@ -8739,6 +9230,7 @@ function confirmBookFrame() {
     const img = cell.querySelector('img');
     if (img) applyBookFramingTransform(img, editedFileId, editedFrameAspect);
   });
+  if (bookEditorIdx !== null) refreshBookEditorSheet();
   persistBookLayout().catch(e => console.warn('No se pudo guardar el encuadre:', e));
 }
 
@@ -9761,10 +10253,6 @@ function diaryFabSheetRowsHtml() {
         <span class="bottom-sheet-icon">${icon('shuffle')}</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">Recrear libro</span></span>
       </button>` : ''}
-      <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(toggleBookText,50)">
-        <span class="bottom-sheet-icon">Aa</span>
-        <span class="bottom-sheet-text"><span class="bottom-sheet-label">${bookShowText ? 'Ocultar' : 'Mostrar'} texto</span></span>
-      </button>
       <button class="bottom-sheet-row" onclick="closeDiaryFabSheet();setTimeout(playCurrentAlbum,50)">
         <span class="bottom-sheet-icon">${icon('play')}</span>
         <span class="bottom-sheet-text"><span class="bottom-sheet-label">Reproducir álbum</span></span>

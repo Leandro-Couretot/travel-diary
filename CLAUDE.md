@@ -486,6 +486,7 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
+- v2.155 · Fotolibro: editor de página por página, margen fijo, página 1 en blanco y título/pie/fecha (entrega 2 del rediseño)
 - v2.154 · Fotolibro oculto salvo para las cuentas de prueba (lcouretot y luffiguls)
 - v2.153 · Ayuda más corta, con temas que se abren al tocarlos
 - v2.152 · "Invitar con QR" como opción propia del menú "⋯"

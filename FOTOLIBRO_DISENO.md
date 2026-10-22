@@ -68,7 +68,7 @@ Para después del mockup:
 
 **Entregas propuestas (cada una a producción por separado, probando en el celular entre una y otra):**
 1. Tapa (paso 1 del mockup), guardada en el fotolibro. **Hecho en v2.151 (ver HISTORIAL.md).** La página 1 en blanco queda para la entrega 2.
-2. Páginas (paso 2): página por página, bandeja de fotos sin usar, "+" que suma la primera sin usar, título, pie y fecha.
+2. Páginas (paso 2): página por página, bandeja de fotos sin usar, "+" que suma la primera sin usar, título, pie y fecha. **Hecho en v2.155 (ver HISTORIAL.md)**, con dos decisiones nuevas del usuario (22/oct): margen blanco fijo en los cuatro lados, con el título y el pie en el margen (las fotos no cambian de tamaño), y la fecha automática como rango ("13 al 15 de agosto de 2026") pero editable a mano. La página 1 en blanco también quedó hecha.
 3. Revisar (paso 3): grilla con tapa, páginas y contratapa, chequeos y arrastre. Se saca la grilla vieja.
 4. Pedido y pago: precio por hoja con 20% Pro, datos de envío, pago único con Mercado Pago, archivo para imprimir, mails al usuario y a la esposa. Se saca el PDF gratis.
 
