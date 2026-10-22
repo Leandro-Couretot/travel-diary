@@ -486,8 +486,8 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
-- v2.152 · "Invitar con QR" como opción propia del menú "⋯" (sin deployar, va junto con v2.151)
-- v2.151 · Fotolibro: tapa y contratapa (entrega 1 del rediseño; código listo, sin deployar hasta acordar la novedad)
+- v2.152 · "Invitar con QR" como opción propia del menú "⋯"
+- v2.151 · Fotolibro: tapa y contratapa (entrega 1 del rediseño)
 - v2.150 · Ayuda: sección "Instalar la app" con los pasos del dispositivo
 - v2.149 · Novedades sin repetir y con reglas
 - v2.148 · Notificaciones: un interruptor por tipo y el modal se pinta al toque
@@ -820,6 +820,7 @@ Ver convención #8. Este registro es la memoria de cómo le gusta al usuario que
 | 2.147 | "Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto." + "Activá las notificaciones desde el menú de notificaciones, tocando tu foto de perfil." (misma primera frase en `version.json`) | Primera frase sí, es la redacción del usuario. La segunda la agregó Claude sin confirmar, por si no se entendía dónde activarlas. |
 | 2.149 | Limpieza: notificaciones queda en una sola entrada, "Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto. Activalas desde Notificaciones, tocando tu foto de perfil." (versión 2.147). Se reescribió 2.103 sin iPhone y se sacó 2.94. | Sí, el usuario dijo "Dale" a este texto. |
 | 2.148 | (sin novedad: el usuario pidió "Sin novedad" para el rediseño del modal en interruptores por tipo; `version.json` conserva la frase de 2.147) | n/a |
+| 2.151-2.152 | (sin novedad: tapa del fotolibro e "Invitar con QR". Claude propuso no contarlo porque el fotolibro está a medio rehacer y el QR es un cambio de lugar; el usuario dijo "Ok dale". `version.json` conserva la frase de 2.147) | n/a |
 
 **Correcciones del usuario** (completar acá a medida que las dé):
 - 21/oct/2026: en los avisos push no hay que aclarar que no se notifica cuando se borra o se reordena algo. Moraleja: contar lo que sí pasa, no enumerar lo que no pasa.
