@@ -739,6 +739,13 @@ audio { width: 100%; height: 32px; }
 .help-section-title { font-family: 'DM Serif Display', serif; font-size: 1rem; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem; }
 .help-item { display: flex; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.83rem; line-height: 1.5; color: var(--ink); }
 .help-item-dot { color: var(--accent); flex-shrink: 0; margin-top: 0.05rem; }
+/* v2.153: temas de Ayuda que se abren al tocarlos */
+.help-topic { padding: 0 1.5rem; }
+.help-topic > summary { list-style: none; cursor: pointer; margin: 0; padding: 0.9rem 0; }
+.help-topic > summary::-webkit-details-marker { display: none; }
+.help-topic > summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border-right: 1.5px solid var(--ink-muted); border-bottom: 1.5px solid var(--ink-muted); transform: rotate(45deg); transition: transform 0.2s; flex-shrink: 0; }
+.help-topic[open] > summary::after { transform: rotate(-135deg); }
+.help-topic[open] { padding-bottom: 0.9rem; }
 .help-tip { font-size: 0.78rem; color: var(--ink-muted); background: var(--accent-light); border-radius: var(--radius); padding: 0.5rem 0.75rem; margin-top: 0.5rem; line-height: 1.5; }
 .help-version { padding: 0.6rem 1.5rem 1rem; font-size: 0.72rem; color: var(--ink-faint); text-align: right; letter-spacing: 0.04em; }
 
@@ -1635,36 +1642,29 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-help">
   <div class="modal help-modal">
-    <div class="modal-header"><div class="modal-title">¿Cómo usar la app?</div><button class="modal-close" onclick="closeHelp()">×</button></div>
-    <div class="help-section"><div class="help-section-title"><span data-icon="albums"></span> Tus álbumes</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Cada álbum agrupa los recuerdos que quieras. Tocá <strong>Nuevo álbum</strong> para crear uno.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá la tarjeta de un álbum para entrar al diario.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Desde el menú de un álbum podés compartirlo o reproducir el slideshow.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>En el slideshow, tocá a la derecha para pasar a la siguiente, a la izquierda para volver, y dejá el dedo apoyado para pausar.</span></div>
-    </div>
-    <div class="help-section"><div class="help-section-title"><span data-icon="upload"></span> Agregar fotos y videos</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá "Agregar fotos y videos" para subir muchos a la vez. La app los ordena por día automáticamente.</span></div>
-    </div>
-    <div class="help-section"><div class="help-section-title"><span data-icon="calendar"></span> El diario</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Navegá entre días con las flechas o tocando la fecha.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tabs: <strong>Galería</strong> con todas las fotos y videos, <strong>Calendario</strong> para ver el álbum por fecha (tocá un día para abrirlo y escribir notas), <strong>Fotolibro</strong> para armar el libro.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá una foto para verla en pantalla completa. Arrastrá la manija para reordenar.</span></div>
-      <div class="help-tip">Acordate de tocar <strong>Guardar día</strong> antes de cambiar de día.</div>
-    </div>
-    <div class="help-section"><div class="help-section-title"><span data-icon="mic"></span> Grabar audio</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Tocá el micrófono para grabar. Tocá el mismo botón para detener y guardar.</span></div>
-      <div class="help-tip">Plan gratis: hasta 4 audios en la cuenta (subidos o grabados). Borrá alguno para agregar otro, o pasate a Pro para no tener límite.</div>
-    </div>
-    <div class="help-section"><div class="help-section-title"><span data-icon="book"></span> Fotolibro</div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>Se ve como varias páginas en miniatura, cada una con la proporción real de la hoja. Arrastrá la manija de una página para cambiarla de lugar, tocá el + entre páginas para agregar una ahí, o movés fotos entre páginas / al "sin ubicar".</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>El menú <strong>···</strong> del header suma <strong>Tamaño de hoja</strong>, <strong>Agregar página</strong> y <strong>Recrear libro</strong> (rearma todo al azar), más un toggle para mostrar/ocultar la fecha y el texto de cada foto.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span>El ícono de encuadre de cada foto abre un editor para encuadrarla. Movela y acercala (pellizcar o la rueda del mouse) para elegir qué parte se ve, se aplica igual en pantalla y en el PDF.</span></div>
-      <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas. Avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño (encuadrar con mucho zoom también puede bajarla).</span></div>
-      <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
-    </div>
-    <div class="help-section" id="help-install-section"><div class="help-section-title"><span data-icon="download"></span> Instalar la app</div>
+    <div class="modal-header"><div class="modal-title">Ayuda</div><button class="modal-close" onclick="closeHelp()">×</button></div>
+    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="album-new"></span> Crear un álbum</summary>
+      <div class="help-item"><span>Tocá el <strong>+</strong> de la pantalla de inicio y elegí <strong>Álbum nuevo</strong>.</span></div>
+    </details>
+    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="upload"></span> Agregar fotos y videos</summary>
+      <div class="help-item"><span>Desde el <strong>+</strong>, en el inicio o adentro de un álbum. Se ordenan solos por fecha.</span></div>
+    </details>
+    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="share"></span> Compartir</summary>
+      <div class="help-item"><span>En el <strong>⋯</strong> del álbum: <strong>Compartir álbum</strong> para invitar por mail (puede ver o editar), o <strong>Invitar con QR</strong> para que en un evento todos sumen sus fotos.</span></div>
+    </details>
+    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="play"></span> Ver el álbum como presentación</summary>
+      <div class="help-item"><span>Tocá <strong>Reproducir</strong> en el <strong>⋯</strong> del álbum. Tocá a la derecha para avanzar, a la izquierda para volver, y dejá el dedo apoyado para pausar.</span></div>
+    </details>
+    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="book"></span> Fotolibro</summary>
+      <div class="help-item"><span>En la pestaña <strong>Fotolibro</strong> diseñás la tapa y armás las páginas.</span></div>
+    </details>
+    <details class="help-section help-topic" id="help-install-section"><summary class="help-section-title"><span data-icon="download"></span> Instalar la app</summary>
       <div id="help-install-body"></div>
-    </div>
+    </details>
+    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="sparkle"></span> Plan gratis</summary>
+      <div class="help-item"><span>Con el plan gratis tenés hasta 4 álbumes y 4 audios.</span></div>
+      <button type="button" class="btn btn-secondary" style="margin-top:0.4rem;" onclick="closeHelp();openSubscribeModal()">Ver Pro</button>
+    </details>
     <div class="help-section" id="debug-plan-section">
       <div class="help-section-title">🧪 Debug: forzar plan</div>
       <div class="help-item"><span>Estado actual: <strong id="debug-plan-status">Real</strong></span></div>
@@ -1716,7 +1716,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.152';
+const APP_VERSION = '2.153';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -5420,7 +5420,7 @@ function openHelpInstall() {
   closeNotificationsModal();
   openHelp();
   const sec = document.getElementById('help-install-section');
-  if (sec) setTimeout(() => sec.scrollIntoView({ block: 'start' }), 50);
+  if (sec) { sec.open = true; setTimeout(() => sec.scrollIntoView({ block: 'start' }), 50); }
 }
 function closeHelp() { document.getElementById('modal-help').classList.remove('open'); }
 

@@ -486,6 +486,7 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
+- v2.153 · Ayuda más corta, con temas que se abren al tocarlos
 - v2.152 · "Invitar con QR" como opción propia del menú "⋯"
 - v2.151 · Fotolibro: tapa y contratapa (entrega 1 del rediseño)
 - v2.150 · Ayuda: sección "Instalar la app" con los pasos del dispositivo
