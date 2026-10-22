@@ -72,6 +72,10 @@ Para después del mockup:
 3. Revisar (paso 3): grilla con tapa, páginas y contratapa, chequeos y arrastre. Se saca la grilla vieja.
 4. Pedido y pago: precio por hoja con 20% Pro, datos de envío, pago único con Mercado Pago, archivo para imprimir, mails al usuario y a la esposa. Se saca el PDF gratis.
 
+**Idea del usuario para el último paso (22/oct):** en vez de "Generar PDF", el paso final es pedir el libro (el usuario lo llamó "agregar al carrito"). Ahí se piden los datos de envío y se aclara que el pedido lo revisa una persona antes de imprimirlo y que tarda unos 14 días. Después se muestra el pago con Mercado Pago.
+
+**Mercado Envíos (investigado el 22/oct, sin confirmar):** Checkout Pro con la API de Preferencias acepta un bloque `shipments` con `mode: "me2"` y las medidas y el peso del paquete; con eso Mercado Pago pide la dirección, calcula el costo del envío y da la etiqueta. La documentación de Argentina no lo confirmó, y la cuenta de Mercado Pago tiene que tener Mercado Envíos habilitado (no siempre está disponible fuera de Mercado Libre). Además Mercado Pago recomienda la API de Orders para integraciones nuevas. Pendiente: que el usuario revise en su cuenta si tiene Mercado Envíos, o consultarlo a soporte de Mercado Pago. Plan B: envío con costo fijo (o incluido en el precio) y la esposa lo despacha por Correo Argentino o Andreani.
+
 **Dudas abiertas de la entrega 4** (preguntadas al usuario el 22/oct, sin respuesta todavía): si se cobra por página con fotos o por hoja física (dos caras); si el usuario puede seguir descargando el PDF; envío (cobro aparte o incluido, solo Argentina, qué datos pedir); qué archivo necesita la esposa para imprimir (si imprime ella o manda a una imprenta); dónde queda el archivo (propuesta: en el Drive del usuario, compartido con la esposa); proveedor de mails (propuesta: Resend, con el dominio verificado en Cloudflare). También hay que actualizar `privacy.html` y `terms.html` (venta de un producto físico, datos de envío, la esposa ve las fotos del libro) y retomar la inscripción ante la AAIP (ver "Pendientes conocidos" de CLAUDE.md).
 
 ## Notas técnicas del artefacto
