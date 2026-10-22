@@ -786,14 +786,14 @@ audio { width: 100%; height: 32px; }
    compartido por email. */
 .share-access-section { margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--ink-faint); }
 .share-access-heading { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.6rem; }
-.share-access-group-label { font-size: 0.68rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; margin: 0.6rem 0 0.4rem; }
+.share-access-group-label { font-size: 0.68rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0.6rem 0 0.4rem; }
 .share-access-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0; border-bottom: 1px solid var(--ink-faint); }
 .share-access-row:last-child { border-bottom: none; }
 .share-access-row-info { display: flex; flex-direction: column; font-size: 0.78rem; color: var(--ink); overflow: hidden; min-width: 0; }
 .share-access-row-info span:first-child { word-break: break-all; }
 .share-access-row-role { font-size: 0.68rem; color: var(--ink-muted); }
 .share-access-revoke-btn { flex-shrink: 0; background: none; border: none; color: var(--red); font-size: 0.74rem; cursor: pointer; padding: 0.2rem 0.4rem; }
-.share-access-empty { font-size: 0.78rem; color: var(--ink-faint); margin-bottom: 0.5rem; }
+.share-access-empty { font-size: 0.78rem; color: var(--ink-muted); margin-bottom: 0.5rem; }
 .share-access-joined-note { font-size: 0.78rem; color: var(--ink-muted); margin-top: 0.4rem; }
 .bulk-drop-zone { border: 1.5px dashed var(--ink-faint); border-radius: var(--radius-lg); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg); margin-bottom: 1.25rem; }
 .bulk-drop-zone:hover, .bulk-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
@@ -1492,10 +1492,10 @@ audio { width: 100%; height: 32px; }
 
 <div class="modal-overlay" id="modal-share-album">
   <div class="modal">
-    <div class="modal-header"><div class="modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
+    <div class="modal-header"><div class="modal-title" id="share-modal-title">Compartir álbum</div><button class="modal-close" onclick="closeShareModal()">×</button></div>
     <div class="modal-body">
       <div id="share-form-section">
-        <div class="form-field">
+        <div class="form-field" id="share-role-field">
           <label class="form-label">Elegí el rol</label>
           <div class="role-toggle" id="share-role-toggle">
             <button type="button" class="role-toggle-btn" data-role="reader" onclick="setShareRole('reader')">Puede ver</button>
@@ -1750,6 +1750,7 @@ document.getElementById('app-version-label').textContent = APP_VERSION;
 const ICON_PATHS = {
   play:    '<path d="M6 4l14 8-14 8V4z"/>',
   edit:    '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+  qr:      '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2"/>',
   share:   '<circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.1 10.6l7.7-4.3M8.1 13.4l7.7 4.3"/>',
   more:    '<circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
   upload:  '<path d="M12 15.5V4M7 9l5-5 5 5"/><path d="M4 15.5v3.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5"/>',
@@ -3722,6 +3723,7 @@ function toggleAlbumMenu(event, album, wrapper) {
     <button class="diary-menu-item" data-action="edit"><span class="diary-menu-item-icon">${icon('edit')}</span> Editar álbum</button>
     <button class="diary-menu-item" data-action="bulk"><span class="diary-menu-item-icon">${icon('upload')}</span> Agregar fotos y videos</button>
     <button class="diary-menu-item" data-action="share"><span class="diary-menu-item-icon">${icon('share')}</span> Compartir álbum</button>
+    <button class="diary-menu-item" data-action="qr"><span class="diary-menu-item-icon">${icon('qr')}</span> Invitar con QR</button>
     <button class="diary-menu-item" data-action="drive"><span class="diary-menu-item-icon">${icon('drive')}</span> Ver en Drive</button>
     <button class="diary-menu-item" data-action="archive"><span class="diary-menu-item-icon">${icon('archive')}</span> Archivar álbum</button>
     <button class="diary-menu-item danger" data-action="delete"><span class="diary-menu-item-icon">${icon('trash')}</span> Eliminar álbum</button>`;
@@ -3782,6 +3784,7 @@ async function handleAlbumMenuAction(action, album) {
   if (action === 'edit') { openEditAlbumModal(_noopEvent, album); return; }
   if (action === 'bulk') { openBulkUploadForAlbum(album.id); return; }
   if (action === 'share') { openShareModal(_noopEvent, album); return; }
+  if (action === 'qr') { openShareModal(_noopEvent, album, { qr: true }); return; }
   if (action === 'drive') {
     const fid = await getAlbumFolderId(album.id);
     window.open(`https://drive.google.com/drive/folders/${encodeURIComponent(fid)}`, '_blank', 'noopener');
@@ -4114,8 +4117,13 @@ let contributorInviteFolderId = null;
 const SHARE_ROLE_EXPLAIN = {
   reader: 'Puede ver todo el contenido del álbum (fotos, videos, notas), pero no puede subir nada, editar ni volver a compartirlo. Hace falta su email de Google para darle el permiso.',
   writer: 'Puede hacer lo mismo que vos en este álbum: subir y borrar fotos, editar notas, archivarlo o eliminarlo, y compartirlo con alguien más. Hace falta su email de Google para darle el permiso.',
-  contributor: 'Cualquiera con el link (sin pedirle el mail) puede sumar fotos a la galería. No ve Día/Mes/Libro, no edita notas, no vuelve a compartir. Puede borrar solo lo que subió él mismo.',
+  contributor: 'Ideal para eventos. Generá un link o un QR para que tus invitados sumen sus fotos y videos a este álbum, sin pedirles el mail. Ven todas las fotos y pueden borrar solo las que subieron ellos.',
 };
+// v2.152: el link/QR de Contribuidor tiene su propia entrada en el menú
+// "⋯" ("Invitar con QR") en vez de ser un tercer rol escondido en
+// "Compartir álbum" (pedido del usuario: para un casamiento no se
+// entendía dónde estaba el QR). Mismo modal, en otro modo.
+let shareQrMode = false;
 
 function setShareRole(role) {
   shareRole = role;
@@ -4127,16 +4135,18 @@ function setShareRole(role) {
   document.getElementById('share-contrib-expires-field').style.display = isContrib ? '' : 'none';
   const btn = document.getElementById('share-submit-btn');
   btn.style.display = '';
-  btn.textContent = isContrib ? 'Generar link de invitación' : 'Compartir y copiar link';
+  btn.textContent = isContrib ? 'Generar link y QR' : 'Compartir y copiar link';
   btn.onclick = isContrib ? submitContributorInvite : submitShare;
   document.getElementById('share-error').style.display = 'none';
   document.getElementById('share-success').style.display = 'none';
   if (!isContrib) setTimeout(() => document.getElementById('share-email').focus(), 50);
 }
 
-function openShareModal(event, album) {
+function openShareModal(event, album, opts = {}) {
   event.preventDefault(); event.stopPropagation();
   shareTargetAlbum = album;
+  shareQrMode = !!opts.qr && !album._shared;
+  document.getElementById('share-modal-title').textContent = shareQrMode ? 'Invitar con QR' : 'Compartir álbum';
   document.getElementById('share-email').value = '';
   document.getElementById('share-contrib-expires').value = '';
   document.getElementById('share-error').style.display = 'none';
@@ -4153,7 +4163,9 @@ function openShareModal(event, album) {
   // Contribuidor para él: shared_album_owner ya apunta a la dueña real,
   // no a este invitado, y el endpoint de creación no tiene ninguna forma
   // de distinguir "soy editor de este álbum ajeno" de "soy su dueña".
-  document.getElementById('share-role-contributor-btn').style.display = album._shared ? 'none' : '';
+  // v2.152: "Compartir álbum" queda solo con Puede ver / Puede editar.
+  document.getElementById('share-role-contributor-btn').style.display = 'none';
+  document.getElementById('share-role-field').style.display = shareQrMode ? 'none' : '';
   // v2.76: arranca sin ningún rol elegido — ni explicación, ni campo de
   // mail, ni botón — para que el usuario elija a conciencia antes de ver
   // nada más (pedido explícito: "selecciona el rol... se abre una
@@ -4164,12 +4176,14 @@ function openShareModal(event, album) {
   document.getElementById('share-email-field').style.display = 'none';
   document.getElementById('share-contrib-expires-field').style.display = 'none';
   document.getElementById('share-submit-btn').style.display = 'none';
+  if (shareQrMode) setShareRole('contributor');
   document.getElementById('modal-share-album').classList.add('open');
   loadShareAccessControl(album);
 }
 function closeShareModal() {
   document.getElementById('modal-share-album').classList.remove('open');
   shareTargetAlbum = null;
+  shareQrMode = false;
   contributorInviteToken = null;
   contributorInviteFolderId = null;
 }
@@ -4211,8 +4225,9 @@ async function loadShareAccessControl(album) {
     ]);
     if (shareTargetAlbum !== album) return;
     loadingEl.style.display = 'none';
-    renderShareAccessDriveList(perms, folderId);
-    renderShareAccessContribList(contrib, folderId);
+    // v2.152: cada modo muestra solo sus accesos.
+    if (shareQrMode) renderShareAccessContribList(contrib, folderId);
+    else renderShareAccessDriveList(perms, folderId);
   } catch (e) {
     if (shareTargetAlbum !== album) return;
     loadingEl.textContent = 'No se pudo cargar el control de accesos.';
@@ -4244,10 +4259,10 @@ function renderShareAccessContribList(contrib, folderId) {
         <div class="share-access-row-info"><span>Link activo${inv.expiresAt ? ` · vence el ${formatDate(inv.expiresAt.slice(0, 10))}` : ''}</span></div>
         <button class="share-access-revoke-btn" data-token="${escHtml(inv.token)}">Revocar</button>
       </div>`).join('')
-    : '<div class="share-access-empty">No hay ningún link de Contribuidor activo.</div>';
+    : '<div class="share-access-empty">Todavía no generaste ningún link.</div>';
   const n = contrib.joinedCount;
-  const joinedHtml = `<div class="share-access-joined-note">${n} persona${n === 1 ? '' : 's'} se uni${n === 1 ? 'ó' : 'eron'} como contribuidor hasta ahora.</div>`;
-  el.innerHTML = `<div class="share-access-group-label">Links de Contribuidor</div>${invitesHtml}${joinedHtml}`;
+  const joinedHtml = n ? `<div class="share-access-joined-note">${n} persona${n === 1 ? ' se sumó' : 's se sumaron'} con el link o el QR.</div>` : '';
+  el.innerHTML = `<div class="share-access-group-label">Links activos</div>${invitesHtml}${joinedHtml}`;
   el.style.display = '';
   el.querySelectorAll('.share-access-revoke-btn[data-token]').forEach(btn => {
     btn.addEventListener('click', () => revokeContribAccessRow(folderId, btn.dataset.token));
