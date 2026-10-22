@@ -57,6 +57,23 @@ Para después del mockup:
 - Otro diseño con foto (por ejemplo foto en recuadro con el texto debajo): no hace falta para cerrar.
 - Probar todo en el celular (nada se probó todavía con el dedo): arrastre con pulsación larga, degradé de la tapa en los cuatro diseños, panel de texto de las páginas y botón Foto.
 
+## Pasar a la app: plan y modelo de negocio (22/oct/2026)
+
+**Modelo de negocio del fotolibro (decisión del usuario, 22/oct):** el libro impreso se vende. Se paga por hoja con fotos (precio todavía sin definir), el usuario Pro tiene 20% de descuento y el Free paga precio lleno. Pago único con Mercado Pago. Con el pago confirmado se manda un mail de confirmación al usuario y a la esposa del usuario; ella imprime el libro y lo envía por correo. Se saca el "1 PDF gratis por mes" (v1.59).
+
+**Decisiones ya tomadas:**
+- Todos los libros existentes suman una página en blanco adelante (la página 1 del mockup), sin mover ni perder fotos.
+- En el lomo no va nada.
+- Colores iniciales de la tapa: los del mockup (verde), hasta que llegue la paleta del brandbook.
+
+**Entregas propuestas (cada una a producción por separado, probando en el celular entre una y otra):**
+1. Tapa (paso 1 del mockup), guardada en el fotolibro.
+2. Páginas (paso 2): página por página, bandeja de fotos sin usar, "+" que suma la primera sin usar, título, pie y fecha.
+3. Revisar (paso 3): grilla con tapa, páginas y contratapa, chequeos y arrastre. Se saca la grilla vieja.
+4. Pedido y pago: precio por hoja con 20% Pro, datos de envío, pago único con Mercado Pago, archivo para imprimir, mails al usuario y a la esposa. Se saca el PDF gratis.
+
+**Dudas abiertas de la entrega 4** (preguntadas al usuario el 22/oct, sin respuesta todavía): si se cobra por página con fotos o por hoja física (dos caras); si el usuario puede seguir descargando el PDF; envío (cobro aparte o incluido, solo Argentina, qué datos pedir); qué archivo necesita la esposa para imprimir (si imprime ella o manda a una imprenta); dónde queda el archivo (propuesta: en el Drive del usuario, compartido con la esposa); proveedor de mails (propuesta: Resend, con el dominio verificado en Cloudflare). También hay que actualizar `privacy.html` y `terms.html` (venta de un producto físico, datos de envío, la esposa ve las fotos del libro) y retomar la inscripción ante la AAIP (ver "Pendientes conocidos" de CLAUDE.md).
+
 ## Notas técnicas del artefacto
 
 - Formato Design: `<x-dc>` con `{{valores}}`, `<sc-if>`, `<sc-for>`, `onClick`/`onChange` (y `onPointerDown/Move/Up/Cancel` para el arrastre; hay que probarlos en el dispositivo real) y un `class Component extends DCLogic` con `renderVals()`.
