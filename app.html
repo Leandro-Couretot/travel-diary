@@ -1668,7 +1668,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.148';
+const APP_VERSION = '2.149';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2231,25 +2231,25 @@ function decidePostLoginOnboarding(isNewUser) {
 // esto — queda fija como el punto de corte real.
 const CHANGELOG_BASELINE_VERSION = '2.93';
 const USER_CHANGELOG = [
-  { version: '2.147', items: [
-    'Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto.',
-    'Activá las notificaciones desde el menú de notificaciones, tocando tu foto de perfil.',
+  { version: '2.147', topic: 'notificaciones', items: [
+    'Te notificamos cuando en un álbum compartido se sube contenido nuevo o se escribe algo en una foto. Activalas desde Notificaciones, tocando tu foto de perfil.',
   ]},
-  { version: '2.145', items: [
-    'Ahora podés recibir avisos en el celular cuando alguien agrega fotos o escribe algo en un álbum que compartís.',
-    'Se activan desde Notificaciones (tocando tu foto de perfil). En iPhone hace falta tener Legado instalada en la pantalla de inicio.',
+  { version: '2.116', topic: 'invitaciones', items: [
+    'Cuando alguien te comparta un álbum, te avisamos con un globito sobre tu foto de perfil. Tocala para ver las notificaciones y aceptar el álbum con un toque.',
   ]},
-  { version: '2.116', items: [
-    'Cuando alguien te comparta un álbum, te avisamos con un globito sobre tu foto de perfil, arriba a la derecha.',
-    'Tocala para ver las notificaciones y aceptar el álbum con un toque.',
-  ]},
-  { version: '2.103', items: [
-    '"Importar desde Drive" ahora funciona en iPhone: se abre el selector de archivos del teléfono y desde "Explorar" elegís Google Drive.',
-  ]},
-  { version: '2.94', items: [
-    'El aviso de "Novedades" ahora te sigue a tu cuenta, no al dispositivo — si entrás desde otro celular o compu, no repite lo que ya viste.',
+  { version: '2.103', topic: 'importar-drive', items: [
+    'Ahora podés traer fotos y videos desde Google Drive al agregarlos a un álbum: en el selector de archivos del teléfono elegí Google Drive.',
   ]},
 ];
+// Reglas para las novedades (acordadas con el usuario, 22/oct/2026):
+//  - Solo algo nuevo que el usuario pueda usar o que cambie algo que ya hacía.
+//    Nada de arreglos, retoques ni cambios internos.
+//  - Una frase por entrada. Cada entrada lleva un `topic`: si una cuenta
+//    acumula varias del mismo tema, se muestra solo la más nueva.
+//  - Máximo MAX_CHANGELOG_ITEMS frases por modal (las más nuevas).
+//  - Nunca nombrar iPhone, Android ni ningún sistema: la app no distingue el
+//    dispositivo del usuario.
+const MAX_CHANGELOG_ITEMS = 3;
 // Compara versiones "X.Y[.Z...]" numéricamente, no como texto — '2.10'
 // tiene que ganarle a '2.9'.
 function compareVersions(a, b) {
@@ -2270,12 +2270,20 @@ function maybeShowWhatsNewModal() {
     currentUserLastChangelogSeen = CHANGELOG_BASELINE_VERSION;
     return;
   }
-  const pending = USER_CHANGELOG
+  const unseen = USER_CHANGELOG
     .filter(e => compareVersions(e.version, lastSeen) > 0)
-    .sort((a, b) => compareVersions(a.version, b.version));
-  if (!pending.length) return; // nada nuevo desde la última vez que se le avisó a esta cuenta
-  const items = pending.flatMap(e => e.items);
-  const newestVersion = pending[pending.length - 1].version;
+    .sort((a, b) => compareVersions(b.version, a.version)); // de la más nueva a la más vieja
+  if (!unseen.length) return; // nada nuevo desde la última vez que se le avisó a esta cuenta
+  // Una sola entrada por tema: al recorrer de la más nueva a la más vieja, la primera gana.
+  const seenTopics = new Set();
+  const pending = unseen.filter(e => {
+    if (!e.topic) return true;
+    if (seenTopics.has(e.topic)) return false;
+    seenTopics.add(e.topic);
+    return true;
+  }).reverse(); // de la más vieja a la más nueva
+  const items = pending.flatMap(e => e.items).slice(-MAX_CHANGELOG_ITEMS);
+  const newestVersion = unseen[0].version;
   showOnboardingInfoModal({
     title: 'Novedades',
     itemsHtml: items.map(t => `<div class="help-item"><span class="help-item-dot">${icon('sparkle')}</span><span>${escHtml(t)}</span></div>`).join(''),
