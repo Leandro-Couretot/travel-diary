@@ -741,6 +741,8 @@ audio { width: 100%; height: 32px; }
 .help-item-dot { color: var(--accent); flex-shrink: 0; margin-top: 0.05rem; }
 /* v2.153: temas de Ayuda que se abren al tocarlos */
 .help-topic { padding: 0 1.5rem; }
+/* v2.154: el fotolibro queda solo para las cuentas de prueba (BOOK_TESTER_EMAILS). */
+body:not(.book-tester) .book-only { display: none !important; }
 .help-topic > summary { list-style: none; cursor: pointer; margin: 0; padding: 0.9rem 0; }
 .help-topic > summary::-webkit-details-marker { display: none; }
 .help-topic > summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border-right: 1.5px solid var(--ink-muted); border-bottom: 1.5px solid var(--ink-muted); transform: rotate(45deg); transition: transform 0.2s; flex-shrink: 0; }
@@ -1243,7 +1245,7 @@ audio { width: 100%; height: 32px; }
          (mientras se ve un día, "Calendario" queda marcado). -->
     <button class="diary-tab" data-tab="day" onclick="switchTab('day')" style="display:none;">Día</button>
     <button class="diary-tab" data-tab="month" onclick="switchTab('month')">Calendario</button>
-    <button class="diary-tab" data-tab="book" onclick="switchTab('book')">Fotolibro</button>
+    <button class="diary-tab book-only" data-tab="book" onclick="switchTab('book')">Fotolibro</button>
   </div>
   <input type="date" id="date-input" style="position:absolute;opacity:0;pointer-events:none;top:110px;right:1rem;">
 
@@ -1371,7 +1373,7 @@ audio { width: 100%; height: 32px; }
     <div class="modal-body">
       <div class="help-item"><span class="help-item-dot" data-icon="photo"></span><span>Guardá cada día con fotos, videos, notas y audio.</span></div>
       <div class="help-item"><span class="help-item-dot" data-icon="cloud"></span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
-      <div class="help-item"><span class="help-item-dot" data-icon="book"></span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
+      <div class="help-item book-only"><span class="help-item-dot" data-icon="book"></span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
       <label class="terms-check">
         <input type="checkbox" id="onboarding-terms-check">
         <span>Acepto los <a href="terms.html" target="_blank">Términos de Servicio</a> y la <a href="privacy.html" target="_blank">Política de Privacidad</a>.</span>
@@ -1585,7 +1587,7 @@ audio { width: 100%; height: 32px; }
         <div class="plan-compare-row plan-compare-head"><div></div><div>Free</div><div>Pro</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Álbumes</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitados</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Audio</div><div class="plan-compare-free">Hasta 4</div><div class="plan-compare-pro">Ilimitado</div></div>
-        <div class="plan-compare-row"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
+        <div class="plan-compare-row book-only"><div class="plan-compare-label">Fotolibro (PDF)</div><div class="plan-compare-free">1 por mes</div><div class="plan-compare-pro">Ilimitado</div></div>
         <div class="plan-compare-row"><div class="plan-compare-label">Borrar objetos (IA)</div><div class="plan-compare-soon">Próximamente</div><div class="plan-compare-soon">Próximamente</div></div>
       </div>
       <p style="margin:1rem 0 1.25rem;color:var(--ink-muted);font-size:0.85rem;line-height:1.5;">Tus fotos ya viven gratis en tu Drive, activo o no. Pro es para no tener que archivar ni eliminar álbumes viejos cada vez que sumás uno nuevo.</p>
@@ -1655,7 +1657,7 @@ audio { width: 100%; height: 32px; }
     <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="play"></span> Ver el álbum como presentación</summary>
       <div class="help-item"><span>Tocá <strong>Reproducir</strong> en el <strong>⋯</strong> del álbum. Tocá a la derecha para avanzar, a la izquierda para volver, y dejá el dedo apoyado para pausar.</span></div>
     </details>
-    <details class="help-section help-topic"><summary class="help-section-title"><span data-icon="book"></span> Fotolibro</summary>
+    <details class="help-section help-topic book-only"><summary class="help-section-title"><span data-icon="book"></span> Fotolibro</summary>
       <div class="help-item"><span>En la pestaña <strong>Fotolibro</strong> diseñás la tapa y armás las páginas.</span></div>
     </details>
     <details class="help-section help-topic" id="help-install-section"><summary class="help-section-title"><span data-icon="download"></span> Instalar la app</summary>
@@ -1716,7 +1718,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.153';
+const APP_VERSION = '2.154';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2346,7 +2348,7 @@ function showWelcomeModal() {
     itemsHtml: `
       <div class="help-item"><span class="help-item-dot">${icon('photo')}</span><span>Creá un álbum por viaje, cumpleaños, embarazo, lo que quieras guardar, y cargá fotos, videos, notas y audio día por día.</span></div>
       <div class="help-item"><span class="help-item-dot">${icon('share')}</span><span>Compartí el álbum con tu familia: como <strong>"Puede editar"</strong> (suma contenido) o <strong>"Puede ver"</strong> (solo mira).</span></div>
-      <div class="help-item"><span class="help-item-dot">${icon('book')}</span><span>Armá un fotolibro con tus mejores fotos y exportalo en PDF, listo para imprimir.</span></div>
+      <div class="help-item book-only"><span class="help-item-dot">${icon('book')}</span><span>Armá un fotolibro con tus mejores fotos y exportalo en PDF, listo para imprimir.</span></div>
       <div class="help-item"><span class="help-item-dot">${icon('cloud')}</span><span>Todo vive en tu propio Google Drive. Vos sos dueño de tus recuerdos, siempre.</span></div>`,
     ctaLabel: 'Crear mi primer álbum',
     onCta: () => openNewAlbumModal(),
@@ -5925,6 +5927,9 @@ async function bootstrapDiaryPage() {
     // donde se estaba (Galería y Día ya quedan resueltos arriba).
     const restoreTab = diaryRestoreTab;
     diaryRestoreTab = null;
+    // v2.154: si la sesión todavía no confirmó el email, el Fotolibro se
+    // retoma recién cuando applyBookVisibility() sepa que es una cuenta de prueba.
+    if (restoreTab === 'book' && !currentUserEmail) pendingBookRestore = true;
     if (restoreTab && currentView === 'diary') switchTab(restoreTab);
     else if (!landOnDay) renderListTab();
     saveLastLocation();
@@ -6342,7 +6347,25 @@ async function runContributorUploads(items) {
 // v2.126: la tab Día está oculta y se llega desde Calendario, así que
 // mientras se ve un día el botón marcado es "Calendario".
 function diaryTabButtonFor(tab) { return tab === 'day' ? 'month' : tab; }
+// v2.154: el fotolibro está en rediseño y queda oculto para todos menos
+// las cuentas de prueba. La UI se esconde con la clase `book-only` (CSS
+// arriba) y applyBookVisibility() prende `book-tester` en el body cuando
+// la sesión confirma el email (billing.js la llama al resolverla).
+const BOOK_TESTER_EMAILS = ['lcouretot@gmail.com', 'luffiguls@gmail.com'];
+function canSeeBook() {
+  return !!currentUserEmail && BOOK_TESTER_EMAILS.includes(currentUserEmail.toLowerCase());
+}
+let pendingBookRestore = false;
+function applyBookVisibility() {
+  const allowed = canSeeBook();
+  document.body.classList.toggle('book-tester', allowed);
+  if (!allowed && currentTab === 'book' && currentView === 'diary') switchTab('list');
+  if (allowed && pendingBookRestore && currentView === 'diary' && currentTab === 'list') switchTab('book');
+  pendingBookRestore = false;
+}
+
 function switchTab(tab) {
+  if (tab === 'book' && !canSeeBook()) tab = 'list';
   closeDiaryFabSheet();
   if (selectionMode) exitSelectionMode();
   currentTab = tab;

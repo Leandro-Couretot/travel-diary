@@ -284,6 +284,7 @@ function applySessionResponse(data) {
   // reenviar datos viejos en cada reconexión futura, y para no dejarlos
   // pegados a la próxima cuenta que use este mismo navegador.
   if (typeof clearStoredUtmFirstTouch === 'function') clearStoredUtmFirstTouch();
+  if (typeof applyBookVisibility === 'function') applyBookVisibility();
 }
 
 // Pide un access_token de Drive nuevo usando el refresh_token guardado del
@@ -323,6 +324,7 @@ async function refreshSubscriptionStatus() {
       currentUserName = data.name || currentUserName;
       currentUserSub = data.sub || currentUserSub;
       currentUserLastChangelogSeen = data.lastChangelogSeen;
+      if (typeof applyBookVisibility === 'function') applyBookVisibility();
     }
   } catch (e) {
     console.warn('No se pudo refrescar el estado de suscripción:', e);
