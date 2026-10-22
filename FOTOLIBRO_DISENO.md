@@ -1,6 +1,6 @@
 # Fotolibro: avances del artefacto de diseño
 
-Estado al 22/oct/2026 (versión 20 del artefacto). Retomar desde acá.
+Estado al 22/oct/2026 (versión 21 del artefacto). Retomar desde acá.
 
 - **Artefacto (Design):** https://claude.ai/artifact/1swSxbxYkgivRmNgRRnqwz ("Fotolibro Legado")
 - **Archivo del artefacto:** `project/Main.dc.html` (un solo artboard de 390x844, `canvas.json` sin cambios). Para retomarlo: `Artifact` con `action: "read"` sobre la URL de arriba, leer `project/Main.dc.html`, editarlo y republicar en la misma URL con `root` y `file_path`.
@@ -36,7 +36,7 @@ Sin tabs adentro de tabs (la app ya tiene Galería / Calendario / Fotolibro). Ar
 - **La primera página va en blanco** (no repite el título de la tapa). Es fija: no se mueve ni se puede soltar otra antes de ella.
 - Páginas de capacidad fija: cada layout define sus lugares y los vacíos se muestran con un "+" punteado (mismo modelo que `book.json` v3 de la app).
 - Botón **Diseño** abre una hoja inferior con 7 layouts (1, 2, 2 lado a lado, 3, 3 B, 4, 4 B). Permite pasar una página de 2 fotos a una de 3: conserva las fotos que ya tenía, completa los lugares nuevos con "fotos sin usar" (o los deja vacíos) y devuelve las que sobran a "fotos sin usar".
-- Otros botones: Encuadrar (solo simulado, apunta al editor de encuadre que ya existe en la app), Texto (fecha y caption). No hay botón "Cambiar" (decisión del usuario, 22/oct): para cambiar una foto se toca la foto y después una de "Fotos sin usar", caption editable y bandeja de "Fotos sin usar".
+- Otros botones: Encuadrar (solo simulado, apunta al editor de encuadre que ya existe en la app), Texto (abre un panel con tres cosas, todas opcionales: **Título** arriba de las fotos, grande y centrado; **Pie de página** abajo, chico y en cursiva; y un interruptor para mostrar la **fecha** a la derecha del pie. Campo vacío = no se muestra nada; ya no hay interruptor de texto aparte). No hay botón "Cambiar" (decisión del usuario, 22/oct): para cambiar una foto se toca la foto y después una de "Fotos sin usar", y bandeja de "Fotos sin usar".
 
 ## Paso 3: Revisar e imprimir
 
