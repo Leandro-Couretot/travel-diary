@@ -1617,6 +1617,9 @@ audio { width: 100%; height: 32px; }
       <div class="help-item"><span class="help-item-dot">▸</span><span><strong>Exportar</strong> genera un PDF listo para imprimir, con el sangrado que elijas. Avisa (sin bloquear) si alguna foto queda con poca resolución para su tamaño (encuadrar con mucho zoom también puede bajarla).</span></div>
       <div class="help-tip">Plan gratis: 1 PDF por mes calendario. Se resetea el día 1, o pasate a Pro para exportar sin límite.</div>
     </div>
+    <div class="help-section" id="help-install-section"><div class="help-section-title"><span data-icon="download"></span> Instalar la app</div>
+      <div id="help-install-body"></div>
+    </div>
     <div class="help-section" id="debug-plan-section">
       <div class="help-section-title">🧪 Debug: forzar plan</div>
       <div class="help-item"><span>Estado actual: <strong id="debug-plan-status">Real</strong></span></div>
@@ -1668,7 +1671,7 @@ audio { width: 100%; height: 32px; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.149';
+const APP_VERSION = '2.150';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -2412,14 +2415,15 @@ let pushRenderToken = 0;
 let pushBusy = false;
 
 function pushStateMessage(state) {
-  if (state === 'needs_install') return 'En iPhone y iPad las notificaciones solo funcionan con la app instalada: en Safari tocá Compartir, después "Agregar a pantalla de inicio", y abrí Legado desde ese ícono. Después volvé acá para activarlas.';
+  if (state === 'needs_install') return 'Para recibir notificaciones primero tenés que instalar Legado en este dispositivo. Después volvé acá para activarlas.';
   if (state === 'unsupported') return 'Este navegador no permite recibir notificaciones.';
   if (state === 'denied') return 'Bloqueaste las notificaciones de Legado. Para activarlas, permitilas desde los ajustes del navegador o del teléfono y volvé acá.';
   return '';
 }
 function pushSettingsHtml(errMsg) {
   const blocked = pushUi.state !== 'ready';
-  const note = blocked ? `<p class="push-settings-text">${escHtml(pushStateMessage(pushUi.state))}</p>` : '';
+  const installBtn = pushUi.state === 'needs_install' ? '<button type="button" class="btn btn-secondary" style="margin:0 0 0.7rem;" onclick="openHelpInstall()">Cómo instalar</button>' : '';
+  const note = blocked ? `<p class="push-settings-text">${escHtml(pushStateMessage(pushUi.state))}</p>${installBtn}` : '';
   const rows = PUSH_KINDS.map(k => {
     const on = !blocked && !!pushUi[k.key];
     return `<div class="push-switch-row"><div class="push-switch-info"><span class="push-switch-label">${k.label}</span><span class="push-switch-desc">${k.desc}</span></div><button type="button" class="push-switch${on ? ' on' : ''}" id="push-sw-${k.key}" role="switch" aria-checked="${on}" aria-label="${k.label}" ${blocked || pushBusy ? 'disabled' : ''} onclick="togglePushKind('${k.key}')"></button></div>`;
@@ -5316,7 +5320,48 @@ function compressImageFile(file) {
 }
 
 // ─── Help & modals ────────────────────────────────────────
-function openHelp()  { updateDebugPlanStatus(); document.getElementById('modal-help').classList.add('open'); }
+function openHelp()  { updateDebugPlanStatus(); renderHelpInstall(); document.getElementById('modal-help').classList.add('open'); }
+// v2.150: sección "Instalar la app" en Ayuda. Muestra solo los pasos que
+// corresponden a este dispositivo (se detecta al abrir, no se guarda nada) y
+// nunca nombra el sistema: así quien cerró el cartel de instalar puede volver
+// a ver cómo se hace.
+function renderHelpInstall() {
+  const el = document.getElementById('help-install-body');
+  if (!el) return;
+  const item = t => `<div class="help-item"><span class="help-item-dot">▸</span><span>${t}</span></div>`;
+  let html;
+  if (isRunningAsPWA()) {
+    html = item('Ya tenés Legado instalada en este dispositivo.');
+  } else if (isIOS()) {
+    html = item('Abrí Legado desde <strong>Safari</strong> (otros navegadores no permiten instalarla).')
+      + item('Tocá el botón <strong>Compartir</strong> de la barra de Safari.')
+      + item('Scrolleá y tocá <strong>"Añadir a pantalla de inicio"</strong>, y después <strong>"Añadir"</strong>.')
+      + item('Abrí Legado desde el ícono nuevo de tu pantalla de inicio.');
+  } else if (deferredInstallPrompt) {
+    html = item('Tocá el botón para instalarla en este dispositivo.')
+      + '<button type="button" class="btn btn-secondary" style="margin-top:0.4rem;" onclick="installFromHelp()">Instalar ahora</button>';
+  } else if (/android/i.test(navigator.userAgent)) {
+    html = item('Abrí el menú <strong>⋮</strong> del navegador y tocá <strong>"Instalar app"</strong> o <strong>"Agregar a la pantalla principal"</strong>.');
+  } else {
+    html = item('En Chrome o Edge, tocá el ícono de instalar que aparece a la derecha de la barra de direcciones, o abrí el menú y elegí <strong>"Instalar Legado"</strong>.');
+  }
+  el.innerHTML = html;
+}
+async function installFromHelp() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  const { outcome } = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  if (outcome === 'accepted') localStorage.setItem('install_dismissed', '1');
+  renderHelpInstall();
+}
+// Abre Ayuda posicionada en "Instalar la app" (lo usa el panel de Notificaciones).
+function openHelpInstall() {
+  closeNotificationsModal();
+  openHelp();
+  const sec = document.getElementById('help-install-section');
+  if (sec) setTimeout(() => sec.scrollIntoView({ block: 'start' }), 50);
+}
 function closeHelp() { document.getElementById('modal-help').classList.remove('open'); }
 
 // ─── Debug: forzar plan (ver billing.js) ───────────────────────────
