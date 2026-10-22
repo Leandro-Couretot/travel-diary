@@ -1,6 +1,6 @@
 # Fotolibro: avances del artefacto de diseño
 
-Estado al 22/oct/2026 (versión 18 del artefacto). Retomar desde acá.
+Estado al 22/oct/2026 (versión 19 del artefacto). Retomar desde acá.
 
 - **Artefacto (Design):** https://claude.ai/artifact/1swSxbxYkgivRmNgRRnqwz ("Fotolibro Legado")
 - **Archivo del artefacto:** `project/Main.dc.html` (un solo artboard de 390x844, `canvas.json` sin cambios). Para retomarlo: `Artifact` con `action: "read"` sobre la URL de arriba, leer `project/Main.dc.html`, editarlo y republicar en la misma URL con `root` y `file_path`.
@@ -28,6 +28,8 @@ Sin tabs adentro de tabs (la app ya tiene Galería / Calendario / Fotolibro). Ar
   - **Tipografía del título:** Clásica (DM Serif Display), Elegante (Cormorant Garamond), Manuscrita (Nothing You Could Do), Moderna (Montserrat, mayúsculas espaciadas). El subtítulo queda siempre en DM Sans.
 - Diseño y color están separados (pedido del usuario). Se sacó el collage y la "Franja".
 - Referencia de estilo que mandó el usuario: tapa de tela clara con "Lu & Lea" en letra manuscrita rosa y "2025" en negrita espaciada, abajo y centrado. Es la base del diseño Rayado.
+
+- **Contratapa:** selector "Tapa | Contratapa" arriba de la vista previa. La contratapa es siempre lisa, con el mismo degradé arriba/abajo de la tapa (cambia sola si cambian los colores), sin texto, con el lomo del lado derecho. Sin controles propios; tiene un botón "Cambiar colores de la tapa". En el paso 3, tocar la contratapa abre esta vista. Duda: ¿le ponemos una marca chica de Legado abajo, o queda totalmente lisa?
 
 ## Paso 2: Páginas
 
