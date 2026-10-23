@@ -655,10 +655,32 @@ audio { width: 100%; height: 32px; }
 .bf-toast.show { opacity: 1; }
 .bf-input { width: 100%; box-sizing: border-box; height: 44px; border: 1px solid #d9d3c7; border-radius: 10px; padding: 0 12px; font-family: 'DM Sans', sans-serif; font-size: 16px; background: #fff; color: #1c1a17; }
 .bf-btn-light { width: 100%; height: 44px; border-radius: 12px; border: 1px solid #d9d3c7; background: #fff; color: #1c1a17; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; }
-.bf-cover { display: flex; flex-direction: column; }
-.bf-cover .cover-side-toggle { background: #ece6da; }
-.bf-cover .cover-inputs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-.bf-cover .cover-panel { background: #fff; border-color: #e3ddd1; }
+.bf-body.bf-body-cover { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 10px; }
+.bf-cover { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.bf-cover .cover-side-toggle { background: #ece6da; margin-bottom: 0.5rem; flex-shrink: 0; }
+.cover-preview-area { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; line-height: 0; }
+.cover-preview-area canvas { border-radius: 3px 6px 6px 3px; box-shadow: 4px 4px 0 #e6dfd2, 6px 6px 0 #d6cebf, 8px 12px 24px rgba(40,30,20,0.25); }
+.cover-preview-area.back canvas { border-radius: 6px 3px 3px 6px; box-shadow: -4px 4px 0 #e6dfd2, -6px 6px 0 #d6cebf, -8px 12px 24px rgba(40,30,20,0.25); }
+.bf-cover .cover-tools { flex-shrink: 0; gap: 6px; margin: 8px 0 0; }
+.bf-cover .cover-tool { height: 60px; padding: 0 2px; }
+.bf-cover .cover-tool-label { font-size: 11px; white-space: nowrap; }
+.bf-cover .cover-tools.six { gap: 4px; }
+.bf-cover .cover-tools.six .cover-tool-label { font-size: 10px; }
+.cover-strip { flex-shrink: 0; height: 132px; box-sizing: border-box; margin-top: 8px; background: #fff; border: 1px solid #e3ddd1; border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.cover-strip.cover-panel-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-content: center; gap: 6px; }
+.cover-strip.cover-panel-row { flex-direction: row; align-items: center; }
+.cover-strip-text { gap: 8px; }
+.cover-strip-colors { flex-direction: row; align-items: center; justify-content: space-around; }
+.cover-color-dot { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; color: #1c1a17; cursor: pointer; }
+.cover-color-dot input { width: 52px; height: 52px; padding: 0; border: 1px solid #d9d3c7; border-radius: 26px; background: none; cursor: pointer; overflow: hidden; }
+.cover-color-dot input::-webkit-color-swatch-wrapper { padding: 0; }
+.cover-color-dot input::-webkit-color-swatch { border: none; border-radius: 26px; }
+.cover-align-btn { flex: 1; height: 52px; border-radius: 10px; border: 1px solid #d9d3c7; background: #fff; color: #1c1a17; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.cover-align-btn.on { background: #1c1a17; border-color: #1c1a17; color: #fff; }
+.cover-strip-photos { flex-direction: row; align-items: center; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+.cover-strip-photos .cover-photo { flex: 0 0 96px; height: 96px; }
+.bf-cover .cover-back-note { flex-shrink: 0; margin: 10px 0; }
+.bf-cover .bf-btn-light { flex-shrink: 0; }
 .bf-pages { display: flex; flex-direction: column; align-items: center; }
 .bf-page-num { align-self: stretch; height: 36px; display: flex; align-items: center; font-size: 14px; color: #6b655b; }
 .bf-pages .bpe-stage { align-self: stretch; margin-bottom: 10px; }
@@ -1777,7 +1799,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.156';
+const APP_VERSION = '2.157';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -7370,6 +7392,7 @@ const COVER_TOOL_ICON = {
   align: 'M4 6h16M7 12h10M5.5 18h13',
   font: 'M5 19L12 5l7 14M8.5 14h7',
   photo: 'M4 6h16v12H4zM4 15l5-5 4 4 3-3 4 4M9 9.5h.01',
+  text: 'M5 6h14M12 6v13M9 19h6',
 };
 let bookCover = null; // lo guardado en book.json; null = todavía sin tocar (se usa defaultBookCover())
 
@@ -7587,9 +7610,19 @@ function coverChanged() {
   scheduleBookPersist();
 }
 
+// v2.157 (opción 2 del artefacto "Tapa del fotolibro: dos opciones",
+// elegida por el usuario): la tapa ocupa todo el alto libre del paso y
+// nunca se scrollea; abajo, una fila fija de botones (Diseño, Texto,
+// Color, Ubicación, Tipografía y Foto en el diseño Foto) y, al tocar uno,
+// una franja baja con sus opciones. La tapa se achica mientras la franja
+// está abierta, así se sigue viendo entera.
 function coverPreviewSize() {
-  const w = Math.min(260, (document.getElementById('book-cover-body')?.clientWidth || 300) - 20);
-  return { w, h: Math.round(w * bookPageSize.h / bookPageSize.w) };
+  const area = document.getElementById('cover-preview-area');
+  const ratio = bookPageSize.w / bookPageSize.h;
+  const availW = Math.max(80, (area?.clientWidth || 300) - 16);
+  const availH = Math.max(80, (area?.clientHeight || 300) - 16);
+  const w = Math.round(Math.min(availW, availH * ratio));
+  return { w, h: Math.round(w / ratio) };
 }
 function redrawCoverPreview() {
   const canvas = document.getElementById('book-cover-preview');
@@ -7597,43 +7630,48 @@ function redrawCoverPreview() {
   const { w, h } = coverPreviewSize();
   renderCoverCanvas(canvas, w, h, coverDraft, coverEditorSide);
 }
+window.addEventListener('resize', () => { if (bookFlowStep === 'cover' && document.getElementById('book-cover-preview')) redrawCoverPreview(); });
 
 function coverToolDefs() {
-  const c = coverDraft;
-  const design = BOOK_COVER_DESIGN_LIST.find(d => d.id === c.design);
-  const font = BOOK_COVER_FONT_LIST.find(f => f.id === c.font);
   const tools = [
-    { id: 'design', label: 'Diseño', value: design ? design.name : '' },
-    { id: 'color', label: 'Color', value: 'Arriba y abajo' },
-    { id: 'align', label: 'Ubicación', value: BOOK_COVER_ALIGN_NAMES[c.align] },
-    { id: 'font', label: 'Tipografía', value: font ? font.name : '' },
+    { id: 'design', label: 'Diseño' },
+    { id: 'text', label: 'Texto' },
+    { id: 'color', label: 'Color' },
+    { id: 'align', label: 'Ubicación' },
+    { id: 'font', label: 'Tipografía' },
   ];
-  if (c.design === 'full') tools.push({ id: 'photo', label: 'Foto', value: c.photoFileId ? 'Cambiar' : 'Elegir' });
+  if (coverDraft.design === 'full') tools.push({ id: 'photo', label: 'Foto' });
   return tools;
 }
 
 function coverPanelHtml() {
   const c = coverDraft;
   if (coverEditorPanel === 'design') {
-    return `<div class="cover-panel cover-panel-grid4">${BOOK_COVER_DESIGN_LIST.map(d => `
+    return `<div class="cover-strip cover-panel-grid4">${BOOK_COVER_DESIGN_LIST.map(d => `
       <button type="button" class="cover-option${c.design === d.id ? ' on' : ''}" onclick="pickCoverDesign('${d.id}')">
         <canvas class="cover-option-canvas" data-design="${d.id}"></canvas>
         <span>${d.name}</span>
       </button>`).join('')}</div>`;
   }
+  if (coverEditorPanel === 'text') {
+    return `<div class="cover-strip cover-strip-text">
+      <input class="bf-input" id="book-cover-title" maxlength="120" placeholder="Título" aria-label="Título" value="${escHtml(c.title)}" oninput="setCoverText('title', this.value)">
+      <input class="bf-input" id="book-cover-subtitle" maxlength="120" placeholder="Subtítulo" aria-label="Subtítulo" value="${escHtml(c.subtitle)}" oninput="setCoverText('subtitle', this.value)">
+    </div>`;
+  }
   if (coverEditorPanel === 'color') {
-    const row = (key, label) => `<label class="cover-color-row"><input type="color" value="${c[key]}" oninput="setCoverColor('${key}', this.value)"><span class="cover-color-label">${label}</span><span class="cover-color-hex" id="cover-hex-${key}">${c[key]}</span></label>`;
-    return `<div class="cover-panel"><div class="cover-grad-bar" id="cover-grad-bar" style="background:linear-gradient(to right, ${c.top}, ${c.bottom})"></div>${row('top', 'Color de arriba')}${row('bottom', 'Color de abajo')}${row('ink', 'Color del texto')}</div>`;
+    const dot = (key, label, aria) => `<label class="cover-color-dot"><input type="color" value="${c[key]}" aria-label="${aria}" oninput="setCoverColor('${key}', this.value)"><span>${label}</span></label>`;
+    return `<div class="cover-strip cover-strip-colors">${dot('top', 'Arriba', 'Color de arriba')}${dot('bottom', 'Abajo', 'Color de abajo')}${dot('ink', 'Texto', 'Color del texto')}</div>`;
   }
   if (coverEditorPanel === 'align') {
     const paths = { left: 'M4 6h16M4 12h10M4 18h13', center: 'M4 6h16M7 12h10M5.5 18h13', right: 'M4 6h16M10 12h10M7 18h13' };
-    return `<div class="cover-panel cover-panel-row">${['left', 'center', 'right'].map(a => `
-      <button type="button" class="cover-option cover-align${c.align === a ? ' on' : ''}" aria-label="${BOOK_COVER_ALIGN_NAMES[a]}" onclick="pickCoverAlign('${a}')">
+    return `<div class="cover-strip cover-panel-row">${['left', 'center', 'right'].map(a => `
+      <button type="button" class="cover-align-btn${c.align === a ? ' on' : ''}" aria-label="Texto a la ${BOOK_COVER_ALIGN_NAMES[a].toLowerCase()}" onclick="pickCoverAlign('${a}')">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${paths[a]}"></path></svg>
       </button>`).join('')}</div>`;
   }
   if (coverEditorPanel === 'font') {
-    return `<div class="cover-panel cover-panel-grid4">${BOOK_COVER_FONT_LIST.map(f => `
+    return `<div class="cover-strip cover-panel-grid4">${BOOK_COVER_FONT_LIST.map(f => `
       <button type="button" class="cover-option${c.font === f.id ? ' on' : ''}" onclick="pickCoverFont('${f.id}')">
         <span class="cover-font-sample" style="font-family:${f.fam.replace(/"/g, "'")};font-weight:${f.weight};font-size:${f.id === 'modern' ? 18 : 24}px">Aa</span>
         <span>${f.name}</span>
@@ -7641,9 +7679,9 @@ function coverPanelHtml() {
   }
   if (coverEditorPanel === 'photo') {
     const ids = [...bookPhotoByFileId.keys()];
-    if (!ids.length) return `<div class="cover-panel"><div class="cover-panel-note">Todavía no hay fotos en este álbum.</div></div>`;
-    return `<div class="cover-panel"><div class="cover-panel-note">Elegí la foto de la tapa</div><div class="cover-photo-grid">${ids.map(id => `
-      <button type="button" class="cover-photo${c.photoFileId === id ? ' on' : ''}" onclick="pickCoverPhoto('${id}')"><img data-cover-photo="${id}" alt=""></button>`).join('')}</div></div>`;
+    if (!ids.length) return `<div class="cover-strip"><div class="cover-panel-note">Todavía no hay fotos en este álbum.</div></div>`;
+    return `<div class="cover-strip cover-strip-photos">${ids.map(id => `
+      <button type="button" class="cover-photo${c.photoFileId === id ? ' on' : ''}" aria-label="Usar esta foto en la tapa" onclick="pickCoverPhoto('${id}')"><img data-cover-photo="${id}" alt=""></button>`).join('')}</div>`;
   }
   return '';
 }
@@ -7651,33 +7689,29 @@ function coverPanelHtml() {
 function renderBookCoverEditor() {
   const body = document.getElementById('book-cover-body');
   if (!body || !coverDraft) return;
-  const c = coverDraft;
   const front = coverEditorSide === 'front';
+  if (coverEditorPanel === 'photo' && coverDraft.design !== 'full') coverEditorPanel = null;
+  const tools = coverToolDefs();
   body.innerHTML = `
     <div class="cover-side-toggle">
       <button type="button" class="${front ? 'on' : ''}" onclick="setCoverSide('front')">Tapa</button>
       <button type="button" class="${front ? '' : 'on'}" onclick="setCoverSide('back')">Contratapa</button>
     </div>
-    <div class="cover-preview-wrap${front ? '' : ' back'}"><canvas id="book-cover-preview"></canvas></div>
+    <div class="cover-preview-area${front ? '' : ' back'}" id="cover-preview-area"><canvas id="book-cover-preview"></canvas></div>
     ${front ? `
-      <div class="cover-inputs">
-        <input class="bf-input" id="book-cover-title" maxlength="120" placeholder="Título" aria-label="Título" value="${escHtml(c.title)}" oninput="setCoverText('title', this.value)">
-        <input class="bf-input" id="book-cover-subtitle" maxlength="120" placeholder="Subtítulo" aria-label="Subtítulo" value="${escHtml(c.subtitle)}" oninput="setCoverText('subtitle', this.value)">
-      </div>
-      <div class="cover-tools">${coverToolDefs().map(t => `
+      ${coverPanelHtml()}
+      <div class="cover-tools${tools.length > 5 ? ' six' : ''}" style="grid-template-columns:repeat(${tools.length}, minmax(0, 1fr))">${tools.map(t => `
         <button type="button" class="cover-tool${coverEditorPanel === t.id ? ' on' : ''}" onclick="toggleCoverPanel('${t.id}')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${COVER_TOOL_ICON[t.id]}"></path></svg>
           <span class="cover-tool-label">${t.label}</span>
-          <span class="cover-tool-value">${escHtml(t.value)}</span>
         </button>`).join('')}</div>
-      ${coverPanelHtml()}
     ` : `
       <div class="cover-back-note">La contratapa no lleva texto ni foto y usa el mismo fondo que tu tapa. Si cambiás los colores de la tapa, cambia sola.</div>
       <button type="button" class="bf-btn-light" onclick="editCoverColorsFromBack()">Cambiar colores de la tapa</button>
     `}`;
   redrawCoverPreview();
   body.querySelectorAll('.cover-option-canvas').forEach(cv => {
-    renderCoverCanvas(cv, 56, Math.round(56 * bookPageSize.h / bookPageSize.w), { ...coverDraft, design: cv.dataset.design, title: coverDraft.title || ' ' }, 'front');
+    renderCoverCanvas(cv, 52, Math.round(52 * bookPageSize.h / bookPageSize.w), { ...coverDraft, design: cv.dataset.design, title: coverDraft.title || ' ' }, 'front');
   });
   body.querySelectorAll('img[data-cover-photo]').forEach(img => setAuthImg(img, img.dataset.coverPhoto, 'w200', isSharedAlbum ? albumFolderId : null));
 }
@@ -7982,6 +8016,7 @@ function bookFlowNext() {
 // ── Paso 1: tapa ──
 function renderBookFlowCover() {
   const body = document.getElementById('bf-body');
+  body.classList.add('bf-body-cover');
   body.innerHTML = `<div class="bf-cover" id="book-cover-body"></div>`;
   if (!coverDraft) coverDraft = { ...effectiveBookCover() };
   renderBookCoverEditor();

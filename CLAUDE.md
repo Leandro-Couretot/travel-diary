@@ -486,6 +486,7 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
+- v2.157 · Fotolibro, paso Tapa: la tapa siempre entera en pantalla, herramientas abajo (Diseño, Texto, Color, Ubicación, Tipografía)
 - v2.156 · Fotolibro con la experiencia del mockup: pantalla completa en 3 pasos (Tapa, Páginas, Revisar e imprimir)
 - v2.155 · Fotolibro: editor de página por página, margen fijo, página 1 en blanco y título/pie/fecha (entrega 2 del rediseño)
 - v2.154 · Fotolibro oculto salvo para las cuentas de prueba (lcouretot y luffiguls)

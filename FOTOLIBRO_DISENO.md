@@ -31,6 +31,8 @@ Sin tabs adentro de tabs (la app ya tiene Galería / Calendario / Fotolibro). Ar
 
 - **Contratapa:** selector "Tapa | Contratapa" arriba de la vista previa. La contratapa es siempre lisa (sin texto ni foto) y usa exactamente el mismo fondo que la tapa: el mismo degradé, y en *Rayado* también la misma tela con rayas, para que tapa y contratapa se vean del mismo color (pedido del usuario, 22/oct). Cambia sola si cambian los colores, con el lomo del lado derecho. Sin controles propios; tiene un botón "Cambiar colores de la tapa". En el paso 3, tocar la contratapa abre esta vista. Decisión del usuario (22/oct): queda siempre totalmente lisa.
 
+- **Actualización v2.157 (23/oct/2026):** en la app la tapa quedó como la opción 2 del artefacto "Tapa del fotolibro: dos opciones" (https://claude.ai/artifact/62JG5Xue4nGDrLTMhx2S8g), elegida por el usuario: la tapa ocupa todo el alto libre y nunca se scrollea; abajo una fila fija de botones en este orden: **Diseño, Texto, Color, Ubicación, Tipografía** (y Foto en el diseño Foto). Cada botón abre una franja baja con sus opciones y la tapa se achica para seguir viéndose entera. Título y subtítulo están dentro de Texto.
+
 ## Paso 2: Páginas
 
 - **La primera página va en blanco** (no repite el título de la tapa). Es fija: no se mueve ni se puede soltar otra antes de ella.
