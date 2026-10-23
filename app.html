@@ -1799,7 +1799,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.158';
+const APP_VERSION = '2.159';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -7221,7 +7221,23 @@ const BOOK_LAYOUTS = {
   'book-layout-4b': { label: '1 grande al costado', rows: [1, 1, 1], cols: [1.5, 1], cells: [
     { row: 0, col: 0, rowSpan: 3 }, { row: 0, col: 1 }, { row: 1, col: 1 }, { row: 2, col: 1 },
   ] },
+  // v2.159 (pedido del usuario): una foto con proporción fija, centrada en
+  // la página con blanco alrededor, para que una foto horizontal o vertical
+  // no quede recortada en cuadrado. `aspect` = ancho / alto de la foto.
+  'book-layout-1-11': { label: '1:1', aspect: 1, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
+  'book-layout-1-23': { label: '2:3', aspect: 2 / 3, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
+  'book-layout-1-32': { label: '3:2', aspect: 3 / 2, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
+  'book-layout-1-43': { label: '4:3', aspect: 4 / 3, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
 };
+
+// Rectángulo (en fracción de la caja: x, y, w, h entre 0 y 1) de la foto
+// de un layout con proporción fija: el más grande con esa proporción que
+// entra en la caja, centrado. `boxAspect` = ancho / alto de la caja.
+function bookAspectCellFraction(aspect, boxAspect) {
+  if (boxAspect > aspect) { const w = aspect / boxAspect; return { x: (1 - w) / 2, y: 0, w, h: 1 }; }
+  const h = boxAspect / aspect;
+  return { x: 0, y: (1 - h) / 2, w: 1, h };
+}
 
 function bookLayoutDef(layoutClass) {
   return BOOK_LAYOUTS[layoutClass] || BOOK_LAYOUTS['book-layout-1'];
@@ -7231,8 +7247,23 @@ function bookLayoutDef(layoutClass) {
 // clase genérica `.book-layout-grid`, solo `display:grid; gap:2px` fijo
 // en CSS) y ubica cada elemento de `cellEls` en su celda — ambos arrays
 // deben tener el mismo largo y orden que `def.cells`.
-function applyBookLayoutGrid(gridEl, layoutClass, cellEls) {
+// `boxAspect` (ancho / alto del lugar donde se dibuja la grilla) solo hace
+// falta para los layouts de proporción fija (v2.159).
+function applyBookLayoutGrid(gridEl, layoutClass, cellEls, boxAspect = 1) {
   const def = bookLayoutDef(layoutClass);
+  if (def.aspect) {
+    const f = bookAspectCellFraction(def.aspect, boxAspect);
+    gridEl.style.gridTemplateRows = '1fr';
+    gridEl.style.gridTemplateColumns = '1fr';
+    const cellEl = cellEls[0];
+    if (cellEl) {
+      cellEl.style.gridRow = cellEl.style.gridColumn = '1 / span 1';
+      cellEl.style.justifySelf = cellEl.style.alignSelf = 'center';
+      cellEl.style.width = `${f.w * 100}%`;
+      cellEl.style.height = `${f.h * 100}%`;
+    }
+    return;
+  }
   gridEl.style.gridTemplateRows = def.rows.map(r => `${r}fr`).join(' ');
   gridEl.style.gridTemplateColumns = def.cols.map(c => `${c}fr`).join(' ');
   cellEls.forEach((cellEl, i) => {
@@ -7267,6 +7298,10 @@ function bookGridTrackPositions(frs, totalSpaceMm, gapMm) {
 // (BOOK_LAYOUTS) que usa la pantalla, usada tanto por el chequeo de DPI
 // previo a exportar como por el dibujo real del PDF.
 function computeCellRectMm(pageWmm, pageHmm, def, cellIdx, gapMm) {
+  if (def.aspect) {
+    const f = bookAspectCellFraction(def.aspect, pageWmm / pageHmm);
+    return { x: f.x * pageWmm, y: f.y * pageHmm, w: f.w * pageWmm, h: f.h * pageHmm };
+  }
   const colsT = bookGridTrackPositions(def.cols, pageWmm, gapMm);
   const rowsT = bookGridTrackPositions(def.rows, pageHmm, gapMm);
   const cell = def.cells[cellIdx];
@@ -7879,7 +7914,7 @@ function buildBookPageSheet(page, idx, opts = {}) {
     grid.appendChild(cell);
     return cell;
   });
-  applyBookLayoutGrid(grid, page.layout, cellEls);
+  applyBookLayoutGrid(grid, page.layout, cellEls, box.w / box.h);
   const { title, footer, date } = bookPageTexts(page);
   if (title) {
     const t = document.createElement('div'); t.className = 'book-sheet-title';
@@ -8437,14 +8472,17 @@ const BOOK_LAYOUT_NAMES = {
   'book-layout-1': '1 foto', 'book-layout-2h': '2 apiladas', 'book-layout-2v': '2 lado a lado',
   'book-layout-3a': '3, grande arriba', 'book-layout-3b': '3, grande abajo',
   'book-layout-4a': '4 parejas', 'book-layout-4b': '4, grande al costado',
+  'book-layout-1-11': '1 foto 1:1', 'book-layout-1-23': '1 foto 2:3', 'book-layout-1-32': '1 foto 3:2', 'book-layout-1-43': '1 foto 4:3',
 };
+// Orden en el selector: los de una foto juntos.
+const BOOK_LAYOUT_ORDER = ['book-layout-1', 'book-layout-1-11', 'book-layout-1-32', 'book-layout-1-43', 'book-layout-1-23', 'book-layout-2h', 'book-layout-2v', 'book-layout-3a', 'book-layout-3b', 'book-layout-4a', 'book-layout-4b'];
 function openBookLayoutModal(idx) {
   const page = bookPages[idx];
   if (!page) return;
   bookLayoutModalPageIdx = idx;
   const container = document.getElementById('book-layout-options');
   container.innerHTML = '';
-  Object.keys(BOOK_LAYOUTS).forEach(layoutClass => {
+  BOOK_LAYOUT_ORDER.forEach(layoutClass => {
     container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_NAMES[layoutClass] || layoutClass, layoutClass, bookLayoutDef(layoutClass).cells.length, page.layout === layoutClass, () => chooseBookLayout(layoutClass)));
   });
   document.getElementById('modal-book-layout').classList.add('open');
@@ -8475,7 +8513,14 @@ function buildBookLayoutOption(label, previewLayoutClass, count, active, onClick
   preview.className = 'book-layout-preview book-layout-grid';
   const cellEls = [];
   for (let i = 0; i < count; i++) { const cell = document.createElement('div'); cell.className = 'bp'; preview.appendChild(cell); cellEls.push(cell); }
-  applyBookLayoutGrid(preview, previewLayoutClass, cellEls);
+  // v2.159: la miniatura tiene la forma de la caja de fotos de la hoja real,
+  // así "1 foto" y "1 foto 1:1" se distinguen en una hoja que no es cuadrada.
+  const box = bookPageSize ? bookContentBox(bookPageSize.w, bookPageSize.h) : { w: 64, h: 48 };
+  const boxAspect = box.w / box.h;
+  const pw = Math.min(64, 54 * boxAspect);
+  preview.style.width = `${pw}px`;
+  preview.style.height = `${pw / boxAspect}px`;
+  applyBookLayoutGrid(preview, previewLayoutClass, cellEls, boxAspect);
   btn.appendChild(preview);
   const labelEl = document.createElement('div'); labelEl.className = 'book-layout-option-label'; labelEl.textContent = label;
   btn.appendChild(labelEl);
@@ -8546,7 +8591,8 @@ async function recreateBookRandom() {
   while (i < allIds.length) {
     const maxCount = Math.min(4, allIds.length - i);
     const count = 1 + Math.floor(Math.random() * maxCount);
-    const options = BOOK_LAYOUTS_BY_COUNT[count] || ['book-layout-1'];
+    // Los de proporción fija (v2.159) se eligen a mano según la foto, nunca al azar.
+    const options = (BOOK_LAYOUTS_BY_COUNT[count] || ['book-layout-1']).filter(k => !bookLayoutDef(k).aspect);
     const layout = options[Math.floor(Math.random() * options.length)];
     newPages.push(buildFixedCapacityPage(allIds.slice(i, i + count), layout));
     i += count;
