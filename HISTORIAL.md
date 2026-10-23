@@ -8,6 +8,8 @@ Detalle completo de cada entrega (antes vivía en CLAUDE.md, en la sección "Fun
 
 ## Entregas
 
+- **Fotolibro: en hojas cuadradas "1 foto" se llama "1 foto 1:1"** (v2.161, sin novedad): pedido del usuario después de v2.160. En hojas casi cuadradas, donde "1 foto 1:1" se oculta, la opción "1 foto" del selector se muestra con el nombre "1 foto 1:1" para que quede claro que es la cuadrada. En hojas rectangulares sigue "1 foto" (ocupa toda la página) y aparte "1 foto 1:1". Solo cambia la etiqueta en `openBookLayoutModal()`; el layout guardado es el mismo.
+
 - **Fotolibro: "1 foto 1:1" solo en hojas rectangulares** (v2.160, sin novedad): el usuario notó que en su hoja 30 × 30 "1 foto" y "1 foto 1:1" se veían iguales (la caja de fotos de una hoja cuadrada es casi cuadrada: 270 × 255 mm). `openBookLayoutModal()` oculta "1 foto 1:1" cuando la caja de fotos está a menos de 12% de ser cuadrada, salvo que la página ya lo use. En hojas como A4 o 20 × 30 sigue apareciendo, porque ahí sí cambia (cuadrada en el medio contra toda la página). `node --check` del script principal.
 
 - **Fotolibro: cuatro diseños de una foto con proporción fija (1:1, 3:2, 4:3 y 2:3)** (v2.159, sin novedad: el fotolibro sigue oculto salvo para las cuentas de prueba): el usuario puso una foto horizontal en el diseño "1 foto" (hoja 30 × 30) y se recortaba en cuadrado. Se evaluaron tres caminos ("Foto entera" dentro de Encuadrar, diseños nuevos, o que "1 foto" se adapte sola) y el usuario eligió sumar diseños: **1:1, 2:3, 3:2 y 4:3**. "1 foto" (ocupa toda la caja de fotos) queda igual.
