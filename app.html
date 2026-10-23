@@ -1799,7 +1799,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.157';
+const APP_VERSION = '2.158';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -6115,7 +6115,7 @@ async function renderContributorGallery() {
       (isMine ? `<button class="contrib-photo-delete" data-idx="${i}" title="Borrar">${icon('trash', { size: '16px' })}</button>` : '');
     if (isMine) item.querySelector('.contrib-photo-delete').addEventListener('click', e => { e.stopPropagation(); deleteContributorPhoto(i); });
     item.addEventListener('click', () => openGalleryViewer(i));
-    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, albumFolderId, p.type === 'video');
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w400', i, albumFolderId, p.type === 'video');
     grid.appendChild(item);
   });
   wrap.appendChild(grid);
@@ -6959,7 +6959,7 @@ async function renderListTab() {
       // vez de llevar a la tab Día. "Ver el día" queda como botón adentro.
       openGalleryViewer(i);
     });
-    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w200', i, isSharedAlbum ? albumFolderId : null, p.type === 'video');
+    scheduleGalleryImgLoad(item.querySelector('.list-photo-img'), p.driveFileId, 'w400', i, isSharedAlbum ? albumFolderId : null, p.type === 'video');
     grid.appendChild(item);
   });
   wrap.appendChild(grid);
@@ -7841,8 +7841,13 @@ function buildBookPageSheet(page, idx, opts = {}) {
     }
     const cell = document.createElement('div'); cell.className = 'bp'; cell.dataset.fileId = photo.driveFileId;
     const imgEl = document.createElement('img'); imgEl.alt = '';
-    if (opts.editor) { setAuthImg(imgEl, photo.driveFileId, 'w800', isSharedAlbum ? albumFolderId : null); }
-    else { imgEl.loading = 'lazy'; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w200', idx, EAGER_BOOK_PAGES, isSharedAlbum ? albumFolderId : null); }
+    // v2.158: tamaños pensados para pantallas de alta densidad (3 píxeles
+    // reales por punto en un iPhone): la página abierta en el paso Páginas
+    // mide ~300 puntos de ancho, las miniaturas de Revisar ~110. Por debajo
+    // de 1000 px Drive reescala la miniatura bien (ver THUMBNAIL_LINK_MAX_WIDTH
+    // en drive.js); nunca se baja el original, que es solo para el PDF.
+    if (opts.editor) { setAuthImg(imgEl, photo.driveFileId, 'w960', isSharedAlbum ? albumFolderId : null); }
+    else { imgEl.loading = 'lazy'; scheduleBookImgLoad(imgEl, photo.driveFileId, 'w400', idx, EAGER_BOOK_PAGES, isSharedAlbum ? albumFolderId : null); }
     // Misma fuente (BOOK_LAYOUTS/bookCellRectInPage) que ya usa el editor
     // de encuadre y el export a PDF — necesaria acá para conocer la
     // proporción REAL de cada celda (frameAspect) y así aplicar el encuadre

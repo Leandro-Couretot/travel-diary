@@ -2826,7 +2826,11 @@ function setAuthImg(imgEl, fileId, size = 'w800', proxyFolderId = null, opts = {
       imgEl.onerror = null;
       await applyFullFileFallback(imgEl, fileId);
     };
-    imgEl.src = thumbLink;
+    // v2.158: con el ancho pedido. Sin esto Drive devuelve su miniatura por
+    // defecto (~220 px), y en la app instalada del iPhone (donde el primer
+    // nivel suele fallar por no tener la cookie de Google) las fotos se
+    // veían pixeladas: el fotolibro, la Galería, todo lo que pasaba por acá.
+    imgEl.src = _sizedThumbLink(thumbLink, requestedWidth);
   };
 }
 
