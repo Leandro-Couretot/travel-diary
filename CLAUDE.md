@@ -486,6 +486,7 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
+- v2.160 · Fotolibro: "1 foto 1:1" solo en hojas rectangulares (en las cuadradas es igual a "1 foto")
 - v2.159 · Fotolibro: cuatro diseños de una foto con proporción fija (1:1, 3:2, 4:3 y 2:3)
 - v2.158 · Fotos pixeladas en la app instalada: la miniatura de respaldo de Drive se pide con el tamaño correcto
 - v2.157 · Fotolibro, paso Tapa: la tapa siempre entera en pantalla, herramientas abajo (Diseño, Texto, Color, Ubicación, Tipografía)

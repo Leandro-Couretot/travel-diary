@@ -1799,7 +1799,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.159';
+const APP_VERSION = '2.160';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -8482,7 +8482,13 @@ function openBookLayoutModal(idx) {
   bookLayoutModalPageIdx = idx;
   const container = document.getElementById('book-layout-options');
   container.innerHTML = '';
+  // v2.160: en una hoja casi cuadrada "1 foto 1:1" es igual a "1 foto"
+  // (pedido del usuario: no mostrar dos opciones que se ven iguales). Solo
+  // aparece en hojas rectangulares, o si la página ya lo usa.
+  const box = bookContentBox(bookPageSize.w, bookPageSize.h);
+  const nearlySquare = Math.abs(box.w / box.h - 1) < 0.12;
   BOOK_LAYOUT_ORDER.forEach(layoutClass => {
+    if (layoutClass === 'book-layout-1-11' && nearlySquare && page.layout !== layoutClass) return;
     container.appendChild(buildBookLayoutOption(BOOK_LAYOUT_NAMES[layoutClass] || layoutClass, layoutClass, bookLayoutDef(layoutClass).cells.length, page.layout === layoutClass, () => chooseBookLayout(layoutClass)));
   });
   document.getElementById('modal-book-layout').classList.add('open');
