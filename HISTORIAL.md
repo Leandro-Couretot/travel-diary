@@ -8,6 +8,11 @@ Detalle completo de cada entrega (antes vivía en CLAUDE.md, en la sección "Fun
 
 ## Entregas
 
+- **Fotolibro: diseño "3 apiladas", tipo tira de cabina de fotos** (v2.162, sin novedad): pedido del usuario con una foto de ejemplo (tres fotos una abajo de la otra en una tira angosta y centrada). `BOOK_LAYOUTS` suma `book-layout-3s`: tres filas iguales, cada foto 4:3, así que la tira entera tiene `aspect: 4 / 9` y se centra en la caja de fotos con blanco a los costados (en hoja 30 × 30: fotos de 11,3 × 8,4 cm).
+  - El campo `aspect` pasa a valer para el grupo entero de fotos, no solo para una: `applyBookLayoutGrid()` achica la grilla con `padding` al rectángulo centrado (el padding vertical en % se mide sobre el ancho, por eso se divide por la proporción de la caja) y arma la grilla normal adentro. `computeCellRectMm()` (PDF, chequeo de DPI y encuadre) arma las filas y columnas dentro de ese mismo rectángulo. Los diseños de una foto con proporción fija (v2.159) siguen igual, ahora por el mismo camino.
+  - En el selector aparece como "3 apiladas", después de "3, grande abajo". "Recrear libro" no lo elige al azar (igual que los otros de proporción fija).
+  - Verificado en Chromium (`t162.js` en el scratchpad): hoja 30 × 30 y A4 horizontal con la tira centrada, selector con las miniaturas correctas, y los rectángulos de las tres celdas calculados bien.
+
 - **Fotolibro: en hojas cuadradas "1 foto" se llama "1 foto 1:1"** (v2.161, sin novedad): pedido del usuario después de v2.160. En hojas casi cuadradas, donde "1 foto 1:1" se oculta, la opción "1 foto" del selector se muestra con el nombre "1 foto 1:1" para que quede claro que es la cuadrada. En hojas rectangulares sigue "1 foto" (ocupa toda la página) y aparte "1 foto 1:1". Solo cambia la etiqueta en `openBookLayoutModal()`; el layout guardado es el mismo.
 
 - **Fotolibro: "1 foto 1:1" solo en hojas rectangulares** (v2.160, sin novedad): el usuario notó que en su hoja 30 × 30 "1 foto" y "1 foto 1:1" se veían iguales (la caja de fotos de una hoja cuadrada es casi cuadrada: 270 × 255 mm). `openBookLayoutModal()` oculta "1 foto 1:1" cuando la caja de fotos está a menos de 12% de ser cuadrada, salvo que la página ya lo use. En hojas como A4 o 20 × 30 sigue apareciendo, porque ahí sí cambia (cuadrada en el medio contra toda la página). `node --check` del script principal.

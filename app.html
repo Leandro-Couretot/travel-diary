@@ -1799,7 +1799,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.161';
+const APP_VERSION = '2.162';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;
@@ -7228,11 +7228,18 @@ const BOOK_LAYOUTS = {
   'book-layout-1-23': { label: '2:3', aspect: 2 / 3, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
   'book-layout-1-32': { label: '3:2', aspect: 3 / 2, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
   'book-layout-1-43': { label: '4:3', aspect: 4 / 3, rows: [1], cols: [1], cells: [{ row: 0, col: 0 }] },
+  // v2.162 (pedido del usuario, con una foto de ejemplo): 3 fotos apiladas
+  // en una tira angosta y centrada, tipo cabina de fotos. Cada foto es 4:3,
+  // así que la tira entera mide 4 de ancho por 9 de alto.
+  'book-layout-3s': { label: 'Tira', aspect: 4 / 9, rows: [1, 1, 1], cols: [1], cells: [
+    { row: 0, col: 0 }, { row: 1, col: 0 }, { row: 2, col: 0 },
+  ] },
 };
 
-// Rectángulo (en fracción de la caja: x, y, w, h entre 0 y 1) de la foto
-// de un layout con proporción fija: el más grande con esa proporción que
-// entra en la caja, centrado. `boxAspect` = ancho / alto de la caja.
+// Rectángulo (en fracción de la caja: x, y, w, h entre 0 y 1) de un layout
+// con proporción fija (la foto, o el grupo entero de fotos en la tira de
+// v2.162): el más grande con esa proporción que entra en la caja, centrado.
+// `boxAspect` = ancho / alto de la caja.
 function bookAspectCellFraction(aspect, boxAspect) {
   if (boxAspect > aspect) { const w = aspect / boxAspect; return { x: (1 - w) / 2, y: 0, w, h: 1 }; }
   const h = boxAspect / aspect;
@@ -7251,18 +7258,13 @@ function bookLayoutDef(layoutClass) {
 // falta para los layouts de proporción fija (v2.159).
 function applyBookLayoutGrid(gridEl, layoutClass, cellEls, boxAspect = 1) {
   const def = bookLayoutDef(layoutClass);
+  // Proporción fija: la grilla se achica al rectángulo centrado con relleno
+  // (padding). El padding vertical en % se mide sobre el ANCHO de la caja,
+  // por eso se divide por boxAspect.
+  gridEl.style.padding = '';
   if (def.aspect) {
     const f = bookAspectCellFraction(def.aspect, boxAspect);
-    gridEl.style.gridTemplateRows = '1fr';
-    gridEl.style.gridTemplateColumns = '1fr';
-    const cellEl = cellEls[0];
-    if (cellEl) {
-      cellEl.style.gridRow = cellEl.style.gridColumn = '1 / span 1';
-      cellEl.style.justifySelf = cellEl.style.alignSelf = 'center';
-      cellEl.style.width = `${f.w * 100}%`;
-      cellEl.style.height = `${f.h * 100}%`;
-    }
-    return;
+    gridEl.style.padding = `${(f.y / boxAspect) * 100}% ${f.x * 100}%`;
   }
   gridEl.style.gridTemplateRows = def.rows.map(r => `${r}fr`).join(' ');
   gridEl.style.gridTemplateColumns = def.cols.map(c => `${c}fr`).join(' ');
@@ -7298,19 +7300,21 @@ function bookGridTrackPositions(frs, totalSpaceMm, gapMm) {
 // (BOOK_LAYOUTS) que usa la pantalla, usada tanto por el chequeo de DPI
 // previo a exportar como por el dibujo real del PDF.
 function computeCellRectMm(pageWmm, pageHmm, def, cellIdx, gapMm) {
+  // Proporción fija: se arma la grilla dentro del rectángulo centrado.
+  let ox = 0, oy = 0, gw = pageWmm, gh = pageHmm;
   if (def.aspect) {
     const f = bookAspectCellFraction(def.aspect, pageWmm / pageHmm);
-    return { x: f.x * pageWmm, y: f.y * pageHmm, w: f.w * pageWmm, h: f.h * pageHmm };
+    ox = f.x * pageWmm; oy = f.y * pageHmm; gw = f.w * pageWmm; gh = f.h * pageHmm;
   }
-  const colsT = bookGridTrackPositions(def.cols, pageWmm, gapMm);
-  const rowsT = bookGridTrackPositions(def.rows, pageHmm, gapMm);
+  const colsT = bookGridTrackPositions(def.cols, gw, gapMm);
+  const rowsT = bookGridTrackPositions(def.rows, gh, gapMm);
   const cell = def.cells[cellIdx];
   const colSpan = cell.colSpan || 1, rowSpan = cell.rowSpan || 1;
   const x = colsT.starts[cell.col];
   const y = rowsT.starts[cell.row];
   let w = 0; for (let i = 0; i < colSpan; i++) { w += colsT.sizes[cell.col + i]; if (i < colSpan - 1) w += gapMm; }
   let h = 0; for (let i = 0; i < rowSpan; i++) { h += rowsT.sizes[cell.row + i]; if (i < rowSpan - 1) h += gapMm; }
-  return { x, y, w, h };
+  return { x: ox + x, y: oy + y, w, h };
 }
 
 // ─── Fotolibro: margen fijo de página (v2.155) ─────────────────────
@@ -8470,12 +8474,12 @@ let bookLayoutModalPageIdx = null;
 // no solo los de la misma capacidad — ver changeBookPageLayout().
 const BOOK_LAYOUT_NAMES = {
   'book-layout-1': '1 foto', 'book-layout-2h': '2 apiladas', 'book-layout-2v': '2 lado a lado',
-  'book-layout-3a': '3, grande arriba', 'book-layout-3b': '3, grande abajo',
+  'book-layout-3a': '3, grande arriba', 'book-layout-3b': '3, grande abajo', 'book-layout-3s': '3 apiladas',
   'book-layout-4a': '4 parejas', 'book-layout-4b': '4, grande al costado',
   'book-layout-1-11': '1 foto 1:1', 'book-layout-1-23': '1 foto 2:3', 'book-layout-1-32': '1 foto 3:2', 'book-layout-1-43': '1 foto 4:3',
 };
 // Orden en el selector: los de una foto juntos.
-const BOOK_LAYOUT_ORDER = ['book-layout-1', 'book-layout-1-11', 'book-layout-1-32', 'book-layout-1-43', 'book-layout-1-23', 'book-layout-2h', 'book-layout-2v', 'book-layout-3a', 'book-layout-3b', 'book-layout-4a', 'book-layout-4b'];
+const BOOK_LAYOUT_ORDER = ['book-layout-1', 'book-layout-1-11', 'book-layout-1-32', 'book-layout-1-43', 'book-layout-1-23', 'book-layout-2h', 'book-layout-2v', 'book-layout-3a', 'book-layout-3b', 'book-layout-3s', 'book-layout-4a', 'book-layout-4b'];
 function openBookLayoutModal(idx) {
   const page = bookPages[idx];
   if (!page) return;
