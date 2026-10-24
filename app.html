@@ -1473,15 +1473,15 @@ body:not(.book-tester) .book-only { display: none !important; }
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Así funciona Legado</div><button class="modal-close" onclick="closeOnboardingModal()">×</button></div>
     <div class="modal-body">
-      <div class="help-item"><span class="help-item-dot" data-icon="photo"></span><span>Guardá cada día con fotos, videos, notas y audio.</span></div>
-      <div class="help-item"><span class="help-item-dot" data-icon="cloud"></span><span>Todo se guarda en tu propio Google Drive. Vos sos dueño de tus fotos, nosotros no las tocamos.</span></div>
+      <div class="help-item"><span class="help-item-dot" data-icon="photo"></span><span>Armá álbumes con fotos, videos, notas y audios de los momentos que querés guardar.</span></div>
+      <div class="help-item"><span class="help-item-dot" data-icon="share"></span><span>Compartilos con tu familia o amigos y sumen fotos entre todos.</span></div>
+      <div class="help-item"><span class="help-item-dot" data-icon="cloud"></span><span>Legado guarda todo en tu Google Drive y no accede a tus otros archivos.</span></div>
       <div class="help-item book-only"><span class="help-item-dot" data-icon="book"></span><span>Armá un fotolibro con tus mejores momentos y exportalo en PDF para imprimir cuando quieras.</span></div>
       <label class="terms-check">
         <input type="checkbox" id="onboarding-terms-check">
         <span>Acepto los <a href="terms.html" target="_blank">Términos de Servicio</a> y la <a href="privacy.html" target="_blank">Política de Privacidad</a>.</span>
       </label>
       <button class="btn btn-primary" style="width:100%;margin-top:0.75rem;" id="btn-onboarding-google" disabled onclick="startOnboardingLogin()">Continuar con Google</button>
-      <div class="powered-by-drive"><span data-icon="cloud"></span> <span>Potenciado por <strong>Google Drive</strong>, tus fotos siempre en tu cuenta.</span></div>
     </div>
   </div>
 </div>
@@ -1799,7 +1799,7 @@ body:not(.book-tester) .book-only { display: none !important; }
 // más — de ahora en más **un solo lugar de JS para bumpear**, más
 // version.json (ver convención "Versión en tres lugares" en CLAUDE.md,
 // actualizada a dos).
-const APP_VERSION = '2.162';
+const APP_VERSION = '2.163';
 let pendingInvitations = []; // v2.116: invitaciones a álbumes compartidos pendientes (declarada arriba porque renderHomeHeader() la lee)
 let invitationsBubbleOn = false; // v2.118: globito de aviso visible (declarada arriba por lo mismo)
 let invitationsBubbleTimer = null;

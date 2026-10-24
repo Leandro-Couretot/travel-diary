@@ -486,6 +486,7 @@ link (mismo patrón que bit.ly, Linktree, cualquier programa de afiliados).
 
 Índice de lo entregado, una línea por entrega (lo más nuevo arriba). **El detalle completo de cada una está en `HISTORIAL.md`**: buscar por versión (`grep -n "(v2.86)" HISTORIAL.md`) o por palabra clave, y leer solo esa entrada. Cualquier referencia en este archivo del tipo "ver v2.86" o "ver Funcionando bien" apunta a ese detalle.
 
+- v2.163 · Modal "Así funciona Legado" con textos nuevos (álbumes, compartir, Drive)
 - v2.162 · Fotolibro: diseño "3 apiladas", tipo tira de cabina de fotos
 - v2.161 · Fotolibro: en hojas cuadradas "1 foto" se llama "1 foto 1:1"
 - v2.160 · Fotolibro: "1 foto 1:1" solo en hojas rectangulares (en las cuadradas es igual a "1 foto")
